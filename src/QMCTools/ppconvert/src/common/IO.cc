@@ -130,7 +130,7 @@ namespace IO
 
   bool IOSectionClass::OpenSection (std::string name, int num)
   {
-    IOTreeClass *newSection = NULL;
+    IOTreeClass *newSection;
     bool success;
     success = CurrentSection->FindSection(name, newSection, num);
     if (success)

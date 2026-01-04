@@ -12,8 +12,6 @@
 
 #include "SpinDensityNew.h"
 
-#include "hdf5.h"
-
 #include <iostream>
 #include <numeric>
 #include <SpeciesSet.h>
@@ -21,14 +19,9 @@
 namespace qmcplusplus
 {
 SpinDensityNew::SpinDensityNew(SpinDensityInput&& input, const SpeciesSet& species, DataLocality dl)
-    : OperatorEstBase(dl, input.get_name(), input.get_type()),
-      input_(std::move(input)),
-      species_(species),
-      species_size_(getSpeciesSize(species))
+    : OperatorEstBase(dl), input_(std::move(input)), species_(species), species_size_(getSpeciesSize(species))
 {
-  data_locality_ = DataLocality::crowd;
-  if (input_.get_save_memory())
-    dl = DataLocality::rank;
+  my_name_ = "SpinDensity";
 
   if (input_.get_cell().explicitly_defined == true)
     lattice_ = input_.get_cell();
@@ -48,15 +41,21 @@ SpinDensityNew::SpinDensityNew(SpinDensityInput&& input,
                                const Lattice& lattice,
                                const SpeciesSet& species,
                                const DataLocality dl)
-    : OperatorEstBase(dl, input.get_name(), input.get_type()),
+    : OperatorEstBase(dl),
       input_(std::move(input)),
       species_(species),
       species_size_(getSpeciesSize(species)),
       lattice_(lattice)
 {
+  my_name_ = "SpinDensity";
+  std::cout << "SpinDensity constructor called\n";
   data_locality_ = dl;
   if (input_.get_cell().explicitly_defined == true)
-    lattice_ = input_.get_cell();
+    throw std::runtime_error(
+        "SpinDensityNew should not be constructed with both a cell in its input and an lattice input arguement.");
+  else if (lattice_.explicitly_defined == false)
+    throw std::runtime_error("SpinDensityNew cannot be constructed from a lattice that is not explicitly defined");
+
   derived_parameters_ = input_.calculateDerivedParameters(lattice_);
   data_.resize(getFullDataSize());
   if (input_.get_write_report())
@@ -79,11 +78,10 @@ std::vector<int> SpinDensityNew::getSpeciesSize(const SpeciesSet& species)
   return species_size;
 }
 
-size_t SpinDensityNew::getFullDataSize() const { return species_.size() * derived_parameters_.npoints; }
+size_t SpinDensityNew::getFullDataSize() { return species_.size() * derived_parameters_.npoints; }
 
-std::unique_ptr<OperatorEstBase> SpinDensityNew::spawnCrowdClone() const
-{
-  std::size_t data_size    = data_.size();
+std::unique_ptr<OperatorEstBase> SpinDensityNew::spawnCrowdClone() const {
+  std::size_t data_size = data_.size();
   auto spawn_data_locality = data_locality_;
   if (data_locality_ == DataLocality::rank)
   {
@@ -91,7 +89,7 @@ std::unique_ptr<OperatorEstBase> SpinDensityNew::spawnCrowdClone() const
     // at construction we don't know what the data requirement is going to be
     // since its steps per block  dependent. so start with 10 steps worth.
     int num_particles = std::accumulate(species_size_.begin(), species_size_.end(), 0);
-    data_size         = num_particles * 20;
+    data_size  = num_particles * 20;
   }
   UPtr<SpinDensityNew> spawn(std::make_unique<SpinDensityNew>(*this, spawn_data_locality));
   spawn->get_data().resize(data_size);
@@ -100,7 +98,7 @@ std::unique_ptr<OperatorEstBase> SpinDensityNew::spawnCrowdClone() const
 
 void SpinDensityNew::startBlock(int steps)
 {
-  if (data_locality_ == DataLocality::queue)
+  if (data_locality_ == DataLocality::rank)
   {
     int num_particles = std::accumulate(species_size_.begin(), species_size_.end(), 0);
     size_t data_size  = num_particles * steps * 2;
@@ -117,8 +115,7 @@ void SpinDensityNew::startBlock(int steps)
 void SpinDensityNew::accumulate(const RefVector<MCPWalker>& walkers,
                                 const RefVector<ParticleSet>& psets,
                                 const RefVector<TrialWaveFunction>& wfns,
-                                const RefVector<QMCHamiltonian>& hams,
-                                RandomBase<FullPrecRealType>& rng)
+                                RandomGenerator_t& rng)
 {
   auto& dp_ = derived_parameters_;
   for (int iw = 0; iw < walkers.size(); ++iw)
@@ -129,8 +126,8 @@ void SpinDensityNew::accumulate(const RefVector<MCPWalker>& walkers,
     assert(weight >= 0);
     // for testing
     walkers_weight_ += weight;
-    int p         = 0;
-    size_t offset = 0;
+    int p                             = 0;
+    size_t offset                     = 0;
     for (int s = 0; s < species_.size(); ++s, offset += dp_.npoints)
       for (int ps = 0; ps < species_size_[s]; ++ps, ++p)
       {
@@ -217,18 +214,25 @@ void SpinDensityNew::report(const std::string& pad)
   app_log() << pad << "end SpinDensity report" << std::endl;
 }
 
-void SpinDensityNew::registerOperatorEstimator(hdf_archive& file)
+void SpinDensityNew::registerOperatorEstimator(hid_t gid)
 {
   std::vector<size_t> my_indexes;
+  hid_t sgid = H5Gcreate(gid, my_name_.c_str(), 0);
 
-  std::vector<int> ng(1, derived_parameters_.npoints);
+  //vector<int> ng(DIM);
+  //for(int d=0;d<DIM;++d)
+  //  ng[d] = grid[d];
 
-  hdf_path hdf_name{my_name_};
+  std::vector<int> ng(1);
+  ng[0] = derived_parameters_.npoints;
+
   for (int s = 0; s < species_.size(); ++s)
   {
-    h5desc_.emplace_back(hdf_name / species_.speciesName[s]);
+    h5desc_.emplace_back(std::make_unique<ObservableHelper>(species_.speciesName[s]));
     auto& oh = h5desc_.back();
-    oh.set_dimensions(ng, s * derived_parameters_.npoints);
+    oh->set_dimensions(ng, 0);
+    oh->open(sgid);
+    // bad smell
   }
 }
 

@@ -9,7 +9,9 @@
 #// File created by: Ye Luo, yeluo@anl.gov, Argonne National Laboratory
 #//////////////////////////////////////////////////////////////////////////////////////
 
-set(NUMERICS_SRCS SmoothFunctions.cpp OneDimGridFactory.cpp SoaSphericalTensor.cpp)
+set(NUMERICS_SRCS
+    SmoothFunctions.cpp
+    OneDimGridFactory.cpp)
 
 add_library(qmcnumerics ${NUMERICS_SRCS})
 target_link_libraries(qmcnumerics qmcio containers)

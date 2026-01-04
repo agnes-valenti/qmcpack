@@ -31,13 +31,13 @@ ForceChiesaPBCAA::ForceChiesaPBCAA(ParticleSet& ions, ParticleSet& elns, bool fi
 {
   ReportEngine PRE("ForceChiesaPBCAA", "ForceChiesaPBCAA");
   name_  = "Chiesa_Force_Base_PBCAB";
-  prefix_ = "FChiesaPBC";
+  prefix = "FChiesaPBC";
   //Defaults for the chiesa S-wave polynomial filtering.
-  Rcut            = 0.4;
-  m_exp           = 2;
-  N_basis         = 4;
-  forces_         = 0.0;
-  forces_ion_ion_ = 0.0;
+  Rcut          = 0.4;
+  m_exp         = 2;
+  N_basis       = 4;
+  forces        = 0.0;
+  forces_IonIon = 0.0;
   ions.turnOnPerParticleSK();
   //This sets up the long range breakups.
   initBreakup(elns);
@@ -47,7 +47,7 @@ ForceChiesaPBCAA::ForceChiesaPBCAA(ParticleSet& ions, ParticleSet& elns, bool fi
     evaluateLR_AA();
     evaluateSR_AA();
     app_log() << "IonIon Force" << std::endl;
-    app_log() << forces_ion_ion_ << std::endl;
+    app_log() << forces_IonIon << std::endl;
     first_time = false;
   }
 }
@@ -68,7 +68,7 @@ void ForceChiesaPBCAA::InitMatrix()
   // in Numerics/DeterminantOperators.h
   invert_matrix(Sinv, false);
   // in Numerics/MatrixOperators.h
-  MatrixOperators::product(Sinv, h, c);
+  MatrixOperators::product(Sinv, h.data(), c.data());
 }
 
 void ForceChiesaPBCAA::initBreakup(ParticleSet& P)
@@ -76,7 +76,9 @@ void ForceChiesaPBCAA::initBreakup(ParticleSet& P)
   SpeciesSet& tspeciesA(PtclA.getSpeciesSet());
   SpeciesSet& tspeciesB(P.getSpeciesSet());
   int ChargeAttribIndxA = tspeciesA.addAttribute("charge");
+  int MemberAttribIndxA = tspeciesA.addAttribute("membersize");
   int ChargeAttribIndxB = tspeciesB.addAttribute("charge");
+  int MemberAttribIndxB = tspeciesB.addAttribute("membersize");
   NptclA                = PtclA.getTotalNum();
   NptclB                = P.getTotalNum();
   NumSpeciesA           = tspeciesA.TotalNum;
@@ -111,7 +113,7 @@ void ForceChiesaPBCAA::evaluateLR(ParticleSet& P)
     dAB->evaluateGrad(PtclA, P, j, Zat, grad);
     for (int iat = 0; iat < grad.size(); iat++)
     {
-      forces_[iat] += Qspec[j] * grad[iat];
+      forces[iat] += Qspec[j] * grad[iat];
     }
   } // electron species
 }
@@ -130,7 +132,7 @@ void ForceChiesaPBCAA::evaluateSR(ParticleSet& P)
       RealType g_f        = g_filter(r);
       RealType V          = -dAB->srDf(r, rinv);
       PosType drhat       = rinv * displ[iat];
-      forces_[iat] += g_f * Zat[iat] * Qat[jat] * V * drhat;
+      forces[iat] += g_f * Zat[iat] * Qat[jat] * V * drhat;
     }
   }
 }
@@ -146,8 +148,8 @@ void ForceChiesaPBCAA::evaluateSR_AA()
     {
       RealType V   = -dAB->srDf(dist[jpart], RealType(1) / dist[jpart]);
       PosType grad = -Zat[jpart] * Zat[ipart] * V / dist[jpart] * displ[jpart];
-      forces_ion_ion_[ipart] += grad;
-      forces_ion_ion_[jpart] -= grad;
+      forces_IonIon[ipart] += grad;
+      forces_IonIon[jpart] -= grad;
     }
   }
 }
@@ -164,7 +166,7 @@ void ForceChiesaPBCAA::evaluateLR_AA()
 
     for (int iat = 0; iat < grad.size(); iat++)
     {
-      forces_ion_ion_[iat] += Z2 * grad[iat];
+      forces_IonIon[iat] += Z2 * grad[iat];
     }
   } //spec2
 }
@@ -172,11 +174,11 @@ void ForceChiesaPBCAA::evaluateLR_AA()
 
 ForceChiesaPBCAA::Return_t ForceChiesaPBCAA::evaluate(ParticleSet& P)
 {
-  forces_ = 0.0;
+  forces = 0.0;
   evaluateLR(P);
   evaluateSR(P);
-  if (add_ion_ion_ == true)
-    forces_ = forces_ + forces_ion_ion_;
+  if (addionion == true)
+    forces = forces + forces_IonIon;
   return 0.0;
 }
 
@@ -202,12 +204,12 @@ bool ForceChiesaPBCAA::put(xmlNodePtr cur)
 {
   std::string ionionforce("yes");
   OhmmsAttributeSet attr;
-  attr.add(prefix_, "name");
-  attr.add(ionionforce, "add_ion_ion_");
+  attr.add(prefix, "name");
+  attr.add(ionionforce, "addionion");
   attr.put(cur);
-  add_ion_ion_ = (ionionforce == "yes") || (ionionforce == "true");
+  addionion = (ionionforce == "yes") || (ionionforce == "true");
   app_log() << "ionionforce = " << ionionforce << std::endl;
-  app_log() << "add_ion_ion_=" << add_ion_ion_ << std::endl;
+  app_log() << "addionion=" << addionion << std::endl;
   ParameterSet fcep_param_set;
   fcep_param_set.add(Rcut, "rcut");
   fcep_param_set.add(N_basis, "nbasis");
@@ -240,9 +242,9 @@ std::unique_ptr<OperatorBase> ForceChiesaPBCAA::makeClone(ParticleSet& qp, Trial
   tmp->h.resize(N_basis);
   tmp->h = h; // terms in fitting polynomial
   tmp->c.resize(N_basis);
-  tmp->c               = c; // polynomial coefficients
-  tmp->add_ion_ion_    = add_ion_ion_;
-  tmp->forces_ion_ion_ = forces_ion_ion_;
+  tmp->c             = c; // polynomial coefficients
+  tmp->addionion     = addionion;
+  tmp->forces_IonIon = forces_IonIon;
   tmp->initBreakup(qp);
   return tmp;
 }

@@ -24,8 +24,8 @@ namespace qmcplusplus
 {
 struct L2RadialPotential : public QMCTraits
 {
-  using GridType            = OneDimGridBase<RealType>;
-  using RadialPotentialType = OneDimCubicSpline<RealType>;
+  typedef OneDimGridBase<RealType> GridType;
+  typedef OneDimCubicSpline<RealType> RadialPotentialType;
 
   std::unique_ptr<RadialPotentialType> vL2;
   RealType rcut;
@@ -42,7 +42,7 @@ struct L2RadialPotential : public QMCTraits
 
   L2RadialPotential* makeClone()
   {
-    auto c = new L2RadialPotential();
+    auto c  = new L2RadialPotential();
     c->vL2.reset(vL2->makeClone());
     c->rcut = rcut;
     return c;
@@ -70,9 +70,6 @@ struct L2Potential : public OperatorBase
   TrialWaveFunction* psi_ref;
 
   L2Potential(const ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi);
-
-  bool dependsOnWaveFunction() const override { return true; }
-  std::string getClassName() const override { return "L2Potential"; }
 
   void resetTargetParticleSet(ParticleSet& P) override;
 

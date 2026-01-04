@@ -1,24 +1,22 @@
 ######################################################################
 # CMake version and policies
 ######################################################################
-cmake_minimum_required(VERSION 3.21.0)
-# Note that cmake_minimum_required affects policy defaults.
-# All policies known to the running version of CMake and introduced in
-# cmake_minimum_required version or earlier will be set to use NEW behavior
+cmake_minimum_required(VERSION 3.15.0)
 
-if(POLICY CMP0127)
-  cmake_policy(SET CMP0127 NEW) # Condition evaluation v3.22+ https://cmake.org/cmake/help/latest/policy/CMP0127.html
-endif()
-if(POLICY CMP0144)
-  cmake_policy(SET CMP0144 NEW) # v3.27+ find_package() uses upper-case <PACKAGENAME>_ROOT variables.
-endif()
+# CMP0074: CMake find_package will use <PackageName>_ROOT CMake variable
+# and environment variable in search path.
+# various Find<Package>.cmake modules may not follow this policy
+# CMP0075: check_include_file_cxx and other follow CMAKE_REQUIRED_LIBRARIES
+# when doing link check
+cmake_policy(SET CMP0074 NEW)
+cmake_policy(SET CMP0075 NEW)
 
 ######################################################################
 # QMCPACK project
 ######################################################################
 project(
   qmcpack
-  VERSION 4.1.9
+  VERSION 3.12.0
   LANGUAGES C CXX)
 
 #--------------------------------------------------------------------
@@ -27,11 +25,6 @@ project(
 set(PROJECT_CMAKE ${qmcpack_SOURCE_DIR}/CMake)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_CMAKE})
 include(macros)
-
-# add the automatically determined parts of the RPATH
-# which point to directories outside the build tree to the install RPATH
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-include(AddRPATH)
 
 ######################################################################
 # Build and install options
@@ -55,22 +48,47 @@ endif()
 include(CMakeDependentOption)
 option(QMC_MPI "Enable/disable MPI" ON)
 option(QMC_OMP "Enable/disable OpenMP" ON)
-option(QMC_COMPLEX "Build for complex binary" OFF)
-if(DEFINED ENABLE_CUDA OR DEFINED ENABLE_ROCM OR DEFINED QMC_CUDA2HIP OR DEFINED ENABLE_SYCL OR DEFINED ENABLE_OFFLOAD)
-  message(
-    FATAL_ERROR "ENABLE_CUDA, ENABLE_ROCM, QMC_CUDA2HIP, ENABLE_SYCL and ENABLE_OFFLOAD CMake options are removed. "
-                "Use QMC_GPU instead. See details of this option explained in the user guide. "
-                "When not building from scratch, their cached entries in CMakeCache.txt needs to be removed.")
+option(QMC_COMPLEX "Build for complex binary" ON)
+option(QMC_CUDA "Build with GPU support through CUDA" OFF)
+option(
+  ENABLE_CUDA
+  "Build with the second generation of GPU support through CUDA (production quality for AFQMC, experimental for real space)"
+  OFF)
+option(QMC_CUDA2HIP "Map all CUDA kernels and library calls to HIP" OFF)
+if(QMC_CUDA2HIP)
+  set(ENABLE_ROCM ON) # option(ENABLE_ROCM) will be no-op
 endif()
-
-include(DetermineGPUFeatures)
+# explicit HIP source codes only exist in AFQMC.
+option(ENABLE_HIP "Build with with GPU support through explicit HIP source code" OFF)
+option(ENABLE_ROCM "Build with with GPU support through ROCM libraries" OFF)
+option(ENABLE_OFFLOAD "Enable OpenMP offload" OFF)
 # Use CMake object library targets to workaround clang linker not being able to handle fat
 # binary archives which contain both host and device codes, for example OpenMP offload regions.
 # CMake does not propagate indirect object files by design.
 # So the dependency must be explicitly specified with USE_OBJECT_TARGET.
 cmake_dependent_option(USE_OBJECT_TARGET "Use CMake object library target" OFF "ENABLE_OFFLOAD" OFF)
 
-include(DetermineDeviceArchitectures)
+if(ENABLE_CUDA AND QMC_CUDA)
+  message(FATAL_ERROR "ENABLE_CUDA=ON and QMC_CUDA=ON can not be set together!")
+endif(ENABLE_CUDA AND QMC_CUDA)
+
+if(ENABLE_OFFLOAD AND QMC_CUDA)
+  message(FATAL_ERROR "ENABLE_OFFLOAD=ON doesn't work together with QMC_CUDA=ON! Did you mean ENABLE_CUDA=ON?")
+endif()
+
+# set CMAKE_CUDA_ARCHITECTURES early such that offload compilers may take advantage of it
+if(ENABLE_CUDA
+   OR QMC_CUDA
+   AND NOT QMC_CUDA2HIP)
+  if(DEFINED CUDA_ARCH)
+    unset(CUDA_ARCH CACHE)
+    message(
+      FATAL_ERROR "CUDA_ARCH option has been removed. Use -DCMAKE_CUDA_ARCHITECTURES=80 if -DCUDA_ARCH=sm_80 was used.")
+  endif()
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 70)
+  endif()
+endif()
 
 #--------------------------------------------------------------------
 # Set compiler-time parameters
@@ -88,7 +106,7 @@ set(WALKER_MAX_PROPERTIES
     CACHE STRING "Maximum number of properties tracked by walkers")
 mark_as_advanced(WALKER_MAX_PROPERTIES)
 set(OHMMS_DIM
-    3
+    2
     CACHE STRING "Select physical dimension")
 set(OHMMS_INDEXTYPE int)
 set(OHMMS_PRECISION_FULL double)
@@ -100,21 +118,36 @@ endif()
 #--------------------------------------------------------------------
 message(STATUS "Defining the float point precision")
 #--------------------------------------------------------------------
-option(QMC_MIXED_PRECISION "Enable/disable mixed precision" OFF)
-if(QMC_MIXED_PRECISION)
-  set(OHMMS_PRECISION float)
-  set(MIXED_PRECISION ON)
-else(QMC_MIXED_PRECISION)
+if(QMC_CUDA)
+  option(QMC_MIXED_PRECISION "Enable/disable mixed precision" ON)
   set(OHMMS_PRECISION double)
-endif(QMC_MIXED_PRECISION)
-message("   Base precision = ${OHMMS_PRECISION}")
-message("   Full precision = ${OHMMS_PRECISION_FULL}")
+  set(CUDA_PRECISION_FULL double)
+  if(QMC_MIXED_PRECISION)
+    set(CUDA_PRECISION float)
+  else(QMC_MIXED_PRECISION)
+    set(CUDA_PRECISION double)
+  endif(QMC_MIXED_PRECISION)
+  message("   Base precision = ${OHMMS_PRECISION}")
+  message("   Full precision = ${OHMMS_PRECISION_FULL}")
+  message("   CUDA base precision = ${CUDA_PRECISION}")
+  message("   CUDA full precision = ${CUDA_PRECISION_FULL}")
+else(QMC_CUDA)
+  option(QMC_MIXED_PRECISION "Enable/disable mixed precision" OFF)
+  if(QMC_MIXED_PRECISION)
+    set(OHMMS_PRECISION float)
+    set(MIXED_PRECISION ON)
+  else(QMC_MIXED_PRECISION)
+    set(OHMMS_PRECISION double)
+  endif(QMC_MIXED_PRECISION)
+  message("   Base precision = ${OHMMS_PRECISION}")
+  message("   Full precision = ${OHMMS_PRECISION_FULL}")
+endif(QMC_CUDA)
 
 #--------------------------------------------------------------------
 # Set debug printout
 # DEBUG_PSIBUFFER_ON keep track buffer's locator
 #--------------------------------------------------------------------
-option(PRINT_DEBUG "Enable/disable debug printing" OFF)
+option(PRINT_DEBUG "Enable/disable debug printing" ON)
 option(DEBUG_PSIBUFFER_ON "Debug messages for PSIBUFFER locator" OFF)
 mark_as_advanced(DEBUG_PSIBUFFER_ON)
 option(DEBUG_PER_STEP_ACCEPT_REJECT "Print accepts and rejects at each step" OFF)
@@ -124,85 +157,77 @@ mark_as_advanced(DEBUG_PER_STEP_ACCEPT_REJECT)
 # Set build feature options
 #--------------------------------------------------------------------
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_TOOLCHAIN_FILE)
-  set(CMAKE_BUILD_TYPE Release)
+	set(CMAKE_BUILD_TYPE Debug)
 endif()
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE)
 message(STATUS "CMAKE_BUILD_TYPE is ${CMAKE_BUILD_TYPE}")
 
 option(QMC_BUILD_SANDBOX_ONLY "Build only applications in Sandbox directory" OFF)
 option(ENABLE_GCOV "Enable code coverage" OFF)
-option(BUILD_UNIT_TESTS "Build unit tests" ON)
+option(BUILD_UNIT_TESTS "Build unit tests" OFF)
 option(BUILD_MICRO_BENCHMARKS "Build micro benchmarks" ON)
-option(BUILD_LMYENGINE_INTERFACE "Build LMY engine" ON)
-if(MIXED_PRECISION AND BUILD_LMYENGINE_INTERFACE)
-  message(STATUS "LMY engine is not compatible with mixed precision build! Disabling LMY engine. Some optimizers will not be available.")
+option(BUILD_LMYENGINE_INTERFACE "Build LMY engine" OFF)
+if(QMC_CUDA AND BUILD_LMYENGINE_INTERFACE)
+  message(STATUS "LMY engine is not compatible with CUDA build! Disabling LMY engine")
   set(BUILD_LMYENGINE_INTERFACE OFF)
-else()
-  message(STATUS "LMY engine enabled for widest range of wavefunction optimization methods.")
+endif()
+if(MIXED_PRECISION AND BUILD_LMYENGINE_INTERFACE)
+  message(STATUS "LMY engine is not compatible with CPU mixed precision build! Disabling LMY engine")
+  set(BUILD_LMYENGINE_INTERFACE OFF)
 endif()
 option(BUILD_AFQMC "Build with AFQMC" OFF)
-# explicit HIP source codes only exist in AFQMC.
-cmake_dependent_option(BUILD_AFQMC_HIP "Build with with GPU support in AFQMC through explicit HIP source code" OFF "BUILD_AFQMC" OFF)
-if(BUILD_AFQMC_HIP)
-  set(ENABLE_ROCM ON)
-endif()
 option(BUILD_AFQMC_WITH_NCCL "Build AFQMC with NCCL library." OFF)
 # AFQMC requires MPI.
 if(BUILD_AFQMC AND NOT QMC_MPI)
   message(FATAL_ERROR "AFQMC requires building with MPI (QMC_MPI=1). Set BUILD_AFQMC=0 or configure MPI.")
 endif()
+option(BUILD_FCIQMC "Build with FCIQMC" OFF)
 option(QMC_BUILD_STATIC "Link to static libraries" OFF)
 option(ENABLE_TIMERS "Enable internal timers" ON)
 option(ENABLE_STACKTRACE "Enable use of boost::stacktrace" OFF)
+option(USE_VTUNE_API "Enable use of VTune ittnotify APIs" OFF)
+cmake_dependent_option(USE_VTUNE_TASKS "USE VTune ittnotify task annotation" OFF "ENABLE_TIMERS AND USE_VTUNE_API" OFF)
+# CMake note - complex conditionals in cmake_dependent_option must have spaces around parentheses
+cmake_dependent_option(USE_NVTX_API "Enable/disable NVTX regions in CUDA code." OFF
+                       "ENABLE_TIMERS AND ( QMC_CUDA OR ENABLE_CUDA )" OFF)
 set(HAVE_EINSPLINE 1) # to be removed
 option(QMC_EXP_THREADING "Experimental non openmp threading models" OFF)
 mark_as_advanced(QMC_EXP_THREADING)
 
-# Add optional sanitizers ASAN, UBSAN, MSAN, TYPESAN
-set(VALID_SANITIZERS "asan" "ubsan" "tsan" "msan" "typesan")
-set(ENABLE_SANITIZER "" CACHE STRING "Valid input: ${VALID_SANITIZERS} or left empty")
+#--------------------------------------------------------------------
+# Sanitizer options
+#--------------------------------------------------------------------
+
+# Add optional sanitizers ASAN, UBSAN, MSAN
+set(VALID_SANITIZERS "none" "asan" "ubsan" "tsan" "msan")
+set(ENABLE_SANITIZER
+    "none"
+    CACHE STRING "none,asan,ubsan,tsan,msan")
+set_property(CACHE ENABLE_SANITIZER PROPERTY STRINGS ${VALID_SANITIZERS})
+
+# Perform sanitizer option check, only works in debug mode
+if(NOT ENABLE_SANITIZER IN_LIST VALID_SANITIZERS)
+  message(FATAL_ERROR "Invalid -DENABLE_SANITIZER=${ENABLE_SANITIZER}, value must be one of ${VALID_SANITIZERS}")
+else()
+  message(STATUS "Enable sanitizer ENABLE_SANITIZER=${ENABLE_SANITIZER}")
+endif()
 
 #--------------------------------------------------------------------
 # INSTALL_NEXUS install Nexus alongside QMCPACK
 #--------------------------------------------------------------------
 option(INSTALL_NEXUS "Install Nexus alongside QMCPACK" ON)
 if(INSTALL_NEXUS)
-  install(
-    CODE "EXECUTE_PROCESS(COMMAND ${qmcpack_SOURCE_DIR}/nexus/install --leave_paths \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin)"
-  )
+  install(CODE "EXECUTE_PROCESS(COMMAND ${qmcpack_SOURCE_DIR}/nexus/install --leave_paths ${CMAKE_INSTALL_PREFIX}/bin)")
 endif()
 
 ######################################################################
-# Set compiler specific options/flags
+# Set the compiler specific options/flags
 ######################################################################
-#-------------------------------------------------------------------------------
-# Check for OpenMP compiler support
-#
-# The CMake OpenMP package is *only* used to to verify compiler support.
-# No feature of the package is used and we customize OpenMP options directly
-# on a per vendor/compiler basis.
-#-------------------------------------------------------------------------------
-if(QMC_OMP)
-  find_package(OpenMP)
-  if(NOT OpenMP_FOUND)
-    message(
-      FATAL_ERROR "No compiler support for OpenMP found. Switching to a compiler with OpenMP support is recommended."
-                  "Alternatively, you will need to run CMake configure with -DQMC_OMP=OFF")
-  endif()
-
-  # explicitly set OpenMP runtime library rpath like other normal libraries.
-  AddRPATH("OpenMP" ${OpenMP_CXX_LIBRARIES})
-endif(QMC_OMP)
-
-#-------------------------------------------------------------------------------
-# Set vendor specific compiler options
-#-------------------------------------------------------------------------------
-include(TestCXXMainCompiles)
-TestCXXMainCompiles("Before_Customization")
 if(CMAKE_TOOLCHAIN_FILE)
   message(STATUS "Using ${CMAKE_TOOLCHAIN_FILE} toolchain ")
 else(CMAKE_TOOLCHAIN_FILE)
   message(STATUS "Trying to figure out compiler options ....")
+  set(ENABLE_OPENMP 0)
 
   #------------------------
   # On Cray's machine
@@ -213,9 +238,33 @@ else(CMAKE_TOOLCHAIN_FILE)
                     "Please use cc/CC as the C/C++ compiler to ensure correct cross-compiling for the compute nodes "
                     "unless you understand cross-compiling and intend not to use Cray compiler wrappers.")
   endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "CrayLinuxEnvironment")
+    message(STATUS "Running on a Cray machine.")
+
+    if(NOT $ENV{CRAYPE_LINK_TYPE} STREQUAL "dynamic")
+      message(WARNING "Cray Programming Environment uses static linking by default. "
+                      "We prefer dynamic linking which makes library searching easier. "
+                      "Setting environment variable CRAYPE_LINK_TYPE to \"dynamic\" enables dynamic linking.\n")
+    endif()
+
+    if(NOT DEFINED MPIEXEC_EXECUTABLE)
+      find_program(MPIEXEC_EXECUTABLE aprun)
+      if(NOT MPIEXEC_EXECUTABLE)
+        # For slurm use srun
+        find_program(MPIEXEC_EXECUTABLE srun)
+      endif(NOT MPIEXEC_EXECUTABLE)
+    endif()
+  else()
+    if($ENV{CRAYPE_VERSION} MATCHES "." AND BASE_CXX_COMPILER_NAME STREQUAL "CC")
+      message(
+        FATAL_ERROR
+          "Cray compiler wrapper detected. Empty the build folder and rerun cmake with -DCMAKE_SYSTEM_NAME=CrayLinuxEnvironment added."
+      )
+    endif()
+  endif()
 
   include(inspectCompiler)
-  TestCXXMainCompiles("After_Customization")
+
 endif(CMAKE_TOOLCHAIN_FILE)
 
 if(NOT CMAKE_CXX_COMPILER_ID STREQUAL CMAKE_C_COMPILER_ID)
@@ -239,13 +288,7 @@ include(TestCxx17Library)
 #-----------------------------------------------------------------------
 # SETUP SANITIZERS FLAGS
 #-----------------------------------------------------------------------
-if(ENABLE_SANITIZER)
-  message(STATUS "Enable sanitizer ENABLE_SANITIZER=${ENABLE_SANITIZER}")
-  # Perform sanitizer option check
-  if(NOT ENABLE_SANITIZER IN_LIST VALID_SANITIZERS)
-    message(FATAL_ERROR "Invalid ENABLE_SANITIZER input, value must be one of ${VALID_SANITIZERS}")
-  endif()
-
+if(NOT "${ENABLE_SANITIZER}" STREQUAL "none")
   if(NOT ${COMPILER} MATCHES "GNU" AND NOT ${COMPILER} MATCHES "Clang")
     message(FATAL_ERROR "-DENABLE_SANITIZER=${ENABLE_SANITIZER} only works with GNU or Clang compilers")
   endif()
@@ -254,16 +297,6 @@ if(ENABLE_SANITIZER)
     set(CMAKE_CXX_FLAGS_SAN
         "-fsanitize=address -fno-optimize-sibling-calls -fsanitize-address-use-after-scope -fno-omit-frame-pointer"
         CACHE STRING "AddressSanitizer C++ compiler builds." FORCE)
-    if(NOT DEFINED LSAN_OPTIONS)
-      if(QMC_MPI)
-        set(LSAN_OPTIONS "suppressions=${PROJECT_SOURCE_DIR}/config/sanitizers/lsan_mpi.supp")
-      else()
-        set(LSAN_OPTIONS "")
-      endif()
-    endif()
-    if(LSAN_OPTIONS)
-      message(STATUS "Set environment variable LSAN_OPTIONS for CTest: ${LSAN_OPTIONS}")
-    endif()
   elseif("${ENABLE_SANITIZER}" STREQUAL "ubsan")
     set(CMAKE_CXX_FLAGS_SAN
         "-fsanitize=undefined"
@@ -276,14 +309,10 @@ if(ENABLE_SANITIZER)
     set(CMAKE_CXX_FLAGS_SAN
         "-fsanitize=thread"
         CACHE STRING "ThreadSanitizer C++ compiler builds." FORCE)
-  elseif("${ENABLE_SANITIZER}" STREQUAL "typesan")
-    set(CMAKE_CXX_FLAGS_SAN
-        "-fsanitize=type"
-        CACHE STRING "TypeSanitizer C++ compiler builds." FORCE)
   endif()
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_SAN}")
-  TestCXXMainCompiles("With_Sanitizers")
+
 endif()
 
 #-----------------------------------------------------------------------
@@ -319,26 +348,46 @@ if(alignment_remainder)
 endif()
 message(STATUS "QMC_SIMD_ALIGNMENT is set to ${QMC_SIMD_ALIGNMENT}")
 
-if(QMC_OMP)
-  #---------------------------------------------------------
-  # Determine if OpenMP taskloop works with the CXX compiler
-  #---------------------------------------------------------
-  include(TestOpenMPtaskloop)
-  option(ENABLE_OMP_TASKLOOP "Enable OpenMP taskloop" ${OMP_TASKLOOP_OKAY})
-  message(STATUS "ENABLE_OMP_TASKLOOP is set to ${ENABLE_OMP_TASKLOOP}")
+#---------------------------------------------------------
+# Determine if OpenMP taskloop works with the CXX compiler
+#---------------------------------------------------------
+include(TestOpenMPtaskloop)
+option(ENABLE_OMP_TASKLOOP "Enable OpenMP taskloop" ${OMP_TASKLOOP_OKAY})
+message(STATUS "ENABLE_OMP_TASKLOOP is set to ${ENABLE_OMP_TASKLOOP}")
 
-  #---------------------------------------------------------
-  # Set up OpenMP offload compile options
-  #---------------------------------------------------------
-  if(ENABLE_OFFLOAD AND DEFINED OPENMP_OFFLOAD_COMPILE_OPTIONS)
-    message(STATUS "OpenMP offload CXX flags: ${OPENMP_OFFLOAD_COMPILE_OPTIONS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OPENMP_OFFLOAD_COMPILE_OPTIONS}")
-    if(DEFINED OpenMP_OFFLOAD_LINKER_FLAGS)
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_OFFLOAD_LINKER_FLAGS}")
-    endif()
+#---------------------------------------------------------
+# Set up OpenMP offload compile options
+#---------------------------------------------------------
+set(QMC_OFFLOAD_MEM_ASSOCIATED_DEFAULT OFF)
+set(QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL_DEFAULT OFF)
+if(ENABLE_OFFLOAD AND DEFINED OPENMP_OFFLOAD_COMPILE_OPTIONS)
+  message(STATUS "OpenMP offload CXX flags: ${OPENMP_OFFLOAD_COMPILE_OPTIONS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OPENMP_OFFLOAD_COMPILE_OPTIONS}")
+  if(${COMPILER} MATCHES "Clang"
+     AND OPENMP_OFFLOAD_COMPILE_OPTIONS MATCHES "amdgcn"
+     AND QMC_CUDA2HIP)
+    # As of 11/2021, QMC_OFFLOAD_MEM_ASSOCIATED=ON is needed for AMD and mainline LLVM compilers
+    # when using OpenMP offload to AMD GPU together with HIP.
+    set(QMC_OFFLOAD_MEM_ASSOCIATED_DEFAULT ON)
   endif()
+  if(${COMPILER} MATCHES "Clang" AND OPENMP_OFFLOAD_COMPILE_OPTIONS MATCHES "amdgcn")
+    # As of 11/2021, QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL=ON is needed for
+    # ROCM/AOMP compilers when using OpenMP offload to AMD GPU.
+    set(QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL_DEFAULT ON)
+  endif()
+endif()
+# Some OpenMP offload runtime libraries have composibility issue with a vendor native runtime.
+# A workaround is making the vendor native runtime responsible for memory allocations and OpenMP associate/disassocate them.
+cmake_dependent_option(QMC_OFFLOAD_MEM_ASSOCIATED "Manage OpenMP memory allocations via the vendor runtime"
+                       ${QMC_OFFLOAD_MEM_ASSOCIATED_DEFAULT} "ENABLE_OFFLOAD;ENABLE_CUDA" OFF)
+cmake_dependent_option(QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL "ROCM compiler offload bug workaround"
+                       ${QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL_DEFAULT} "ENABLE_OFFLOAD" OFF)
 
-  TestCXXMainCompiles("With_OpenMP")
+if(QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL)
+  message(WARNING "QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL=ON hurts performance. "
+                  "As of 11/2021, QMC_OFFLOAD_ROCM_WORKAROUND_BRANCH_IN_PARALLEL=ON is needed for "
+                  "ROCM/AOMP compilers when using OpenMP offload to AMD GPU. See bug report "
+                  "https://github.com/ROCm-Developer-Tools/aomp/issues/255")
 endif()
 
 #-------------------------------------------------------------------------------------
@@ -354,12 +403,8 @@ if(QMC_EXP_THREADING)
   add_definitions(-DQMC_EXP_THREADING)
 endif(QMC_EXP_THREADING)
 
-######################################################################
-# Check external libraries.
-######################################################################
-
 #-------------------------------------------------------------------
-# Check MPI installation. MPI is treated as a library
+# Check MPI installation. MPI is treated as a part of compiler
 #-------------------------------------------------------------------
 if(QMC_MPI)
   # for backward compatibility with MPIEXEC
@@ -380,8 +425,7 @@ if(QMC_MPI)
   if(NOT MPI_FOUND)
     message(
       FATAL_ERROR
-        "MPI support not found! Provide MPI compiler wrappers or build without MPI by passing '-DQMC_MPI=OFF' to cmake."
-    )
+        "MPI support not found! Provide MPI compiler wrappers or build without MPI by passing '-DQMC_MPI=0' to cmake.")
   endif(NOT MPI_FOUND)
 
   if(${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "MVAPICH2")
@@ -419,7 +463,7 @@ if(QMC_MPI)
         "Building MPI version without using MPI compiler wrappers.\n"
         "This may not build qmcpack correctly. To ensure the correct version, specify the compiler wrappers to cmake.\n"
         "For example: cmake -DCMAKE_C_COMPILER=mpicc -DCMAKE_CXX_COMPILER=mpic++\n"
-        "To build without MPI, pass '-DQMC_MPI=OFF' to cmake")
+        "To build without MPI, pass '-DQMC_MPI=0' to cmake")
     message(WARNING ${MPI_WARNING_LIST})
   endif()
 
@@ -437,6 +481,21 @@ else(QMC_MPI)
   set(HAVE_MPI 0)
   message(STATUS "MPI is disabled")
 endif(QMC_MPI)
+
+#--------------------------------------------------------------
+# final test for compile options before searching for libraries
+#--------------------------------------------------------------
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("int main(){}" TEST_CXX_COMPILE_MAIN)
+if (NOT TEST_CXX_COMPILE_MAIN)
+  unset(TEST_CXX_COMPILE_MAIN CACHE)
+  message(FATAL_ERROR "Failed in compiling a main() function likely due to incorrect compile options. "
+                      "Check error in \"${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/CMakeError.log\".")
+endif()
+
+######################################################################
+# Check external libraries.
+######################################################################
 
 #-------------------------------------------------------------------
 # check OS related libraries
@@ -474,7 +533,13 @@ endif()
 
 message(STATUS "LAPACK linker flags: ${LAPACK_LINKER_FLAGS}")
 message(STATUS "LAPACK libraries: ${LAPACK_LIBRARIES}")
-target_link_libraries(Math::BLAS_LAPACK INTERFACE "${LAPACK_LINKER_FLAGS};${LAPACK_LIBRARIES}")
+set_target_properties(Math::BLAS_LAPACK PROPERTIES INTERFACE_LINK_LIBRARIES
+                                                   "${LAPACK_LINKER_FLAGS};${LAPACK_LIBRARIES}")
+
+#create scalar_vector_functions target
+add_library(Math::scalar_vector_functions INTERFACE IMPORTED)
+#create fftw3 target
+add_library(Math::FFTW3 INTERFACE IMPORTED)
 
 # Detects MKL header files and other components.
 if(LAPACK_LIBRARIES MATCHES "mkl_core")
@@ -482,7 +547,6 @@ if(LAPACK_LIBRARIES MATCHES "mkl_core")
 endif()
 
 if(MKL_FOUND)
-  target_link_libraries(Math::BLAS_LAPACK INTERFACE MKL::BLAS_LAPACK)
   set(MATH_VENDOR_GUESS "INTEL_VML")
 endif()
 
@@ -497,8 +561,6 @@ endif()
 #-------------------------------------------------------------------
 #  set up scalar/vector math libraries
 #-------------------------------------------------------------------
-add_library(Math::scalar_vector_functions INTERFACE IMPORTED)
-
 set(VALID_MATH_VENDORS "GENERIC" "INTEL_VML" "IBM_MASS" "AMD_LIBM")
 if(NOT DEFINED MATH_VENDOR_GUESS)
   set(MATH_VENDOR_GUESS "GENERIC")
@@ -533,21 +595,22 @@ include(CheckSincos)
 #-------------------------------------------------------------------
 #  set up FFTW3 library
 #-------------------------------------------------------------------
-add_library(Math::FFTW3 INTERFACE IMPORTED)
 set(FFTW_FOUND 0)
 if(HAVE_MKL)
   if(HAVE_MKL_FFTW3)
     set(FFTW_FOUND 1)
-    target_link_libraries(Math::FFTW3 INTERFACE MKL::FFTW3)
   endif()
 endif()
 if(NOT FFTW_FOUND)
-  find_package(FFTW REQUIRED)
-  target_link_libraries(Math::FFTW3 INTERFACE FFTW::FFTW3)
+  find_package(FFTW)
 endif()
-
-set(HAVE_LIBFFTW 1)
-target_compile_definitions(Math::FFTW3 INTERFACE "HAVE_LIBFFTW")
+if(FFTW_FOUND)
+  set(HAVE_LIBFFTW 1)
+  message(STATUS "Found FFTW")
+else(FFTW_FOUND)
+  #  MESSAGE(STATUS "Disabling FFTW")
+  message(FATAL_ERROR "Could not find required library FFTW. Verify FFTW_HOME")
+endif(FFTW_FOUND)
 
 set(QMC_UTIL_LIBS ${QMC_UTIL_LIBS} ${FORTRAN_LIBRARIES})
 
@@ -561,9 +624,13 @@ find_package(LibXml2 REQUIRED)
 #  set up HDF5 library
 #-------------------------------------------------------------------
 if(HAVE_MPI)
-  option(HDF5_PREFER_PARALLEL "Request parallel/serial HDF5 library" ON)
+  set(HDF5_PREFER_PARALLEL
+      TRUE
+      CACHE BOOL "Request parallel/serial HDF5 library")
 else(HAVE_MPI)
-  option(HDF5_PREFER_PARALLEL "Request parallel/serial HDF5 library" OFF)
+  set(HDF5_PREFER_PARALLEL
+      FALSE
+      CACHE BOOL "Request parallel/serial HDF5 library")
   if(HDF5_PREFER_PARALLEL)
     message(FATAL_ERROR "Parallel HDF5 library cannot be selected with QMCPACK non-MPI build. "
                         "Please set HDF5_PREFER_PARALLEL=0.")
@@ -578,23 +645,14 @@ else()
   set(HDF5_USE_STATIC_LIBRARIES off)
 endif()
 
-find_package(HDF5 COMPONENTS C) # Note: minimum version check is done below to bypass find_package
-                                # and HDF5 version compatibility subtleties
+find_package(HDF5 COMPONENTS C)
 
 if(HDF5_FOUND)
-  if(HDF5_VERSION)
-    if (HDF5_VERSION VERSION_LESS 1.10.0)
-      message(FATAL_ERROR "QMCPACK requires HDF5 version >= 1.10.0")
-    endif()
-  endif(HDF5_VERSION)
+  set(HAVE_LIBHDF5 1)
+
   if(HDF5_IS_PARALLEL)
-    if(HAVE_MPI)
-      message(STATUS "Parallel HDF5 library found")
-      option(ENABLE_PHDF5 "Enable code paths using parallel HDF5" ON)
-    else(HAVE_MPI)
-      message(FATAL_ERROR "Parallel HDF5 library found but cannot be used with QMCPACK non-MPI build. "
-                          "Please provide a serial HDF5 library or switch to building QMCPACK with MPI.")
-    endif(HAVE_MPI)
+    message(STATUS "Parallel HDF5 library found")
+    option(ENABLE_PHDF5 "Enable code paths using parallel HDF5" ON)
   else(HDF5_IS_PARALLEL)
     message(STATUS "Serial HDF5 library found")
     option(ENABLE_PHDF5 "Enable code paths using parallel HDF5" OFF)
@@ -629,11 +687,13 @@ if(HDF5_FOUND)
   endif()
 
   add_library(IO::HDF5 INTERFACE IMPORTED)
-  target_include_directories(IO::HDF5 INTERFACE "${HDF5_INCLUDE_DIR}")
-  target_compile_definitions(IO::HDF5 INTERFACE "H5_USE_110_API")
-  target_link_libraries(IO::HDF5 INTERFACE "${HDF5_LIBRARIES}")
+  set_target_properties(
+    IO::HDF5
+    PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${HDF5_INCLUDE_DIR}" INTERFACE_COMPILE_DEFINITIONS
+                                                                   "HAVE_LIBHDF5;H5_USE_16_API" INTERFACE_LINK_LIBRARIES
+                                                                                                "${HDF5_LIBRARIES}")
   if(ENABLE_PHDF5)
-    target_compile_definitions(IO::HDF5 INTERFACE "ENABLE_PHDF5")
+    set_property(TARGET IO::HDF5 APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS "ENABLE_PHDF5")
   endif(ENABLE_PHDF5)
 else(HDF5_FOUND)
   message(FATAL_ERROR "HDF5 not found. Set HDF5_ROOT")
@@ -642,14 +702,10 @@ endif(HDF5_FOUND)
 #-------------------------------------------------------------------
 #  set up libboost library, header only
 #-------------------------------------------------------------------
-if(CMAKE_VERSION VERSION_LESS 3.30.0)
-  set(Boost_NO_BOOST_CMAKE on)
-  find_package(Boost 1.61.0 REQUIRED)
-else()
-  find_package(Boost 1.70.0 CONFIG REQUIRED headers)
-endif()
+set(Boost_NO_BOOST_CMAKE on)
+find_package(Boost 1.61.0 REQUIRED)
 if(Boost_FOUND)
-  target_compile_definitions(Boost::boost INTERFACE "HAVE_LIBBOOST")
+  set_property(TARGET Boost::boost APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS "HAVE_LIBBOOST")
   message(STATUS "Setting Boost_INCLUDE_DIRS=${Boost_INCLUDE_DIRS}")
 else()
   message(FATAL_ERROR "Need boost 1.61.0 or higher.  Set BOOST_ROOT")
@@ -659,101 +715,97 @@ endif()
 #  set up CUDA compiler options and libraries
 #-------------------------------------------------------------------
 set(HAVE_CUDA 0)
-if(ENABLE_CUDA AND NOT QMC_CUDA2HIP)
-  if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 17)
+if(QMC_CUDA OR ENABLE_CUDA)
+  if(QMC_CUDA2HIP)
+    message(STATUS "CUDA2HIP enabled") # all the HIP and ROCm settings will be handled by ENABLE_ROCM
+  else(QMC_CUDA2HIP)
+    if(CMAKE_VERSION VERSION_LESS 3.18.0)
+      message(FATAL_ERROR "QMC_CUDA or ENABLE_CUDA require CMake 3.18.0 or later")
+    endif()
+    # a few production machines use CUDA 10 which only supports C++14.
+    if(NOT DEFINED CMAKE_CUDA_STANDARD)
+      set(CMAKE_CUDA_STANDARD 14)
+    endif()
+    set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
+    set(CMAKE_CUDA_EXTENSIONS OFF)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    # Automatically set the default NVCC flags
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Drestrict=__restrict__ -DNO_CUDA_MAIN")
+    if(QMC_COMPLEX)
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DQMC_COMPLEX=${QMC_COMPLEX}")
+    endif()
+    set(HAVE_CUDA 1)
+    message("Project CUDA_FLAGS: ${CMAKE_CUDA_FLAGS}")
   endif()
-  set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
-  set(CMAKE_CUDA_EXTENSIONS OFF)
-  # CMAKE_CUDA_STANDARD doesn't affect nvcc detection and using unsupported compilers may choke the detection.
-  # This happens when Clang default to C++17. Setting CMAKE_CUDA_FLAGS directly works around the issue.
-  # but CUDA_FLAGS in flags.make may contain -std=c++17 twice with no harm.
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -std=c++${CMAKE_CUDA_STANDARD}")
+else(QMC_CUDA OR ENABLE_CUDA)
+  if(QMC_CUDA2HIP)
+    message(FATAL_ERROR "QMC_CUDA2HIP requires QMC_CUDA=ON or ENABLE_CUDA=ON.")
+  endif()
+  message(STATUS "CUDA disabled")
+endif(QMC_CUDA OR ENABLE_CUDA)
 
-  set(CMAKE_CUDA_HOST_COMPILER
-      ${CMAKE_CXX_COMPILER}
-      CACHE STRING "nvcc host compiler passed via -ccbin")
-  if(NOT CMAKE_CUDA_FLAGS MATCHES "allow-unsupported-compiler")
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --allow-unsupported-compiler")
-  endif()
-
-  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    string(REPLACE "sm_" "" CUDA_ARCH_NUMBERS "${QMC_GPU_ARCHS}")
-    set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_NUMBERS})
-  endif()
-
-  enable_language(CUDA)
-  if(ENABLE_CUDA)
-    include(TestCUDAHostCompatibility)
-  endif()
-  find_package(CUDAToolkit 11.0 REQUIRED)
-  if(NOT TARGET CUDA::cublas)
-    message(
-      FATAL_ERROR
-        "Found an incomplete CUDA toolkit installation, target CUDA::cublas not found. "
-        "This often happens when CMake failed in recognizing the NVHPC internal CUDA toolkit with libcublas. "
-        "Set CMAKE_CUDA_COMPILER to the full path of nvcc from a complete CUDA toolkit installation.")
-  endif()
-  # Automatically set the default NVCC flags
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Drestrict=__restrict__ -DNO_CUDA_MAIN")
-  if(QMC_COMPLEX)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DQMC_COMPLEX=${QMC_COMPLEX}")
-  endif()
-  set(HAVE_CUDA 1)
-  message("Project CUDA_FLAGS: ${CMAKE_CUDA_FLAGS}")
-endif()
+if(USE_NVTX_API)
+  message(STATUS "Enabling use of CUDA NVTX APIs")
+  find_library(
+    NVTX_API_LIB NAME nvToolsExt
+    HINTS ${CUDA_TOOLKIT_ROOT_DIR}
+    PATH_SUFFIXES lib lib64)
+  if(NOT NVTX_API_LIB)
+    message(FATAL_ERROR "USE_NVTX_API set but NVTX_API_LIB not found")
+  endif(NOT NVTX_API_LIB)
+  message("CUDA nvToolsExt library: ${NVTX_API_LIB}")
+  link_libraries(${NVTX_API_LIB})
+else()
+  message(STATUS "CUDA NVTX APIs disabled")
+endif(USE_NVTX_API)
 
 #-------------------------------------------------------------------
 #  set up ROCM compiler options and libraries
 #-------------------------------------------------------------------
 if(ENABLE_ROCM)
-  enable_language(HIP)
-  set(CMAKE_HIP_LINKER_PREFERENCE_PROPAGATES 0)
-  if(DEFINED ROCM_ROOT)
-    message(STATUS "Using ROCM_ROOT: ${ROCM_ROOT}")
-    # explicit ROCM_ROOT takes precedence
-    list(PREPEND CMAKE_PREFIX_PATH ${ROCM_ROOT})
-  elseif(CMAKE_HIP_COMPILER_ROCM_ROOT)
-    list(PREPEND CMAKE_PREFIX_PATH ${CMAKE_HIP_COMPILER_ROCM_ROOT})
+  if(ROCM_ROOT)
+    message(STATUS "ROCM_ROOT provided. Searching for FindHIP.cmake file")
+    find_path(
+      HIP_MODULE_FILE_DIR FindHIP.cmake
+      HINTS ${ROCM_ROOT}
+      PATH_SUFFIXES hip/cmake REQUIRED
+      NO_DEFAULT_PATH)
+  else()
+    message(STATUS "ROCM_ROOT not provided. Searching for FindHIP.cmake file.")
+    find_path(
+      HIP_MODULE_FILE_DIR FindHIP.cmake
+      HINTS /opt/rocm
+      PATH_SUFFIXES hip/cmake)
+    if(HIP_MODULE_FILE_DIR)
+      message(STATUS "Found FindHIP.cmake file. ROCM_ROOT will be derived.")
+    else()
+      message(FATAL_ERROR "Failed to find FindHIP.cmake file. Please set ROCM_ROOT to your ROCm installation.")
+    endif()
+    string(REGEX REPLACE "\/hip\/cmake" "" ROCM_ROOT "${HIP_MODULE_FILE_DIR}")
   endif()
+  message(STATUS "Using ROCM_ROOT: ${ROCM_ROOT}")
 
-  # use hip package to supply the hip runtime for CXX source code.
-  find_package(hip CONFIG)
-  if(NOT hip_FOUND)
-    message(
-      FATAL_ERROR
-        "The HIP runtime library cmake configure file hip-config.cmake cannot be found! "
-        "This happens when the ROCm installation cannot be found by CMake. "
-        "Rerun cmake with -DROCM_ROOT=<your ROCm installation root directory> added.")
-  endif()
-
+  list(APPEND CMAKE_MODULE_PATH ${HIP_MODULE_FILE_DIR})
+  list(APPEND CMAKE_PREFIX_PATH ${ROCM_ROOT})
+  # need FindHIP for hip_add_library similar to deprecated FindCUDA style
+  find_package(HIP MODULE REQUIRED)
+  # need hip in config mode for hip::host target.
+  find_package(hip CONFIG REQUIRED)
   find_package(hipblas CONFIG REQUIRED)
-  # Check for minimum required rocBLAS version
-  if(hipblas_VERSION VERSION_LESS "2.0.0")
-    message(FATAL_ERROR "QMCPACK requires hipBLAS minimum version 2.0.0 from ROCm 6.0. Detected ${hipblas_VERSION}.")
-  endif()
-
   find_package(rocsolver CONFIG REQUIRED)
   find_package(rocthrust CONFIG REQUIRED)
-
   # architecture flags
-  if(DEFINED HIP_ARCH)
-    unset(HIP_ARCH CACHE)
-    message(
-      FATAL_ERROR
-        "HIP_ARCH option has been removed. Use -DCMAKE_HIP_ARCHITECTURES=gfx90a if -DHIP_ARCH=gfx90a was used.")
-  endif()
-  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES ${QMC_GPU_ARCHS})
-  endif()
-
-  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -fPIC -ffast-math --gpu-max-threads-per-block=256")
+  set(HIP_ARCH
+      "gfx906,gfx908"
+      CACHE STRING "HIP architecture gfxXXX")
+  list(APPEND HIP_HIPCC_FLAGS "-fPIC -ffast-math -O3 -std=c++14")
+  list(APPEND HIP_HIPCC_FLAGS "--amdgpu-target=${HIP_ARCH}")
+  list(APPEND HIP_HIPCC_FLAGS "--gpu-max-threads-per-block=256")
   # warning suppression
-  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -Wno-vla -Wno-deprecated-declarations -Wno-unused-command-line-argument")
-
-  if(NOT DEFINED ROCM_ROOT)
-    list(PREPEND CMAKE_PREFIX_PATH ${CMAKE_HIP_COMPILER_ROCM_ROOT})
-  endif()
+  list(APPEND HIP_HIPCC_FLAGS "-Wno-vla")
+  list(APPEND HIP_HIPCC_FLAGS "-Wno-deprecated-declarations")
+  list(APPEND HIP_HIPCC_FLAGS "-Wno-unused-command-line-argument")
 
   if(BUILD_AFQMC)
     find_package(rocrand CONFIG REQUIRED)
@@ -762,17 +814,12 @@ if(ENABLE_ROCM)
     # temporarily put rocsolver rocrand here for convenience, should be moved to Platforms.
     target_link_libraries(ROCM::libraries INTERFACE roc::rocsolver roc::rocrand)
   endif()
-  message("Project HIP_FLAGS: ${CMAKE_HIP_FLAGS}")
-  option(QMC_DISABLE_HIP_HOST_REGISTER "Disable hipHostRegister for pinning host memory" OFF)
-  if(QMC_DISABLE_HIP_HOST_REGISTER)
-    message(STATUS "Use of hipHostRegister disabled")
-  endif()
 endif(ENABLE_ROCM)
 
 #-------------------------------------------------------------------
-#  set up AFQMC-specific HIP compiler options
+#  set up HIP compiler options
 #-------------------------------------------------------------------
-if(BUILD_AFQMC_HIP)
+if(ENABLE_HIP)
   if(NOT ENABLE_ROCM)
     message(FATAL_ERROR "ROCM is required to use HIP. Please set ENABLE_ROCM=ON.")
   endif()
@@ -781,7 +828,7 @@ if(BUILD_AFQMC_HIP)
   add_library(HIP::HIP INTERFACE IMPORTED)
   # temporarily put hipsparse hipblas here for convenience, should be moved to Platforms.
   target_link_libraries(HIP::HIP INTERFACE roc::hipsparse roc::hipblas)
-  target_compile_definitions(HIP::HIP INTERFACE "BUILD_AFQMC_HIP")
+  target_compile_definitions(HIP::HIP INTERFACE "ENABLE_HIP")
 
   # FindHIP sets HIP_PLATFORM to amd or nvcc
   message(STATUS "FindHIP determined HIP_PLATFORM is ${HIP_PLATFORM}.")
@@ -792,58 +839,33 @@ if(BUILD_AFQMC_HIP)
   else()
     message(FATAL_ERROR "Unknown HIP platform ${HIP_PLATFORM} only support 'amd' or 'nvcc'")
   endif()
-endif(BUILD_AFQMC_HIP)
+endif(ENABLE_HIP)
 
 #-------------------------------------------------------------------
-#  set up SYCL compiler options and libraries
+# set up VTune ittnotify library
 #-------------------------------------------------------------------
-if(ENABLE_SYCL)
-  if(NOT "x${CMAKE_CXX_COMPILER_ID}" STREQUAL "xIntelLLVM")
-    message(FATAL_ERROR "QMCPACK only supports SYCL with LLVM-based Intel oneAPI compiler (icpx).")
-  endif()
-  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 2023.0)
-    message(FATAL_ERROR "Requires Intel oneAPI 2023.0 or higher!")
-  endif()
-  add_library(SYCL::host INTERFACE IMPORTED)
-  add_library(SYCL::device INTERFACE IMPORTED)
-  find_package(
-    IntelDPCPP
-    REQUIRED
-    CONFIGS
-    IntelDPCPPConfig-modified.cmake
-    PATHS
-    ${PROJECT_CMAKE}
-    NO_DEFAULT_PATH)
-  target_link_libraries(SYCL::host INTERFACE OneAPI::DPCPP-host)
-  target_link_libraries(SYCL::device INTERFACE OneAPI::DPCPP-device)
-  if(TARGET MKL::sycl)
-    target_link_libraries(MKL::sycl INTERFACE OneAPI::DPCPP-host)
-  endif()
-endif(ENABLE_SYCL)
 
-#-----------------------------------------------------
-#  Resolve Vendor and OpenMP runtime incompatibilities
-#-----------------------------------------------------
-# Some OpenMP offload runtime libraries have composibility issue with vendor native ones.
-# A workaround is making the vendor native runtime responsible for memory allocations and OpenMP associate/disassocate them.
-# CUDA/HIP/SYCL supported
-if(${COMPILER} MATCHES "Clang" AND QMC_CUDA2HIP AND ENABLE_OFFLOAD)
-  # Known issue HIP<5.5 https://github.com/ROCm/aomp/issues/253
-  # Known performance issue remains in 6.3.3
-  set(QMC_OFFLOAD_MEM_ASSOCIATED_DEFAULT ON)
+if(USE_VTUNE_API)
+  message(STATUS "Enabling use of VTune ittnotify APIs")
+  find_path(
+    VTUNE_ITTNOTIFY_INCLUDE_DIR ittnotify.h
+    HINTS ${VTUNE_ROOT} $ENV{VTUNE_ROOT}
+    PATH_SUFFIXES include REQUIRED)
+  message(STATUS "Found VTUNE_ITTNOTIFY_INCLUDE_DIR ${VTUNE_ITTNOTIFY_INCLUDE_DIR}")
+  find_library(
+    VTUNE_ITTNOTIFY_LIBRARY ittnotify
+    HINTS ${VTUNE_ROOT} $ENV{VTUNE_ROOT}
+    PATH_SUFFIXES lib64 lib REQUIRED)
+  message(STATUS "Found VTUNE_ITTNOTIFY_LIBRARY ${VTUNE_ITTNOTIFY_LIBRARY}")
+
+  include_directories(${VTUNE_ITTNOTIFY_INCLUDE_DIR})
+  link_libraries(${VTUNE_ITTNOTIFY_LIBRARY})
+  if(USE_VTUNE_TASKS)
+    message(STATUS "VTune ittnotify tasks enabled")
+  endif()
 else()
-  set(QMC_OFFLOAD_MEM_ASSOCIATED_DEFAULT OFF)
+  message(STATUS "VTune ittnotify APIs disabled")
 endif()
-cmake_dependent_option(QMC_OFFLOAD_MEM_ASSOCIATED "Use omp_target_associate_ptr instead of direct OpenMP offload maps in dual-space allocators"
-                       ${QMC_OFFLOAD_MEM_ASSOCIATED_DEFAULT} "ENABLE_OFFLOAD;ENABLE_CUDA OR ENABLE_SYCL" OFF)
-if(QMC_OFFLOAD_MEM_ASSOCIATED)
-  message(STATUS "Use omp_target_associate_ptr instead of direct OpenMP offload maps in dual-space allocators")
-endif()
-
-#-------------------------------------------------------------------
-# Link profiler runtime libraries (NVTX, Ittnotify, HPCToolkit)
-#-------------------------------------------------------------------
-include("CMake/FindProfilerLibs.cmake")
 
 #-------------------------------------------------------------------
 # Add user extra flags
@@ -877,7 +899,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 #-------------------------------------------------------------------
 # add definitions DO NOT EXPAND
 #-------------------------------------------------------------------
-add_definitions(-DHAVE_CONFIG_H -DADD_)
+add_definitions(-DHAVE_CONFIG_H -DUSE_REAL_STRUCT_FACTOR -DADD_)
 
 #-------------------------------------------------------------------
 # qmcpack.settings
@@ -989,23 +1011,11 @@ include(python)
 # Check if PySCF is available
 #-------------------------------------------------------------------
 if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
-  check_python_reqs(pyscf "" HAVE_PYSCF)
-  if(NOT ${HAVE_PYSCF})
+  test_python_module(pyscf HAVE_PYSCF)
+  if(NOT HAVE_PYSCF)
     message(STATUS "Unable to import PySCF python module. PySCF tests will not be run.")
   else()
     message(STATUS "Successfully imported PySCF python module.")
-  endif()
-endif()
-
-#-------------------------------------------------------------------
-# Check if GPAW is available
-#-------------------------------------------------------------------
-if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
-  check_python_reqs(gpaw "" HAVE_GPAW)
-  if(NOT ${HAVE_GPAW})
-    message(STATUS "Unable to import GPAW python module. GPAW converter tests will not be run.")
-  else()
-    message(STATUS "Successfully imported GPAW python modules.")
   endif()
 endif()
 
@@ -1030,38 +1040,16 @@ if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
   if(RMG_FOUND)
     message(STATUS "Found and using RMG (rmg-cpu) at ${RMG_CPU_EXE}")
   else(RMG_FOUND)
-    message(STATUS "Did not find RMG (rmg-cpu). RMG tests will not be run.")
+    message(
+      STATUS "Did not find RMG (rmg-cpu). RMG tests will not be run.")
   endif(RMG_FOUND)
-endif()
-
-#-------------------------------------------------------------------
-# If the timestamp of test_labels.py changes, unset any cached values
-#-------------------------------------------------------------------
-
-file(TIMESTAMP ${qmcpack_SOURCE_DIR}/tests/scripts/test_labels.py TIMESTAMP_TEST_LABELS)
-if(NOT DEFINED CACHE_TIMESTAMP_TEST_LABELS)
-  set(CACHE_TIMESTAMP_TEST_LABELS
-      ${TIMESTAMP_TEST_LABELS}
-      CACHE INTERNAL "Timestamp used to validate TEST_LABELS_ cache variables")
-endif()
-if(NOT ${TIMESTAMP_TEST_LABELS} STREQUAL ${CACHE_TIMESTAMP_TEST_LABELS})
-  get_cmake_property(_variableNames VARIABLES)
-  list(FILTER _variableNames INCLUDE REGEX "^TEST_LABELS_*")
-  foreach(_variableName ${_variableNames})
-    unset(${_variableName} CACHE)
-  endforeach()
-  set(CACHE_TIMESTAMP_TEST_LABELS
-      ${TIMESTAMP_TEST_LABELS}
-      CACHE INTERNAL "Timestamp used to validate TEST_LABELS_ cache variables" FORCE)
 endif()
 
 ######################################################################
 message(STATUS "Ready to parse QMCPACK source tree")
 ######################################################################
 
-add_subdirectory(external_codes)
 add_subdirectory(src)
-add_subdirectory(doxygen)
 
 if(NOT QMC_BUILD_SANDBOX_ONLY)
   if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)

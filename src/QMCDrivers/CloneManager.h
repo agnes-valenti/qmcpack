@@ -75,8 +75,6 @@ protected:
   std::vector<EstimatorManagerBase*> estimatorClones;
   ///trace managers
   std::vector<TraceManager*> traceClones;
-  ///trace collectors
-  UPtrVector<WalkerLogCollector> wlog_collectors;
 
   //for correlated sampling.
   static std::vector<UPtrVector<MCWalkerConfiguration>> WPoolClones_uptr;
@@ -85,12 +83,10 @@ protected:
   static std::vector<std::vector<TrialWaveFunction*>> PsiPoolClones;
   static std::vector<UPtrVector<QMCHamiltonian>> HPoolClones_uptr;
   static std::vector<std::vector<QMCHamiltonian*>> HPoolClones;
-  UPtrVector<CSUpdateBase> CSMovers;
+  std::vector<CSUpdateBase*> CSMovers;
 
   ///Walkers per MPI rank
   std::vector<int> wPerRank;
-
-  RefVector<WalkerLogCollector> getWalkerLogCollectorRefs();
 };
 } // namespace qmcplusplus
 #endif

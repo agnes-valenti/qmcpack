@@ -21,18 +21,23 @@
 #include "QMCHamiltonians/CoulombPBCAA.h"
 #include "QMCHamiltonians/CoulombPBCAB.h"
 #include "QMCHamiltonians/ForceChiesaPBCAA.h"
-#include "OhmmsData/AttributeSet.h"
-#include <PlatformSelector.hpp>
-
 #if OHMMS_DIM == 3
 #include "QMCHamiltonians/ECPotentialBuilder.h"
 #include "QMCHamiltonians/ForceBase.h"
-#include "QMCHamiltonians/BareForce.h"
 #include "QMCHamiltonians/ForceCeperley.h"
+
 #include "QMCHamiltonians/ACForce.h"
 #if defined(HAVE_LIBFFTW)
 #include "QMCHamiltonians/MPC.h"
 #endif
+#endif
+#include "OhmmsData/AttributeSet.h"
+
+#ifdef QMC_CUDA
+#include "QMCHamiltonians/CoulombPBCAA_CUDA.h"
+#include "QMCHamiltonians/CoulombPBCAB_CUDA.h"
+#include "QMCHamiltonians/CoulombPotential_CUDA.h"
+#include "QMCHamiltonians/MPC_CUDA.h"
 #endif
 
 //#include <iostream>
@@ -51,22 +56,11 @@ void HamiltonianFactory::addMPCPotential(xmlNodePtr cur, bool isphysical)
   hAttrib.put(cur);
   renameProperty(a);
   isphysical = (physical == "yes" || physical == "true");
-
-  app_summary() << std::endl;
-  app_summary() << "   MPC Potential" << std::endl;
-  app_summary() << "   -------------" << std::endl;
-  app_summary() << "    Name: " << title << "   Physical : " << physical << std::endl;
-  app_summary() << std::endl;
-
-  if (targetPtcl.Density_G.size() == 0)
-    myComm->barrier_and_abort("HamiltonianFactory::addMPCPotential\n"
-                              "************************\n"
-                              "** Error in MPC setup **\n"
-                              "************************\n"
-                              "    The electron density was not setup by the "
-                              "wave function builder.\n");
-
-  auto mpc = std::make_unique<MPC>(targetPtcl, cutoff);
+#ifdef QMC_CUDA
+  std::unique_ptr<MPC_CUDA> mpc = std::make_unique<MPC_CUDA>(targetPtcl, cutoff);
+#else
+  std::unique_ptr<MPC> mpc = std::make_unique<MPC>(targetPtcl, cutoff);
+#endif
   targetH->addOperator(std::move(mpc), "MPC", isphysical);
 #else
   APP_ABORT(
@@ -77,12 +71,11 @@ void HamiltonianFactory::addMPCPotential(xmlNodePtr cur, bool isphysical)
 
 void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
 {
-  using Return_t = QMCHamiltonian::FullPrecRealType;
+  typedef QMCHamiltonian::FullPrecRealType Return_t;
   std::string targetInp(targetPtcl.getName());
   std::string sourceInp(targetPtcl.getName());
   std::string title("ElecElec"), pbc("yes");
   std::string forces("no");
-  std::string use_gpu;
   bool physical = true;
   OhmmsAttributeSet hAttrib;
   hAttrib.add(title, "id");
@@ -92,32 +85,23 @@ void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
   hAttrib.add(pbc, "pbc");
   hAttrib.add(physical, "physical");
   hAttrib.add(forces, "forces");
-  hAttrib.add(use_gpu, "gpu", CPUOMPTargetSelector::candidate_values);
   hAttrib.put(cur);
-  const bool applyPBC = (PBCType && pbc == "yes");
-  const bool doForces = (forces == "yes") || (forces == "true");
-
-  app_summary() << std::endl;
-  app_summary() << "   Coulomb Potential" << std::endl;
-  app_summary() << "   -----------------" << std::endl;
-  app_summary() << "    Name: " << title << "   Type: " << (sourceInp == targetInp ? "AA" : "AB")
-                << "   PBC: " << (applyPBC ? "yes" : "no") << std::endl;
-  app_summary() << std::endl;
-
+  std::cout<<"AV after hAttrib.put"<<std::endl;
+  bool applyPBC      = (PBCType && pbc == "yes");
+  bool doForces      = (forces == "yes") || (forces == "true");
   ParticleSet* ptclA = &targetPtcl;
   if (sourceInp != targetPtcl.getName())
   {
     //renameProperty(sourceInp);
-    auto pit(ptclPool.find(sourceInp));
+    PtclPoolType::iterator pit(ptclPool.find(sourceInp));
     if (pit == ptclPool.end())
     {
       ERRORMSG("Missing source ParticleSet" << sourceInp);
       APP_ABORT("HamiltonianFactory::addCoulombPotential");
       return;
     }
-    ptclA = pit->second.get();
+    ptclA = (*pit).second;
   }
-
   if (sourceInp == targetInp) // AA type
   {
     if (!applyPBC && ptclA->getTotalNum() == 1)
@@ -127,30 +111,42 @@ void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
       return;
     }
     bool quantum = (sourceInp == targetPtcl.getName());
+  std::cout<<"AV before ifdef QMC_CUDA"<<std::endl;
+#ifdef QMC_CUDA
     if (applyPBC)
-    {
-      if (use_gpu.empty())
-        use_gpu = ptclA->getCoordinates().getKind() == DynamicCoordinateKind::DC_POS_OFFLOAD ? "yes" : "no";
-
-      const bool use_offload = CPUOMPTargetSelector::selectPlatform(use_gpu) == PlatformKind::OMPTARGET;
-      if (use_offload)
-        app_summary() << "    Running OpenMP offload code path." << std::endl;
-      if (use_offload && ptclA->getCoordinates().getKind() != DynamicCoordinateKind::DC_POS_OFFLOAD)
-        throw std::runtime_error("Requested OpenMP offload in CoulombPBCAA but the particle set has gpu=no.");
-
-      targetH->addOperator(std::make_unique<CoulombPBCAA>(*ptclA, quantum, doForces, use_offload), title, physical);
-    }
+      targetH->addOperator(std::make_unique<CoulombPBCAA_CUDA>(*ptclA, quantum, doForces), title, physical);
     else
     {
-      targetH->addOperator(std::make_unique<CoulombPotential>(*ptclA, quantum, doForces), title, physical);
+      if (quantum)
+        targetH->addOperator(std::make_unique<CoulombPotentialAA_CUDA>(*ptclA, true), title, physical);
+      else
+        targetH->addOperator(std::make_unique<CoulombPotential<Return_t>>(*ptclA, quantum, doForces), title, physical);
     }
+#else
+    std::cout<<"AV before add operator (in CUDA else)"<<std::endl;
+    if (applyPBC){
+      std::cout<<"AV apply PBC"<<std::endl;
+      targetH->addOperator(std::make_unique<CoulombPBCAA>(*ptclA, quantum, doForces), title, physical);}
+    else
+    {
+      targetH->addOperator(std::make_unique<CoulombPotential<Return_t>>(*ptclA, quantum, doForces), title, physical);
+    }    
+    std::cout<<"AV after add operator (in CUDA else)"<<std::endl;
+#endif
   }
   else //X-e type, for X=some other source
   {
+#ifdef QMC_CUDA
+    if (applyPBC)
+      targetH->addOperator(std::make_unique<CoulombPBCAB_CUDA>(*ptclA, targetPtcl), title);
+    else
+      targetH->addOperator(std::make_unique<CoulombPotentialAB_CUDA>(*ptclA, targetPtcl), title);
+#else
     if (applyPBC)
       targetH->addOperator(std::make_unique<CoulombPBCAB>(*ptclA, targetPtcl), title);
     else
-      targetH->addOperator(std::make_unique<CoulombPotential>(*ptclA, targetPtcl, true), title);
+      targetH->addOperator(std::make_unique<CoulombPotential<Return_t>>(*ptclA, targetPtcl, true), title);
+#endif
   }
 }
 
@@ -174,20 +170,20 @@ void HamiltonianFactory::addForceHam(xmlNodePtr cur)
   bool quantum = (a == targetPtcl.getName());
 
   renameProperty(a);
-  auto pit(ptclPool.find(a));
+  PtclPoolType::iterator pit(ptclPool.find(a));
   if (pit == ptclPool.end())
   {
     ERRORMSG("Missing source ParticleSet" << a)
     return;
   }
-  ParticleSet* source = pit->second.get();
+  ParticleSet* source = (*pit).second;
   pit                 = ptclPool.find(targetName);
   if (pit == ptclPool.end())
   {
     ERRORMSG("Missing target ParticleSet" << targetName)
     return;
   }
-  ParticleSet* target = pit->second.get();
+  ParticleSet* target = (*pit).second;
   //bool applyPBC= (PBCType && pbc=="yes");
   if (mode == "bare")
   {
@@ -213,12 +209,12 @@ void HamiltonianFactory::addForceHam(xmlNodePtr cur)
   else if (mode == "acforce")
   {
     app_log() << "Adding Assaraf-Caffarel total force.\n";
-    auto psi_it(psiPool.find(PsiName));
+    PsiPoolType::iterator psi_it(psiPool.find(PsiName));
     if (psi_it == psiPool.end())
     {
       APP_ABORT("Unknown psi \"" + PsiName + "\" for zero-variance force.");
     }
-    TrialWaveFunction& psi           = *psi_it->second;
+    TrialWaveFunction& psi           = *psi_it->second->getTWF();
     std::unique_ptr<ACForce> acforce = std::make_unique<ACForce>(*source, *target, psi, *targetH);
     acforce->put(cur);
     targetH->addOperator(std::move(acforce), title, false);
@@ -246,41 +242,66 @@ void HamiltonianFactory::addPseudoPotential(xmlNodePtr cur)
   }
   renameProperty(src);
   renameProperty(wfname);
-  auto pit(ptclPool.find(src));
+  PtclPoolType::iterator pit(ptclPool.find(src));
   if (pit == ptclPool.end())
   {
     ERRORMSG("Missing source ParticleSet" << src)
     return;
   }
-  ParticleSet* ion = pit->second.get();
-  auto oit(psiPool.find(wfname));
+  ParticleSet* ion = (*pit).second;
+  PsiPoolType::iterator oit(psiPool.find(wfname));
   TrialWaveFunction* psi = 0;
   if (oit == psiPool.end())
   {
     if (psiPool.empty())
       return;
-    app_warning() << "  Cannot find " << wfname << " in the Wavefunction pool. Using the first wavefunction."
-                  << std::endl;
-    psi = psiPool.begin()->second.get();
+    app_error() << "  Cannot find " << wfname << " in the Wavefunction pool. Using the first wavefunction."
+                << std::endl;
+    psi = (*(psiPool.begin())).second->getTWF();
   }
   else
   {
-    psi = (*oit).second.get();
+    psi = (*oit).second->getTWF();
   }
   //remember the TrialWaveFunction used by this pseudopotential
   psiName = wfname;
-
-  app_summary() << std::endl;
-  app_summary() << "   Pseudo Potential" << std::endl;
-  app_summary() << "   ----------------" << std::endl;
-  app_summary() << "    Name: " << title << "   Wavefunction : " << psiName << std::endl;
-  app_summary() << std::endl;
-
+  app_log() << std::endl << "  ECPotential builder for pseudopotential " << std::endl;
   ECPotentialBuilder ecp(*targetH, *ion, targetPtcl, *psi, myComm);
   ecp.put(cur);
 #else
   APP_ABORT("HamiltonianFactory::addPseudoPotential\n pairpot@type=\"pseudo\" is invalid if DIM != 3");
 #endif
 }
+
+//  void
+//  HamiltonianFactory::addConstCoulombPotential(xmlNodePtr cur, std::string& nuclei)
+//  {
+//    OhmmsAttributeSet hAttrib;
+//    std::string hname("IonIon");
+//    std::string forces("no");
+//    hAttrib.add(forces,"forces");
+//    hAttrib.add(hname,"name");
+//    hAttrib.put(cur);
+//    bool doForces = (forces == "yes") || (forces == "true");
+//
+//    app_log() << "  Creating Coulomb potential " << nuclei << "-" << nuclei << std::endl;
+//    renameProperty(nuclei);
+//    PtclPoolType::iterator pit(ptclPool.find(nuclei));
+//    if(pit != ptclPool.end()) {
+//      ParticleSet* ion=(*pit).second;
+//      if(PBCType)
+//      {
+//#ifdef QMC_CUDA
+//	targetH->addOperator(new CoulombPBCAA_CUDA(*ion,false,doForces),hname);
+//#else
+//	targetH->addOperator(new CoulombPBCAATemp(*ion,false,doForces),hname);
+//#endif
+//      } else {
+//        if(ion->getTotalNum()>1)
+//          targetH->addOperator(new CoulombPotential<Return_t>(ion),hname);
+//          //targetH->addOperator(new IonIonPotential(*ion),hname);
+//      }
+//    }
+//  }
 
 } // namespace qmcplusplus

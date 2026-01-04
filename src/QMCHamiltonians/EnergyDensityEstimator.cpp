@@ -23,7 +23,7 @@
 
 namespace qmcplusplus
 {
-EnergyDensityEstimator::EnergyDensityEstimator(const PSPool& PSP, const std::string& defaultKE)
+EnergyDensityEstimator::EnergyDensityEstimator(PSPool& PSP, const std::string& defaultKE)
     : psetpool(PSP), Pdynamic(0), Pstatic(0), w_trace(0), Td_trace(0), Vd_trace(0), Vs_trace(0)
 {
   update_mode_.set(COLLECTABLE, 1);
@@ -65,7 +65,7 @@ bool EnergyDensityEstimator::put(xmlNodePtr cur)
   //collect particle sets
   if (!Pdynamic)
     Pdynamic = get_particleset(dyn);
-  if (Pdynamic->hasSK())
+  if (Pdynamic->SK)
     Pdynamic->turnOnPerParticleSK();
   nparticles = Pdynamic->getTotalNum();
   std::vector<ParticleSet*> Pref;
@@ -77,7 +77,7 @@ bool EnergyDensityEstimator::put(xmlNodePtr cur)
   else
   {
     Pstatic = get_particleset(stat);
-    if (Pstatic->hasSK())
+    if (Pstatic->SK)
       Pstatic->turnOnPerParticleSK();
     dtable_index = Pdynamic->addTable(*Pstatic);
     Pref.resize(1);
@@ -131,10 +131,11 @@ bool EnergyDensityEstimator::put(xmlNodePtr cur)
     stop               = stop || !ref_succeeded;
   }
   //initialize grids or other cell partitions
-  bool periodic = Pdynamic->getLattice().SuperCellEnum != SUPERCELL_OPEN;
+  bool periodic = Pdynamic->Lattice.SuperCellEnum != SUPERCELL_OPEN;
   bool grid_succeeded;
   element     = cur->children;
   int nvalues = (int)nEDValues;
+  int i       = 0;
   while (element != NULL)
   {
     std::string name = (const char*)element->name;
@@ -151,6 +152,7 @@ bool EnergyDensityEstimator::put(xmlNodePtr cur)
       else
         grid_succeeded = sg->put(element, ref.points, periodic, false);
       stop = stop || !grid_succeeded;
+      ++i;
     }
     element = element->next;
   }
@@ -179,7 +181,7 @@ void EnergyDensityEstimator::set_ptcl()
   Rptcl.resize(P.R.size());
   for (int i = 0; i < P.R.size(); i++)
     Rptcl[i] = P.R[i];
-  if (P.getLattice().SuperCellEnum != SUPERCELL_OPEN)
+  if (P.Lattice.SuperCellEnum != SUPERCELL_OPEN)
     P.applyMinimumImage(Rptcl);
 }
 
@@ -192,13 +194,12 @@ void EnergyDensityEstimator::unset_ptcl()
 
 ParticleSet* EnergyDensityEstimator::get_particleset(std::string& psname)
 {
-  auto pit(psetpool.find(psname));
-  if (pit == psetpool.end())
+  if (psetpool.find(psname) == psetpool.end())
   {
     app_log() << "  ParticleSet " << psname << " does not exist" << std::endl;
     APP_ABORT("EnergyDensityEstimator::put");
   }
-  return pit->second.get();
+  return psetpool[psname];
 }
 
 
@@ -262,7 +263,7 @@ EnergyDensityEstimator::Return_t EnergyDensityEstimator::evaluate(ParticleSet& P
     //Collect positions from ParticleSets
     int p = 0;
     {
-      const ParticlePos& Rs = Pdynamic->R;
+      const ParticlePos_t& Rs = Pdynamic->R;
       for (int i = 0; i < Rs.size(); i++)
       {
         R[p] = Rs[i];
@@ -271,23 +272,23 @@ EnergyDensityEstimator::Return_t EnergyDensityEstimator::evaluate(ParticleSet& P
     }
     if (Pstatic && !ion_points)
     {
-      const ParticlePos& Rs = Pstatic->R;
+      const ParticlePos_t& Rs = Pstatic->R;
       for (int i = 0; i < Rs.size(); i++)
       {
         R[p] = Rs[i];
         p++;
       }
     }
-    if (P.getLattice().SuperCellEnum != SUPERCELL_OPEN)
+    if (P.Lattice.SuperCellEnum != SUPERCELL_OPEN)
       P.applyMinimumImage(R);
     //Convert information accumulated in ParticleSets into EnergyDensity quantities
     RealType w = w_trace->sample[0];
     p          = 0;
     {
       Vd_trace->combine();
-      const ParticleSet& Ps = *Pdynamic;
-      const auto& Ts        = Td_trace->sample;
-      const auto& Vs        = Vd_trace->sample;
+      const ParticleSet& Ps            = *Pdynamic;
+      const std::vector<TraceReal>& Ts = Td_trace->sample;
+      const std::vector<TraceReal>& Vs = Vd_trace->sample;
       for (int i = 0; i < Ps.getTotalNum(); i++)
       {
         EDValues(p, W) = w;
@@ -299,8 +300,8 @@ EnergyDensityEstimator::Return_t EnergyDensityEstimator::evaluate(ParticleSet& P
     if (Pstatic)
     {
       Vs_trace->combine();
-      const ParticleSet& Ps = *Pstatic;
-      const auto& Vs        = Vs_trace->sample;
+      const ParticleSet& Ps            = *Pstatic;
+      const std::vector<TraceReal>& Vs = Vs_trace->sample;
       if (!ion_points)
         for (int i = 0; i < Ps.getTotalNum(); i++)
         {
@@ -477,31 +478,35 @@ void EnergyDensityEstimator::addObservables(PropertySetType& plist, BufferType& 
 }
 
 
-void EnergyDensityEstimator::registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const
+void EnergyDensityEstimator::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
-  hdf_path hdf_name{name_};
-  h5desc.emplace_back(hdf_name / "variables");
+  hid_t g = H5Gcreate(gid, name_.c_str(), 0);
+  h5desc.emplace_back("variables");
   auto& oh = h5desc.back();
-  oh.addProperty(const_cast<int&>(nparticles), "nparticles", file);
+  oh.open(g);
+  oh.addProperty(const_cast<int&>(nparticles), "nparticles");
   int nspacegrids = spacegrids.size();
-  oh.addProperty(const_cast<int&>(nspacegrids), "nspacegrids", file);
-  oh.addProperty(const_cast<int&>(nsamples), "nsamples", file);
+  oh.addProperty(const_cast<int&>(nspacegrids), "nspacegrids");
+  oh.addProperty(const_cast<int&>(nsamples), "nsamples");
   if (ion_points)
   {
-    oh.addProperty(const_cast<int&>(nions), "nions", file);
-    oh.addProperty(const_cast<Matrix<RealType>&>(Rion), "ion_positions", file);
+    oh.addProperty(const_cast<int&>(nions), "nions");
+    oh.addProperty(const_cast<Matrix<RealType>&>(Rion), "ion_positions");
   }
 
-  ref.save(h5desc, hdf_name, file);
-  h5desc.emplace_back(hdf_name / "outside");
+
+  ref.save(h5desc, g);
+
+  h5desc.emplace_back("outside");
   auto& ohOutside = h5desc.back();
   std::vector<int> ng(1);
   ng[0] = (int)nEDValues;
   ohOutside.set_dimensions(ng, outside_buffer_offset);
+  ohOutside.open(g);
   for (int i = 0; i < spacegrids.size(); i++)
   {
     SpaceGrid& sg = *spacegrids[i];
-    sg.registerCollectables(h5desc, file, hdf_name, i);
+    sg.registerCollectables(h5desc, g, i);
   }
   if (ion_points)
   {
@@ -509,9 +514,10 @@ void EnergyDensityEstimator::registerCollectables(std::vector<ObservableHelper>&
     ng2[0] = nions;
     ng2[1] = (int)nEDValues;
 
-    h5desc.emplace_back(hdf_name / "ions");
+    h5desc.emplace_back("ions");
     auto& ohIons = h5desc.back();
     ohIons.set_dimensions(ng2, ion_buffer_offset);
+    ohIons.open(g);
   }
 }
 

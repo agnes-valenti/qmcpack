@@ -16,32 +16,45 @@
 
 
 #include "WaveFunctionComponent.h"
+#include "QMCWaveFunctions/DiffWaveFunctionComponent.h"
 
 namespace qmcplusplus
 {
 // for return types
-using PsiValue = WaveFunctionComponent::PsiValue;
+using PsiValueType = WaveFunctionComponent::PsiValueType;
 
-WaveFunctionComponent::WaveFunctionComponent(const std::string& obj_name)
-    : UpdateMode(ORB_WALKER), Bytes_in_WFBuffer(0), my_name_(obj_name), log_value_(0.0)
-{}
+WaveFunctionComponent::WaveFunctionComponent(const std::string& class_name, const std::string& obj_name)
+    : IsOptimizing(false),
+      Optimizable(true),
+      is_fermionic(false),
+      UpdateMode(ORB_WALKER),
+      dPsi(nullptr),
+      ClassName(class_name),
+      myName(obj_name),
+      Bytes_in_WFBuffer(0),
+      log_value_(0.0)
+{
+  if (ClassName.empty())
+    throw std::runtime_error("WaveFunctionComponent ClassName cannot be empty!");
+}
 
 WaveFunctionComponent::~WaveFunctionComponent() = default;
 
 void WaveFunctionComponent::mw_evaluateLog(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                                            const RefVectorWithLeader<ParticleSet>& p_list,
-                                           const RefVector<ParticleSet::ParticleGradient>& G_list,
-                                           const RefVector<ParticleSet::ParticleLaplacian>& L_list) const
+                                           const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                                           const RefVector<ParticleSet::ParticleLaplacian_t>& L_list) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list[iw].evaluateLog(p_list[iw], G_list[iw], L_list[iw]);
 }
 
 void WaveFunctionComponent::recompute(const ParticleSet& P)
 {
-  ParticleSet::ParticleGradient temp_G(P.getTotalNum());
-  ParticleSet::ParticleLaplacian temp_L(P.getTotalNum());
+  ParticleSet::ParticleGradient_t temp_G(P.getTotalNum());
+  ParticleSet::ParticleLaplacian_t temp_L(P.getTotalNum());
 
   evaluateLog(P, temp_G, temp_L);
 }
@@ -51,6 +64,7 @@ void WaveFunctionComponent::mw_recompute(const RefVectorWithLeader<WaveFunctionC
                                          const std::vector<bool>& recompute) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     if (recompute[iw])
       wfc_list[iw].recompute(p_list[iw]);
@@ -61,20 +75,9 @@ void WaveFunctionComponent::mw_prepareGroup(const RefVectorWithLeader<WaveFuncti
                                             int ig) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list[iw].prepareGroup(p_list[iw], ig);
-}
-
-template<CoordsType CT>
-void WaveFunctionComponent::mw_evalGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                        const RefVectorWithLeader<ParticleSet>& p_list,
-                                        const int iat,
-                                        TWFGrads<CT>& grad_now) const
-{
-  if constexpr (CT == CoordsType::POS_SPIN)
-    mw_evalGradWithSpin(wfc_list, p_list, iat, grad_now.grads_positions, grad_now.grads_spins);
-  else
-    mw_evalGrad(wfc_list, p_list, iat, grad_now.grads_positions);
 }
 
 void WaveFunctionComponent::mw_evalGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
@@ -83,96 +86,39 @@ void WaveFunctionComponent::mw_evalGrad(const RefVectorWithLeader<WaveFunctionCo
                                         std::vector<GradType>& grad_now) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     grad_now[iw] = wfc_list[iw].evalGrad(p_list[iw], iat);
-}
-
-void WaveFunctionComponent::mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                                const RefVectorWithLeader<ParticleSet>& p_list,
-                                                int iat,
-                                                std::vector<GradType>& grad_now,
-                                                std::vector<ComplexType>& spingrad_now) const
-{
-  mw_evalGrad(wfc_list, p_list, iat, grad_now);
-  for (int iw = 0; iw < wfc_list.size(); iw++)
-    spingrad_now[iw] = 0;
-}
-
-void WaveFunctionComponent::mw_evalGradWithSpin_serialized(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                                           const RefVectorWithLeader<ParticleSet>& p_list,
-                                                           int iat,
-                                                           std::vector<GradType>& grad_now,
-                                                           std::vector<ComplexType>& spingrad_now) const
-{
-  assert(this == &wfc_list.getLeader());
-  for (int iw = 0; iw < wfc_list.size(); iw++)
-  {
-    spingrad_now[iw] = 0;
-    grad_now[iw]     = wfc_list[iw].evalGradWithSpin(p_list[iw], iat, spingrad_now[iw]);
-  }
 }
 
 void WaveFunctionComponent::mw_calcRatio(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                                          const RefVectorWithLeader<ParticleSet>& p_list,
                                          int iat,
-                                         std::vector<PsiValue>& ratios) const
+                                         std::vector<PsiValueType>& ratios) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     ratios[iw] = wfc_list[iw].ratio(p_list[iw], iat);
 }
 
 
-PsiValue WaveFunctionComponent::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
+PsiValueType WaveFunctionComponent::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
 {
-  APP_ABORT("WaveFunctionComponent::ratioGrad is not implemented in " + getClassName() + " class.");
+  APP_ABORT("WaveFunctionComponent::ratioGrad is not implemented in " + ClassName + " class.");
   return ValueType();
 }
 
-template<CoordsType CT>
 void WaveFunctionComponent::mw_ratioGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                                          const RefVectorWithLeader<ParticleSet>& p_list,
                                          int iat,
-                                         std::vector<PsiValue>& ratios,
-                                         TWFGrads<CT>& grad_new) const
-{
-  if constexpr (CT == CoordsType::POS_SPIN)
-    mw_ratioGradWithSpin(wfc_list, p_list, iat, ratios, grad_new.grads_positions, grad_new.grads_spins);
-  else
-    mw_ratioGrad(wfc_list, p_list, iat, ratios, grad_new.grads_positions);
-}
-
-void WaveFunctionComponent::mw_ratioGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                         const RefVectorWithLeader<ParticleSet>& p_list,
-                                         int iat,
-                                         std::vector<PsiValue>& ratios,
+                                         std::vector<PsiValueType>& ratios,
                                          std::vector<GradType>& grad_new) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     ratios[iw] = wfc_list[iw].ratioGrad(p_list[iw], iat, grad_new[iw]);
-}
-
-void WaveFunctionComponent::mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                                 const RefVectorWithLeader<ParticleSet>& p_list,
-                                                 int iat,
-                                                 std::vector<PsiValue>& ratios,
-                                                 std::vector<GradType>& grad_new,
-                                                 std::vector<ComplexType>& spingrad_new) const
-{
-  mw_ratioGrad(wfc_list, p_list, iat, ratios, grad_new);
-}
-
-void WaveFunctionComponent::mw_ratioGradWithSpin_serialized(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                                            const RefVectorWithLeader<ParticleSet>& p_list,
-                                                            int iat,
-                                                            std::vector<PsiValue>& ratios,
-                                                            std::vector<GradType>& grad_new,
-                                                            std::vector<ComplexType>& spingrad_new) const
-{
-  assert(this == &wfc_list.getLeader());
-  for (int iw = 0; iw < wfc_list.size(); iw++)
-    ratios[iw] = wfc_list[iw].ratioGradWithSpin(p_list[iw], iat, grad_new[iw], spingrad_new[iw]);
 }
 
 void WaveFunctionComponent::mw_accept_rejectMove(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
@@ -182,6 +128,7 @@ void WaveFunctionComponent::mw_accept_rejectMove(const RefVectorWithLeader<WaveF
                                                  bool safe_to_delay) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     if (isAccepted[iw])
       wfc_list[iw].acceptMove(p_list[iw], iat, safe_to_delay);
@@ -192,58 +139,55 @@ void WaveFunctionComponent::mw_accept_rejectMove(const RefVectorWithLeader<WaveF
 void WaveFunctionComponent::mw_completeUpdates(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list[iw].completeUpdates();
 }
 
-WaveFunctionComponent::LogValue WaveFunctionComponent::evaluateGL(const ParticleSet& P,
-                                                                  ParticleSet::ParticleGradient& G,
-                                                                  ParticleSet::ParticleLaplacian& L,
-                                                                  bool fromscratch)
+WaveFunctionComponent::LogValueType WaveFunctionComponent::evaluateGL(const ParticleSet& P,
+                                                                      ParticleSet::ParticleGradient_t& G,
+                                                                      ParticleSet::ParticleLaplacian_t& L,
+                                                                      bool fromscratch)
 {
   return evaluateLog(P, G, L);
 }
 
 void WaveFunctionComponent::mw_evaluateGL(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                                           const RefVectorWithLeader<ParticleSet>& p_list,
-                                          const RefVector<ParticleSet::ParticleGradient>& G_list,
-                                          const RefVector<ParticleSet::ParticleLaplacian>& L_list,
+                                          const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                                          const RefVector<ParticleSet::ParticleLaplacian_t>& L_list,
                                           bool fromscratch) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list[iw].evaluateGL(p_list[iw], G_list[iw], L_list[iw], fromscratch);
 }
 
-void WaveFunctionComponent::extractOptimizableObjectRefs(UniqueOptObjRefs&)
-{
-  if (isOptimizable())
-    throw std::logic_error("Bug!! " + getClassName() +
-                           "::extractOptimizableObjectRefs "
-                           "must be overloaded when the WFC is optimizable.");
-}
+void WaveFunctionComponent::setDiffOrbital(std::unique_ptr<DiffWaveFunctionComponent> d) { dPsi = std::move(d); }
 
-void WaveFunctionComponent::checkOutVariables(const opt_variables_type& active)
+void WaveFunctionComponent::evaluateDerivatives(ParticleSet& P,
+                                                const opt_variables_type& active,
+                                                std::vector<ValueType>& dlogpsi,
+                                                std::vector<ValueType>& dhpsioverpsi)
 {
-  if (isOptimizable())
-    throw std::logic_error("Bug!! " + getClassName() +
-                           "::checkOutVariables "
-                           "must be overloaded when the WFC is optimizable.");
+  if (dPsi)
+    dPsi->evaluateDerivatives(P, active, dlogpsi, dhpsioverpsi);
 }
 
 void WaveFunctionComponent::evaluateDerivativesWF(ParticleSet& P,
                                                   const opt_variables_type& active,
-                                                  Vector<ValueType>& dlogpsi)
+                                                  std::vector<ValueType>& dlogpsi)
 {
-  throw std::runtime_error("WaveFunctionComponent::evaluateDerivativesWF is not implemented by " + getClassName());
+  if (dPsi)
+    dPsi->evaluateDerivativesWF(P, active, dlogpsi);
 }
-
 
 /*@todo makeClone should be a pure virtual function
  */
 std::unique_ptr<WaveFunctionComponent> WaveFunctionComponent::makeClone(ParticleSet& tpq) const
 {
-  APP_ABORT("Implement WaveFunctionComponent::makeClone " + getClassName() + " class.");
+  APP_ABORT("Implement WaveFunctionComponent::makeClone " + ClassName + " class.");
   return std::unique_ptr<WaveFunctionComponent>();
 }
 
@@ -259,15 +203,8 @@ void WaveFunctionComponent::evaluateRatiosAlltoOne(ParticleSet& P, std::vector<V
 void WaveFunctionComponent::evaluateRatios(const VirtualParticleSet& P, std::vector<ValueType>& ratios)
 {
   std::ostringstream o;
-  o << "WaveFunctionComponent::evaluateRatios is not implemented by " << getClassName();
+  o << "WaveFunctionComponent::evaluateRatios is not implemented by " << ClassName;
   APP_ABORT(o.str());
-}
-
-void WaveFunctionComponent::evaluateSpinorRatios(const VirtualParticleSet& P,
-                                                 const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                                                 std::vector<ValueType>& ratios)
-{
-  evaluateRatios(P, ratios);
 }
 
 void WaveFunctionComponent::mw_evaluateRatios(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
@@ -275,31 +212,12 @@ void WaveFunctionComponent::mw_evaluateRatios(const RefVectorWithLeader<WaveFunc
                                               std::vector<std::vector<ValueType>>& ratios) const
 {
   assert(this == &wfc_list.getLeader());
+#pragma omp parallel for
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list[iw].evaluateRatios(vp_list[iw], ratios[iw]);
 }
 
-void WaveFunctionComponent::mw_evaluateSpinorRatios(
-    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-    const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
-    const RefVector<std::pair<ValueVector, ValueVector>>& spinor_multiplier_list,
-    std::vector<std::vector<ValueType>>& ratios) const
-{
-  mw_evaluateRatios(wfc_list, vp_list, ratios);
-}
-
-void WaveFunctionComponent::mw_evaluateSpinorRatios_serialized(
-    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-    const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
-    const RefVector<std::pair<ValueVector, ValueVector>>& spinor_multiplier_list,
-    std::vector<std::vector<ValueType>>& ratios) const
-{
-  assert(this == &wfc_list.getLeader());
-  for (int iw = 0; iw < wfc_list.size(); iw++)
-    wfc_list[iw].evaluateSpinorRatios(vp_list[iw], spinor_multiplier_list[iw], ratios[iw]);
-}
-
-void WaveFunctionComponent::evaluateDerivRatios(const VirtualParticleSet& VP,
+void WaveFunctionComponent::evaluateDerivRatios(VirtualParticleSet& VP,
                                                 const opt_variables_type& optvars,
                                                 std::vector<ValueType>& ratios,
                                                 Matrix<ValueType>& dratios)
@@ -307,44 +225,5 @@ void WaveFunctionComponent::evaluateDerivRatios(const VirtualParticleSet& VP,
   //default is only ratios and zero derivatives
   evaluateRatios(VP, ratios);
 }
-
-void WaveFunctionComponent::evaluateSpinorDerivRatios(const VirtualParticleSet& VP,
-                                                      const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                                                      const opt_variables_type& optvars,
-                                                      std::vector<ValueType>& ratios,
-                                                      Matrix<ValueType>& dratios)
-{
-  evaluateDerivRatios(VP, optvars, ratios, dratios);
-}
-
-void WaveFunctionComponent::registerTWFFastDerivWrapper(const ParticleSet& P, TWFFastDerivWrapper& twf) const
-{
-  std::ostringstream o;
-  o << "WaveFunctionComponent::registerTWFFastDerivWrapper is not implemented by " << getClassName();
-  APP_ABORT(o.str());
-}
-
-template void WaveFunctionComponent::mw_evalGrad<CoordsType::POS>(
-    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-    const RefVectorWithLeader<ParticleSet>& p_list,
-    int iat,
-    TWFGrads<CoordsType::POS>& grad_now) const;
-template void WaveFunctionComponent::mw_evalGrad<CoordsType::POS_SPIN>(
-    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-    const RefVectorWithLeader<ParticleSet>& p_list,
-    int iat,
-    TWFGrads<CoordsType::POS_SPIN>& grad_now) const;
-template void WaveFunctionComponent::mw_ratioGrad<CoordsType::POS>(
-    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-    const RefVectorWithLeader<ParticleSet>& p_list,
-    int iat,
-    std::vector<PsiValue>& ratios,
-    TWFGrads<CoordsType::POS>& grad_new) const;
-template void WaveFunctionComponent::mw_ratioGrad<CoordsType::POS_SPIN>(
-    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-    const RefVectorWithLeader<ParticleSet>& p_list,
-    int iat,
-    std::vector<PsiValue>& ratios,
-    TWFGrads<CoordsType::POS_SPIN>& grad_new) const;
 
 } // namespace qmcplusplus

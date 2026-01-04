@@ -19,7 +19,6 @@
 #include <stdexcept>
 #include "OhmmsData/OhmmsElementBase.h"
 #include "Host/OutputManager.h"
-#include "ModernStringUtils.hpp"
 
 /** generic class for parameter xmlNode
  *
@@ -90,8 +89,7 @@ class OhmmsParameter : public OhmmsElementBase
 
   void checkValues()
   {
-    // when the size is 1, values are unbounded and the given value is the default value
-    if (candidate_values_.size() > 1 &&
+    if (!candidate_values_.empty() &&
         std::find(candidate_values_.begin(), candidate_values_.end(), ref_) == candidate_values_.end())
     {
       std::ostringstream msg;
@@ -137,10 +135,12 @@ public:
    */
   inline bool put(xmlNodePtr cur) override
   {
+    //std::cout<<"AV entering OhmmsParameter::put"<<std::endl;
     checkTagStatus(myName, tag_staus_);
     node_ = cur;
     putContent(ref_, cur);
     checkValues();
+    //std::cout<<"AV exiting OhmmsParameter::put"<<std::endl;
     return true;
   }
 
@@ -218,7 +218,7 @@ public:
   ///print to an std::ostream
   inline bool get(std::ostream& os) const override
   {
-    os << "<parameter name=\"" << myName << "\"> " << (ref_ ? "yes" : "no") << " </parameter>" << std::endl;
+    os << "<parameter name=\"" << myName << "\">" << ref_ << "</parameter>" << std::endl;
     return true;
   }
 
@@ -233,8 +233,18 @@ public:
     checkTagStatus(myName, tag_staus_);
     node_ = cur;
     const XMLNodeString ac(cur);
-    std::istringstream stream(ac);
-    return put(stream);
+    if (!ac.empty())
+    {
+      std::istringstream stream(ac);
+      //return stream >> ref_;
+      stream >> ref_;
+      return stream.good();
+    }
+    else
+    {
+      ref_ = !ref_; //flip the bit
+      return true;
+    }
   }
 
   inline void setValue(bool x) { ref_ = x; }
@@ -243,24 +253,12 @@ public:
   inline bool put(std::istream& is) override
   {
     checkTagStatus(myName, tag_staus_);
-    std::string input_value;
-    is >> input_value;
-    std::string input_value_lower_case = qmcplusplus::lowerCase(input_value);
-
-    if (input_value_lower_case == "yes" || input_value_lower_case == "true")
+    std::string yes;
+    is >> yes;
+    if (yes == "yes" || yes == "true" || yes == "1")
       ref_ = true;
-    else if (input_value_lower_case == "no" || input_value_lower_case == "false")
-      ref_ = false;
-    else if (input_value.empty())
-      throw std::runtime_error(myName + " requires a single value input.");
     else
-      throw std::runtime_error(myName + " only accepts 'yes'/'no'/'true'/'false' but the input value is '" +
-                               input_value + "'.");
-
-    std::string dummy;
-    is >> dummy;
-    if (!dummy.empty())
-      throw std::runtime_error(myName + " only accepts a single value input.");
+      ref_ = false;
     return true;
   }
 

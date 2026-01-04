@@ -69,7 +69,6 @@ conv = generate_pw2qmcpack(
     )
 
 opt = generate_qmcpack(
-    driver       = 'legacy',
     block        = True,
     identifier   = 'opt',
     path         = 'diamond/optJ2',
@@ -85,7 +84,6 @@ opt = generate_qmcpack(
     )
 
 qmc = generate_qmcpack(
-    driver       = 'legacy',
     block        = True,
     identifier   = 'vmc',
     path         = 'diamond/vmc',

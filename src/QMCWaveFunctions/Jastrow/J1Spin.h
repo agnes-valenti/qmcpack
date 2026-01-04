@@ -16,7 +16,7 @@
 #define QMCPLUSPLUS_ONEBODYSPINJASTROW_OPTIMIZED_SOA_H
 #include "Configuration.h"
 #include "Particle/DistanceTable.h"
-#include "CPU/VectorOps.h"
+#include "ParticleBase/ParticleAttribOps.h"
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
 #include "Utilities/qmc_common.h"
 #include "Utilities/IteratorUtility.h"
@@ -42,10 +42,6 @@ struct J1Spin : public WaveFunctionComponent
   ///use the same container
   using DistRow  = DistanceTable::DistRow;
   using DisplRow = DistanceTable::DisplRow;
-
-  using GradDerivVec  = Vector<QTFull::GradType>;
-  using ValueDerivVec = Vector<QTFull::ValueType>;
-
   ///table index
   const int myTableID;
   ///number of ions
@@ -61,6 +57,8 @@ struct J1Spin : public WaveFunctionComponent
   ///reference to the sources (ions)
   const ParticleSet& Ions;
 
+  ///number of variables this object handles
+  int NumVars;
   ///variables handled by this orbital
   opt_variables_type myVars;
 
@@ -80,26 +78,22 @@ struct J1Spin : public WaveFunctionComponent
 
   std::vector<std::pair<int, int>> OffSet;
   Vector<RealType> dLogPsi;
-  std::vector<GradDerivVec> gradLogPsi;
-  std::vector<ValueDerivVec> lapLogPsi;
+  typedef ParticleAttrib<QTFull::GradType> WavefunctionFirstDerivativeType;
+  typedef ParticleAttrib<QTFull::ValueType> WavefunctionSecondDerivativeType;
+  std::vector<WavefunctionFirstDerivativeType> gradLogPsi;
+  std::vector<WavefunctionSecondDerivativeType> lapLogPsi;
 
-  void resizeWFOptVectors()
-  {
-    dLogPsi.resize(myVars.size());
-    gradLogPsi.resize(myVars.size(), GradDerivVec(Nelec));
-    lapLogPsi.resize(myVars.size(), ValueDerivVec(Nelec));
-  }
-
-  J1Spin(const std::string& obj_name, const ParticleSet& ions, ParticleSet& els, bool use_offload)
-      : WaveFunctionComponent(obj_name),
-        myTableID(els.addTable(ions, DTModes::NEED_VP_FULL_TABLE_ON_HOST)),
+  J1Spin(const std::string& obj_name, const ParticleSet& ions, ParticleSet& els)
+      : WaveFunctionComponent("J1Spin", obj_name),
+        myTableID(els.addTable(ions)),
         Nions(ions.getTotalNum()),
         Nelec(els.getTotalNum()),
-        NumGroups(ions.groups()),
-        NumTargetGroups(els.groups()),
-        Ions(ions)
+        NumGroups(determineNumGroups(ions)),
+        NumTargetGroups(determineNumGroups(els)),
+        Ions(ions),
+        NumVars(0)
   {
-    if (my_name_.empty())
+    if (myName.empty())
       throw std::runtime_error("J1Spin object name cannot be empty!");
     initialize(els);
   }
@@ -107,14 +101,16 @@ struct J1Spin : public WaveFunctionComponent
   J1Spin(const J1Spin& rhs) = delete;
 
   J1Spin(const J1Spin& rhs, ParticleSet& tqp)
-      : WaveFunctionComponent(rhs.my_name_),
+      : WaveFunctionComponent("J1Spin", rhs.myName),
         myTableID(rhs.myTableID),
         Nions(rhs.Nions),
         Nelec(rhs.Nelec),
         NumGroups(rhs.NumGroups),
         NumTargetGroups(rhs.NumTargetGroups),
-        Ions(rhs.Ions)
+        Ions(rhs.Ions),
+        NumVars(0)
   {
+    Optimizable = rhs.Optimizable;
     initialize(tqp);
     for (int i = 0; i < NumGroups; i++)
       for (int j = 0; j < NumTargetGroups; j++)
@@ -123,11 +119,21 @@ struct J1Spin : public WaveFunctionComponent
           auto fc = std::make_unique<FT>(*rhs.J1UniqueFunctors[i * NumTargetGroups + j].get());
           addFunc(i, std::move(fc), j);
         }
-    myVars = rhs.myVars;
+    setVars(rhs.myVars);
     OffSet = rhs.OffSet;
   }
 
-  std::string getClassName() const override { return "J1Spin"; }
+  /* determine NumGroups which controls the use of optimized code path using ion groups or not */
+  static int determineNumGroups(const ParticleSet& ions)
+  {
+    const int num_species = ions.getSpeciesSet().getTotalNum();
+    if (num_species == 1)
+      return 1;
+    else if (num_species > 1 && !ions.IsGrouped)
+      return 0;
+    else
+      return num_species;
+  }
 
   /* initialize storage */
   void initialize(ParticleSet& els)
@@ -151,10 +157,26 @@ struct J1Spin : public WaveFunctionComponent
     // if target type is specified J1UniqueFunctors[i*NumTargetGroups + j] is assigned
     assert(target_type < NumTargetGroups);
     if (target_type == -1)
-      throw std::runtime_error(
-          "J1Spin::addFunc is not compatible with spin independent Jastrow factors (target_type == -1");
+    {
+      for (int i = 0; i < Nions; i++)
+        for (int j = 0; j < NumTargetGroups; j++)
+        {
+          auto igroup = Ions.getGroupID(i);
+          if (igroup == source_type && J1UniqueFunctors[igroup * NumTargetGroups + j] == nullptr)
+            J1UniqueFunctors[igroup * NumTargetGroups + j] = std::move(afunc);
+        }
+    }
     else
-      J1UniqueFunctors[source_type * NumTargetGroups + target_type] = std::move(afunc);
+    {
+      for (int i = 0; i < Nions; i++)
+        for (int j = 0; j < NumTargetGroups; j++)
+        {
+          auto igroup = Ions.getGroupID(i);
+          if (Ions.getGroupID(i) == source_type && j == target_type &&
+              J1UniqueFunctors[i * NumTargetGroups + j] == nullptr)
+            J1UniqueFunctors[igroup * Nelec + j] = std::move(afunc);
+        }
+    }
   }
 
   void recompute(const ParticleSet& P) override
@@ -168,15 +190,14 @@ struct J1Spin : public WaveFunctionComponent
     }
   }
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override
   {
-    recompute(P);
-    return log_value_ = computeGL(G, L);
+    return evaluateGL(P, G, L, true);
   }
 
-  void evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi) override
+  void evaluateHessian(ParticleSet& P, HessVector_t& grad_grad_psi) override
   {
     const auto& d_ie(P.getDistTableAB(myTableID));
     valT dudr, d2udr2;
@@ -205,24 +226,25 @@ struct J1Spin : public WaveFunctionComponent
     }
   }
 
-  PsiValue ratio(ParticleSet& P, int iat) override
+  PsiValueType ratio(ParticleSet& P, int iat) override
   {
+    std::cout<<"AV J1Spin ratio"<<std::endl;
     UpdateMode = ORB_PBYP_RATIO;
     curAt      = computeU(P, iat, P.getDistTableAB(myTableID).getTempDists());
-    return std::exp(static_cast<PsiValue>(Vat[iat] - curAt));
+    return std::exp(static_cast<PsiValueType>(Vat[iat] - curAt));
   }
 
   inline void evaluateRatios(const VirtualParticleSet& VP, std::vector<ValueType>& ratios) override
   {
     for (int k = 0; k < ratios.size(); ++k)
       ratios[k] =
-          std::exp(Vat[VP.refPtcl] - computeU(VP.getRefPS(), VP.refPtcl, VP.getDistTableAB(myTableID).getDistRow(k)));
+          std::exp(Vat[VP.refPtcl] - computeU(VP.refPS, VP.refPtcl, VP.getDistTableAB(myTableID).getDistRow(k)));
   }
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& active,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override
   {
     evaluateDerivativesWF(P, active, dlogpsi);
     bool recalculate(false);
@@ -232,7 +254,8 @@ struct J1Spin : public WaveFunctionComponent
       int kk = myVars.where(k);
       if (kk < 0)
         continue;
-      recalculate = true;
+      if (active.recompute(kk))
+        recalculate = true;
       rcsingles[k] = true;
     }
     if (recalculate)
@@ -250,10 +273,8 @@ struct J1Spin : public WaveFunctionComponent
     }
   }
 
-  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) override
+  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, std::vector<ValueType>& dlogpsi) override
   {
-    resizeWFOptVectors();
-
     bool recalculate(false);
     std::vector<bool> rcsingles(myVars.size(), false);
     for (int k = 0; k < myVars.size(); ++k)
@@ -261,20 +282,18 @@ struct J1Spin : public WaveFunctionComponent
       int kk = myVars.where(k);
       if (kk < 0)
         continue;
-      recalculate = true;
+      if (active.recompute(kk))
+        recalculate = true;
       rcsingles[k] = true;
     }
     if (recalculate)
     {
-      const size_t NumVars = myVars.size();
-      for (int p = 0; p < NumVars; ++p)
-      {
-        gradLogPsi[p] = 0.0;
-        lapLogPsi[p]  = 0.0;
-      }
-      dLogPsi = 0.0;
-
       const auto& d_table = P.getDistTableAB(myTableID);
+      dLogPsi             = 0.0;
+      for (int p = 0; p < NumVars; ++p)
+        gradLogPsi[p] = 0.0;
+      for (int p = 0; p < NumVars; ++p)
+        lapLogPsi[p] = 0.0;
       std::vector<TinyVector<RealType, 3>> derivs(NumVars);
 
       constexpr RealType cone(1);
@@ -288,11 +307,19 @@ struct J1Spin : public WaveFunctionComponent
 
       for (size_t i = 0; i < ns; ++i)
       {
+        RealType cutoff_radius = 0.0;
         for (size_t j = 0; j < nt; ++j)
         {
-          const auto functor_idx = Ions.getGroupID(i) * NumTargetGroups + P.getGroupID(j);
-          const int first(OffSet[functor_idx].first);
-          const int last(OffSet[functor_idx].second);
+          auto functor_idx = Ions.getGroupID(i) * NumTargetGroups + P.getGroupID(j);
+          if (J1UniqueFunctors[i * Nelec + j] != nullptr)
+            cutoff_radius = std::max(cutoff_radius, J1UniqueFunctors[functor_idx]->cutoff_radius);
+        }
+        size_t nn = d_table.get_neighbors(i, cutoff_radius, iadj.data(), dist.data(), displ.data());
+        for (size_t nj = 0; nj < nn; ++nj)
+        {
+          auto functor_idx = Ions.getGroupID(i) * NumTargetGroups + P.getGroupID(nj);
+          int first(OffSet[functor_idx].first);
+          int last(OffSet[functor_idx].second);
           bool recalcFunc(false);
           for (int rcs = first; rcs < last; rcs++)
             if (rcsingles[rcs] == true)
@@ -303,16 +330,16 @@ struct J1Spin : public WaveFunctionComponent
             if (func == nullptr)
               continue;
             std::fill(derivs.begin(), derivs.end(), 0);
-            auto dist = P.getDistTableAB(myTableID).getDistRow(j)[i];
-            if (!func->evaluateDerivatives(dist, derivs))
+            if (!func->evaluateDerivatives(dist[nj], derivs))
               continue;
-            RealType rinv(cone / dist);
-            const PosType& dr = P.getDistTableAB(myTableID).getDisplRow(j)[i];
+            int j = iadj[nj];
+            RealType rinv(cone / dist[nj]);
+            PosType& dr = displ[nj];
             for (int p = first, ip = 0; p < last; ++p, ++ip)
             {
               dLogPsi[p] -= derivs[ip][0];
               RealType dudr(rinv * derivs[ip][1]);
-              gradLogPsi[p][j] += dudr * dr;
+              gradLogPsi[p][j] -= dudr * dr;
               lapLogPsi[p][j] -= derivs[ip][2] + lapfac * dudr;
             }
           }
@@ -335,12 +362,24 @@ struct J1Spin : public WaveFunctionComponent
   inline valT computeU(const ParticleSet& P, int iat, const DistRow& dist)
   {
     valT curVat(0);
-    for (int jg = 0; jg < NumGroups; ++jg)
+    if (NumGroups > 0)
     {
-      auto gid = jg * NumTargetGroups + P.getGroupID(iat);
-      if (J1UniqueFunctors[gid])
-        curVat +=
-            J1UniqueFunctors[gid]->evaluateV(-1, Ions.first(jg), Ions.last(jg), dist.data(), DistCompressed.data());
+      for (int jg = 0; jg < NumGroups; ++jg)
+      {
+        auto gid = jg * NumTargetGroups + P.getGroupID(iat);
+        if (J1UniqueFunctors[gid])
+          curVat +=
+              J1UniqueFunctors[gid]->evaluateV(-1, Ions.first(jg), Ions.last(jg), dist.data(), DistCompressed.data());
+      }
+    }
+    else
+    {
+      for (int c = 0; c < Nions; ++c)
+      {
+        auto gid = Ions.getGroupID(c) * NumTargetGroups + P.getGroupID(iat);
+        if (J1UniqueFunctors[gid])
+          curVat += J1UniqueFunctors[gid]->evaluate(dist[c]);
+      }
     }
     return curVat;
   }
@@ -349,14 +388,29 @@ struct J1Spin : public WaveFunctionComponent
   {
     const auto& dist = P.getDistTableAB(myTableID).getTempDists();
     curAt            = valT(0);
-    for (int ig = 0; ig < NumGroups; ++ig)
+    if (NumGroups > 0)
     {
-      for (int jg = 0; jg < NumTargetGroups; ++jg)
+      for (int ig = 0; ig < NumGroups; ++ig)
       {
-        auto gid = ig * NumTargetGroups + jg;
-        if (J1UniqueFunctors[gid] != nullptr)
-          curAt +=
-              J1UniqueFunctors[gid]->evaluateV(-1, Ions.first(ig), Ions.last(ig), dist.data(), DistCompressed.data());
+        for (int jg = 0; jg < NumTargetGroups; ++jg)
+        {
+          auto gid = ig * NumTargetGroups + jg;
+          if (J1UniqueFunctors[gid] != nullptr)
+            curAt +=
+                J1UniqueFunctors[gid]->evaluateV(-1, Ions.first(ig), Ions.last(ig), dist.data(), DistCompressed.data());
+        }
+      }
+    }
+    else
+    {
+      for (int ig = 0; ig < Nions; ++ig)
+      {
+        for (int jg = 0; jg < NumTargetGroups; ++jg)
+        {
+          auto gid = Ions.getGroupID(ig) * NumTargetGroups + jg;
+          if (J1UniqueFunctors[gid] != nullptr)
+            curAt += J1UniqueFunctors[gid]->evaluate(dist[ig]);
+        }
       }
     }
 
@@ -364,23 +418,19 @@ struct J1Spin : public WaveFunctionComponent
       ratios[i] = std::exp(Vat[i] - curAt);
   }
 
-  /// compute G and L from internally stored data
-  inline QTFull::RealType computeGL(ParticleSet::ParticleGradient& G, ParticleSet::ParticleLaplacian& L) const
+  inline LogValueType evaluateGL(const ParticleSet& P,
+                                 ParticleSet::ParticleGradient_t& G,
+                                 ParticleSet::ParticleLaplacian_t& L,
+                                 bool fromscratch = false) override
   {
-    for (size_t iat = 0; iat < Nelec; ++iat)
-    {
-      G[iat] += Grad[iat];
-      L[iat] -= Lap[iat];
-    }
-    return -simd::accumulate_n(Vat.data(), Nelec, QTFull::RealType());
-  }
+    if (fromscratch)
+      recompute(P);
 
-  inline LogValue evaluateGL(const ParticleSet& P,
-                             ParticleSet::ParticleGradient& G,
-                             ParticleSet::ParticleLaplacian& L,
-                             bool fromscratch = false) override
-  {
-    return log_value_ = computeGL(G, L);
+    for (size_t iat = 0; iat < Nelec; ++iat)
+      G[iat] += Grad[iat];
+    for (size_t iat = 0; iat < Nelec; ++iat)
+      L[iat] -= Lap[iat];
+    return log_value_ = -simd::accumulate_n(Vat.data(), Nelec, valT());
   }
 
   /** compute gradient and lap
@@ -412,17 +462,32 @@ struct J1Spin : public WaveFunctionComponent
    */
   inline void computeU3(const ParticleSet& P, int iat, const DistRow& dist)
   {
-    constexpr valT czero(0);
-    std::fill_n(U.data(), Nions, czero);
-    std::fill_n(dU.data(), Nions, czero);
-    std::fill_n(d2U.data(), Nions, czero);
+    if (NumGroups > 0)
+    { //ions are grouped
+      constexpr valT czero(0);
+      std::fill_n(U.data(), Nions, czero);
+      std::fill_n(dU.data(), Nions, czero);
+      std::fill_n(d2U.data(), Nions, czero);
 
-    for (int jg = 0; jg < NumGroups; ++jg)
+      for (int jg = 0; jg < NumGroups; ++jg)
+      {
+        auto gid = NumTargetGroups * jg + P.getGroupID(iat);
+        if (J1UniqueFunctors[gid])
+          J1UniqueFunctors[gid]->evaluateVGL(-1, Ions.first(jg), Ions.last(jg), dist.data(), U.data(), dU.data(),
+                                             d2U.data(), DistCompressed.data(), DistIndice.data());
+      }
+    }
+    else
     {
-      auto gid = NumTargetGroups * jg + P.getGroupID(iat);
-      if (J1UniqueFunctors[gid])
-        J1UniqueFunctors[gid]->evaluateVGL(-1, Ions.first(jg), Ions.last(jg), dist.data(), U.data(), dU.data(),
-                                           d2U.data(), DistCompressed.data(), DistIndice.data());
+      for (int c = 0; c < Nions; ++c)
+      {
+        auto gid = Ions.getGroupID(c) * NumTargetGroups + P.getGroupID(iat);
+        if (J1UniqueFunctors[gid])
+        {
+          U[c] = J1UniqueFunctors[gid]->evaluate(dist[c], dU[c], d2U[c]);
+          dU[c] /= dist[c];
+        }
+      }
     }
   }
 
@@ -438,7 +503,7 @@ struct J1Spin : public WaveFunctionComponent
    *
    * Using getTempDists(). curAt, curGrad and curLap are computed.
    */
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override
   {
     UpdateMode = ORB_PBYP_PARTIAL;
 
@@ -446,7 +511,7 @@ struct J1Spin : public WaveFunctionComponent
     curLap = accumulateGL(dU.data(), d2U.data(), P.getDistTableAB(myTableID).getTempDispls(), curGrad);
     curAt  = simd::accumulate_n(U.data(), Nions, valT());
     grad_iat += curGrad;
-    return std::exp(static_cast<PsiValue>(Vat[iat] - curAt));
+    return std::exp(static_cast<PsiValueType>(Vat[iat] - curAt));
   }
 
   /** Rejected move. Nothing to do */
@@ -488,9 +553,9 @@ struct J1Spin : public WaveFunctionComponent
     }
   }
 
-  inline LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override
+  inline LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override
   {
-    log_value_ = computeGL(P.G, P.L);
+    evaluateGL(P, P.G, P.L, false);
     buf.forward(Bytes_in_WFBuffer);
     return log_value_;
   }
@@ -502,6 +567,23 @@ struct J1Spin : public WaveFunctionComponent
     Lap.attachReference(buf.lendReference<valT>(Nelec), Nelec);
   }
 
+  inline void setVars(const opt_variables_type& vars)
+  {
+    NumVars = vars.size();
+    if (NumVars == 0)
+      return;
+    myVars = vars;
+    dLogPsi.resize(NumVars);
+    gradLogPsi.resize(NumVars);
+    lapLogPsi.resize(NumVars);
+    for (int i = 0; i < NumVars; ++i)
+    {
+      gradLogPsi[i].resize(Nelec);
+      lapLogPsi[i].resize(Nelec);
+    }
+  }
+
+
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override
   {
     auto cloned_J1Spin = std::make_unique<J1Spin<FT>>(*this, tqp);
@@ -509,14 +591,25 @@ struct J1Spin : public WaveFunctionComponent
   }
 
   /**@{ WaveFunctionComponent virtual functions that are not essential for the development */
-  bool isOptimizable() const override { return true; }
-
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override
+  void reportStatus(std::ostream& os) override
   {
-    for (auto& functor : J1UniqueFunctors)
-      opt_obj_refs.push_back(*functor);
+    for (auto& J1UniqueFunctor : J1UniqueFunctors)
+      if (J1UniqueFunctor != nullptr)
+        J1UniqueFunctor->myVars.print(os);
   }
 
+  void checkInVariables(opt_variables_type& active) override
+  {
+    myVars.clear();
+    for (auto& J1UniqueFunctor : J1UniqueFunctors)
+    {
+      if (J1UniqueFunctor != nullptr)
+      {
+        J1UniqueFunctor->checkInVariables(active);
+        J1UniqueFunctor->checkInVariables(myVars);
+      }
+    }
+  }
   void checkOutVariables(const opt_variables_type& active) override
   {
     myVars.clear();
@@ -529,10 +622,18 @@ struct J1Spin : public WaveFunctionComponent
       }
     }
     myVars.getIndex(active);
-    const size_t NumVars = myVars.size();
+    NumVars = myVars.size();
     myVars.print(std::cout);
-    if (NumVars)
+    if (NumVars && dLogPsi.size() == 0)
     {
+      dLogPsi.resize(NumVars);
+      gradLogPsi.resize(NumVars);
+      lapLogPsi.resize(NumVars);
+      for (int i = 0; i < NumVars; ++i)
+      {
+        gradLogPsi[i].resize(Nelec);
+        lapLogPsi[i].resize(Nelec);
+      }
       OffSet.resize(J1UniqueFunctors.size());
       // Find first active variable for the starting offset
       int varoffset = -1;
@@ -556,11 +657,27 @@ struct J1Spin : public WaveFunctionComponent
         }
       }
     }
+    Optimizable = myVars.is_optimizable();
     for (auto& J1UniqueFunctor : J1UniqueFunctors)
       if (J1UniqueFunctor != nullptr)
         J1UniqueFunctor->checkOutVariables(active);
   }
 
+  void resetParameters(const opt_variables_type& active) override
+  {
+    if (!Optimizable)
+      return;
+    for (auto& J1UniqueFunctor : J1UniqueFunctors)
+      if (J1UniqueFunctor != nullptr)
+        J1UniqueFunctor->resetParameters(active);
+
+    for (int i = 0; i < myVars.size(); ++i)
+    {
+      int ii = myVars.Index[i];
+      if (ii >= 0)
+        myVars[i] = active[ii];
+    }
+  }
   /**@} */
 
   inline GradType evalGradSource(ParticleSet& P, ParticleSet& source, int isrc) override
@@ -587,8 +704,8 @@ struct J1Spin : public WaveFunctionComponent
   inline GradType evalGradSource(ParticleSet& P,
                                  ParticleSet& source,
                                  int isrc,
-                                 TinyVector<ParticleSet::ParticleGradient, OHMMS_DIM>& grad_grad,
-                                 TinyVector<ParticleSet::ParticleLaplacian, OHMMS_DIM>& lapl_grad) override
+                                 TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
+                                 TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override
   {
     GradType g_return(0.0);
     const auto& d_ie(P.getDistTableAB(myTableID));

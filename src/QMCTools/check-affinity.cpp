@@ -12,16 +12,14 @@
 #ifdef __linux__
 #include <sched.h>
 #endif
+#include <omp.h>
 #include <iostream>
 #include <sstream>
 #include "config.h"
 #ifdef HAVE_MPI
 #include <mpi.h>
 #endif
-#include "Concurrency/OpenMP.h"
 
-namespace
-{
 /*=======================================*/
 /* routine to return the core ID         */
 /*=======================================*/
@@ -39,8 +37,6 @@ int get_core()
 /* routine to return the HW thread ID    */
 /*=======================================*/
 int get_hwthread() { return -1; }
-
-} // namespace
 
 int main()
 {

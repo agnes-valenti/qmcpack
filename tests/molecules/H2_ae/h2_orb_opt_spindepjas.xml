@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="H2" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="H2" series="0"/>
   <random seed="130"/>
   <!-- input from gaussian converter -->
   <include href="h2.ptcl.xml"/>
@@ -27,6 +25,7 @@
       <parameter name="bigchange">15.0</parameter>
       <estimator name="LocalEnergy" hdf5="no"/>
       <parameter name="usebuffer"> no </parameter>
+      <parameter name="nonlocalpp"> yes </parameter>
       <parameter name="MinMethod">adaptive</parameter>
       <parameter name="shift_i"> 1.0 </parameter>
       <parameter name="shift_s"> 1.0 </parameter>

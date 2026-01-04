@@ -19,11 +19,7 @@
 
 namespace qmcplusplus
 {
-#if defined(MIXED_PRECISION)
-double TraceManager::trace_tol = 1e-5;
-#else 
 double TraceManager::trace_tol = 1e-8;
-#endif
 
 }
 

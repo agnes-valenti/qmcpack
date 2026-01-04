@@ -18,7 +18,7 @@
 
 #include "RPAJastrow.h"
 #include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
-#include "QMCWaveFunctions/Jastrow/TwoBodyJastrow.h"
+#include "QMCWaveFunctions/Jastrow/J2OrbitalSoA.h"
 #include "QMCWaveFunctions/Jastrow/LRBreakupUtilities.h"
 #include "QMCWaveFunctions/Jastrow/SplineFunctors.h"
 #include "QMCWaveFunctions/Jastrow/BsplineFunctor.h"
@@ -31,7 +31,10 @@
 
 namespace qmcplusplus
 {
-RPAJastrow::RPAJastrow(ParticleSet& target) : targetPtcl(target) {}
+RPAJastrow::RPAJastrow(ParticleSet& target) : WaveFunctionComponent("RPAJastrow"), targetPtcl(target)
+{
+  Optimizable = true;
+}
 
 RPAJastrow::~RPAJastrow() = default;
 
@@ -82,11 +85,11 @@ void RPAJastrow::buildOrbital(const std::string& name,
   DropLongRange  = (useL == "no");
   DropShortRange = (useS == "no");
   RealType tlen =
-      std::pow(3.0 / 4.0 / M_PI * targetPtcl.getLattice().Volume / static_cast<RealType>(targetPtcl.getTotalNum()),
+      std::pow(3.0 / 4.0 / M_PI * targetPtcl.Lattice.Volume / static_cast<RealType>(targetPtcl.getTotalNum()),
                1.0 / 3.0);
   if (Rs < 0)
   {
-    if (targetPtcl.getLattice().SuperCellEnum)
+    if (targetPtcl.Lattice.SuperCellEnum)
     {
       Rs = tlen;
     }
@@ -96,8 +99,8 @@ void RPAJastrow::buildOrbital(const std::string& name,
       Rs = 100.0;
     }
   }
-  int indx      = targetPtcl.getSimulationCell().getKLists().getKSQWorking().size() - 1;
-  double Kc_max = std::pow(targetPtcl.getSimulationCell().getKLists().getKSQWorking()[indx], 0.5);
+  int indx      = targetPtcl.SK->getKLists().ksq.size() - 1;
+  double Kc_max = std::pow(targetPtcl.SK->getKLists().ksq[indx], 0.5);
   if (Kc < 0)
   {
     Kc = 2.0 * std::pow(2.25 * M_PI, 1.0 / 3.0) / tlen;
@@ -138,10 +141,10 @@ void RPAJastrow::makeLongRange()
   // create two-body kSpaceJastrow
   kSpaceJastrow::SymmetryType oneBodySymm, twoBodySymm;
   bool oneBodySpin, twoBodySpin;
-  oneBodySymm = kSpaceJastrow::ISOTROPIC;
-  twoBodySymm = kSpaceJastrow::ISOTROPIC;
-  oneBodySpin = false;
-  twoBodySpin = false;
+  oneBodySymm  = kSpaceJastrow::ISOTROPIC;
+  twoBodySymm  = kSpaceJastrow::ISOTROPIC;
+  oneBodySpin  = false;
+  twoBodySpin  = false;
   auto LongRangeRPA_uptr =
       std::make_unique<kSpaceJastrow>(targetPtcl, targetPtcl, oneBodySymm, -1, "cG1", oneBodySpin, // no one-body part
                                       twoBodySymm, Kc, "cG2", twoBodySpin);
@@ -150,7 +153,7 @@ void RPAJastrow::makeLongRange()
   std::vector<RealType> oneBodyCoefs, twoBodyCoefs;
   twoBodyCoefs.resize(myHandler->MaxKshell);
   //  need to cancel prefactor in kSpaceJastrow
-  RealType prefactorInv = -targetPtcl.getLattice().Volume;
+  RealType prefactorInv = -targetPtcl.Lattice.Volume;
   for (size_t is = 0; is < myHandler->MaxKshell; is++)
   {
     twoBodyCoefs[is] = prefactorInv * myHandler->Fk_symm[is];
@@ -170,15 +173,15 @@ void RPAJastrow::makeShortRange()
   RealType tiny = 1e-6;
   Rcut          = myHandler->get_rc() - tiny;
   //create numerical functor of type BsplineFunctor<RealType>.
-  auto nfunc_uptr = std::make_unique<FuncType>(my_name_ + "_short");
+  auto nfunc_uptr = std::make_unique<FuncType>();
   nfunc           = nfunc_uptr.get();
   ShortRangePartAdapter<RealType> SRA(myHandler.get());
   SRA.setRmax(Rcut);
-  auto j2        = std::make_unique<TwoBodyJastrow<BsplineFunctor<RealType>>>("RPA", targetPtcl, false);
-  size_t nparam  = 12;  // number of Bspline parameters
-  size_t npts    = 100; // number of 1D grid points for basis functions
-  RealType cusp  = SRA.df(0);
-  RealType delta = Rcut / static_cast<double>(npts);
+  auto j2 = std::make_unique<J2OrbitalSoA<BsplineFunctor<RealType>>>("RPA", targetPtcl);
+  size_t nparam                              = 12;  // number of Bspline parameters
+  size_t npts                                = 100; // number of 1D grid points for basis functions
+  RealType cusp                              = SRA.df(0);
+  RealType delta                             = Rcut / static_cast<double>(npts);
   std::vector<RealType> X(npts + 1), Y(npts + 1);
   for (size_t i = 0; i < npts; ++i)
   {
@@ -200,15 +203,25 @@ void RPAJastrow::makeShortRange()
   Psi.push_back(std::move(j2));
 }
 
-void RPAJastrow::checkOutVariables(const opt_variables_type& active)
+void RPAJastrow::resetParameters(const opt_variables_type& active)
 {
-  LongRangeRPA->checkOutVariables(active);
-  ShortRangeRPA->checkOutVariables(active);
+  //This code was removed in 6 April 2017.  To reimplement, please consult a revision
+  //earlier than this.
 }
 
-RPAJastrow::LogValue RPAJastrow::evaluateLog(const ParticleSet& P,
-                                             ParticleSet::ParticleGradient& G,
-                                             ParticleSet::ParticleLaplacian& L)
+void RPAJastrow::checkOutVariables(const opt_variables_type& active) {}
+
+void RPAJastrow::checkInVariables(opt_variables_type& active) {}
+
+void RPAJastrow::reportStatus(std::ostream& os)
+{
+  for (int i = 0; i < Psi.size(); i++)
+    Psi[i]->reportStatus(os);
+}
+
+RPAJastrow::LogValueType RPAJastrow::evaluateLog(const ParticleSet& P,
+                                                 ParticleSet::ParticleGradient_t& G,
+                                                 ParticleSet::ParticleLaplacian_t& L)
 {
   log_value_ = 0.0;
   for (int i = 0; i < Psi.size(); i++)
@@ -216,12 +229,13 @@ RPAJastrow::LogValue RPAJastrow::evaluateLog(const ParticleSet& P,
   return log_value_;
 }
 
-RPAJastrow::PsiValue RPAJastrow::ratio(ParticleSet& P, int iat)
+RPAJastrow::PsiValueType RPAJastrow::ratio(ParticleSet& P, int iat)
 {
+  std::cout<<"AV RPAJastrow::ratio"<<std::endl;
   ValueType r(1.0);
   for (int i = 0; i < Psi.size(); i++)
     r *= Psi[i]->ratio(P, iat);
-  return static_cast<PsiValue>(r);
+  return static_cast<PsiValueType>(r);
 }
 
 RPAJastrow::GradType RPAJastrow::evalGrad(ParticleSet& P, int iat)
@@ -232,14 +246,14 @@ RPAJastrow::GradType RPAJastrow::evalGrad(ParticleSet& P, int iat)
   return grad;
 }
 
-RPAJastrow::PsiValue RPAJastrow::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
+RPAJastrow::PsiValueType RPAJastrow::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
 {
   ValueType r(1);
   for (int i = 0; i < Psi.size(); i++)
   {
     r *= Psi[i]->ratioGrad(P, iat, grad_iat);
   }
-  return static_cast<PsiValue>(r);
+  return static_cast<PsiValueType>(r);
 }
 
 
@@ -261,7 +275,7 @@ void RPAJastrow::registerData(ParticleSet& P, WFBufferType& buf)
     Psi[i]->registerData(P, buf);
 }
 
-RPAJastrow::LogValue RPAJastrow::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
+RPAJastrow::LogValueType RPAJastrow::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
 {
   log_value_ = 0.0;
   for (int i = 0; i < Psi.size(); i++)

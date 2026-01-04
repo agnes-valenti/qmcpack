@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="det_qmc_short-MD-C4_AE_Mol_Excited_QP" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="det_qmc_short-MD-C4_AE_Mol_Excited_QP" series="0"/>
     <random seed="864"/>
 
   <include href="C4_AE_Mol_QP.structure.xml"/>

@@ -21,18 +21,18 @@
 
 namespace qmcplusplus
 {
-using vec_t = TinyVector<double, 3>;
+typedef TinyVector<double, 3> vec_t;
 
 /** Lattice is defined but Open BC is also used.
  */
 TEST_CASE("Crystal_lattice_periodic_bulk", "[lattice]")
 {
-  CrystalLattice<OHMMS_PRECISION_FULL, OHMMS_DIM> Lattice;
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
   Lattice.BoxBConds = false; // Open BC
   Lattice.R.diagonal(0.4);
   Lattice.reset();
 
-  CHECK(Lattice.Volume == Approx(0.4 * 0.4 * 0.4));
+  REQUIRE(Lattice.Volume == Approx(0.4 * 0.4 * 0.4));
 
   vec_t v3(0.6, 1.2, -1.7);
   REQUIRE(Lattice.isValid(v3) == false);

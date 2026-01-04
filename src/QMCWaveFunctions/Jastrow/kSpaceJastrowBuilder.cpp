@@ -139,31 +139,26 @@ std::unique_ptr<WaveFunctionComponent> kSpaceJastrowBuilder::buildComponent(xmlN
 
 void kSpaceJastrowBuilder::outputJastrow(kSpaceJastrow* jastrow)
 {
-  std::array<char, 32> fname;
-  int fname_len{0};
+  char fname[32];
   int taskid = is_manager() ? getGroupID() : -1;
+  std::ofstream fout;
 
   // output one-body jastrow
   if (qmc_common.mpi_groups > 1)
-    fname_len = std::snprintf(fname.data(), fname.size(), "Jk1.g%03d.dat", taskid);
+    sprintf(fname, "Jk1.g%03d.dat", taskid);
   else
-    fname_len = std::snprintf(fname.data(), fname.size(), "Jk1.dat");
-  if (fname_len < 0)
-    throw std::runtime_error("Error generating filename");
-
-  std::ofstream fout(std::string(fname.data(), fname_len));
+    sprintf(fname, "Jk1.dat");
+  fout.open(fname);
   fout << "#  kx  ky  kz  coeff_real  coeff_imag" << std::endl;
   jastrow->printOneBody(fout);
   fout.close();
 
   // output two-body jastrow
   if (qmc_common.mpi_groups > 1)
-    fname_len = std::snprintf(fname.data(), fname.size(), "Jk2.g%03d.dat", taskid);
+    sprintf(fname, "Jk2.g%03d.dat", taskid);
   else
-    fname_len = std::snprintf(fname.data(), fname.size(), "Jk2.dat");
-  if (fname_len < 0)
-    throw std::runtime_error("Error generating filename");
-  fout.open(std::string(fname.data(), fname_len));
+    sprintf(fname, "Jk2.dat");
+  fout.open(fname);
   fout << "#  kx  ky  kz  coeff_real  coeff_imag" << std::endl;
   jastrow->printTwoBody(fout);
   fout.close();

@@ -11,7 +11,6 @@
 
 
 #include "LCAOHDFParser.h"
-#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <algorithm>
@@ -136,7 +135,7 @@ void LCAOHDFParser::parse(const std::string& fname)
   hin.close();
 
 
-  IonSystem.create({NumberOfAtoms});
+  IonSystem.create(NumberOfAtoms);
   GroupName.resize(NumberOfAtoms);
   if (PBC)
   {
@@ -160,27 +159,33 @@ void LCAOHDFParser::parse(const std::string& fname)
       abort();
     }
 
-    hin.push("MultiDet");
+    if (!hin.push("MultiDet"))
+    {
+      std::cerr << "Could not open Multidet Group in H5 file" << std::endl;
+      abort();
+    }
+    else
+    {
+      hin.read(ci_size, "NbDet");
+      hin.read(ci_nstates, "nstate");
+      hin.read(nbexcitedstates, "nexcitedstate");
+      CIcoeff.clear();
+      CIalpha.clear();
+      CIbeta.clear();
+      CIcoeff.resize(ci_size);
+      CIalpha.resize(ci_size);
+      CIbeta.resize(ci_size);
 
-    hin.read(ci_size, "NbDet");
-    hin.read(ci_nstates, "nstate");
-    hin.read(nbexcitedstates, "nexcitedstate");
-    CIcoeff.clear();
-    CIalpha.clear();
-    CIbeta.clear();
-    CIcoeff.resize(ci_size);
-    CIalpha.resize(ci_size);
-    CIbeta.resize(ci_size);
-
-    int ds  = SpinMultiplicity - 1;
-    int neb = (NumberOfEls - ds) / 2;
-    int nea = NumberOfEls - NumberOfBeta;
-    ci_nea  = NumberOfAlpha;
-    ci_neb  = NumberOfBeta;
-    ci_nca  = nea - ci_nea;
-    ci_ncb  = neb - ci_neb;
-    std::cout << " Done reading CIs!!" << std::endl;
-    hin.close();
+      int ds  = SpinMultiplicity - 1;
+      int neb = (NumberOfEls - ds) / 2;
+      int nea = NumberOfEls - NumberOfBeta;
+      ci_nea  = NumberOfAlpha;
+      ci_neb  = NumberOfBeta;
+      ci_nca  = nea - ci_nea;
+      ci_ncb  = neb - ci_neb;
+      std::cout << " Done reading CIs!!" << std::endl;
+      hin.close();
+    }
   }
 }
 
@@ -285,8 +290,11 @@ void LCAOHDFParser::getSuperTwist(const std::string& fname)
     abort();
   }
 
-  hin.push("Super_Twist");
-
+  if (!hin.push("Super_Twist"))
+  {
+    std::cerr << "Could not find Super Twist" << std::endl;
+    abort();
+  }
   STwist_Coord.resize(3);
 
   hin.read(MyVec, "Coord");
@@ -305,6 +313,7 @@ void LCAOHDFParser::getMO(const std::string& fname)
   EigVal_beta.resize(numMO);
   EigVec.resize(2 * SizeOfBasisSet * numMO);
 
+  std::string setname;
   Matrix<double> CartMat(numMO, SizeOfBasisSet);
 
   hdf_archive hin;
@@ -314,21 +323,47 @@ void LCAOHDFParser::getMO(const std::string& fname)
     std::cerr << "Could not open H5 file" << std::endl;
     abort();
   }
+  char name[72];
+  sprintf(name, "%s", "/Super_Twist/eigenset_0");
+  setname = name;
+  if (!hin.readEntry(CartMat, setname))
+  {
+    setname = "SPOSet::putFromH5 Missing " + setname + " from HDF5 File.";
+    APP_ABORT(setname.c_str());
+  }
+  sprintf(name, "%s", "/Super_Twist/eigenval_0");
+  if (!hin.readEntry(EigVal_alpha, setname))
+  {
+    setname = "SPOSet::putFromH5 Missing " + setname + " from HDF5 File.";
+    APP_ABORT(setname.c_str());
+  }
 
-  std::string setname = "/Super_Twist/eigenset_0";
-  hin.read(CartMat, setname);
-  setname = "/Super_Twist/eigenval_0";
-  hin.read(EigVal_alpha, setname);
-  std::copy(CartMat.begin(), CartMat.end(), EigVec.begin());
+  int cnt = 0;
+  for (int i = 0; i < numMO; i++)
+    for (int k = 0; k < SizeOfBasisSet; k++)
+      EigVec[cnt++] = CartMat[i][k];
 
   if (!SpinRestricted)
   {
-    setname = "/Super_Twist/eigenset_1";
-    hin.read(CartMat, setname);
-    setname = "/Super_Twist/eigenval_1";
-    hin.read(EigVal_beta, setname);
+    sprintf(name, "%s", "/Super_Twist/eigenset_1");
+    setname = name;
+    if (!hin.readEntry(CartMat, setname))
+    {
+      setname = "SPOSet::putFromH5 Missing " + setname + " from HDF5 File.";
+      APP_ABORT(setname.c_str());
+    }
+    sprintf(name, "%s", "/Super_Twist/eigenval_1");
+    if (!hin.readEntry(EigVal_beta, setname))
+    {
+      setname = "SPOSet::putFromH5 Missing " + setname + " from HDF5 File.";
+      APP_ABORT(setname.c_str());
+    }
   }
-  std::copy(CartMat.begin(), CartMat.end(), EigVec.begin() + SizeOfBasisSet * numMO);
+
+
+  for (int i = 0; i < numMO; i++)
+    for (int k = 0; k < SizeOfBasisSet; k++)
+      EigVec[cnt++] = CartMat[i][k];
 
   hin.close();
   int btot = numMO * SizeOfBasisSet;
@@ -350,7 +385,7 @@ void LCAOHDFParser::getMO(const std::string& fname)
   {
     eig << std::setw(22) << EigVec[b++];
   }
-  std::cout << eig.str() << std::endl;
+  std::cout << eig.str().c_str() << std::endl;
   std::cout << "Finished reading MO." << std::endl;
   hin.close();
 }

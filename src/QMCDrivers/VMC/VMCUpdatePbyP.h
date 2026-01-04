@@ -17,6 +17,10 @@
 #define QMCPLUSPLUS_VMC_PARTICLEBYPARTICLE_UPDATE_H
 #include "QMCDrivers/QMCUpdateBase.h"
 
+extern int testvalue;
+extern std::vector<double> AVenergies;
+extern std::vector<double> AVdistances;
+
 namespace qmcplusplus
 {
 /** @ingroup QMCDrivers  ParticleByParticle
@@ -26,7 +30,7 @@ class VMCUpdatePbyP : public QMCUpdateBase
 {
 public:
   /// Constructor.
-  VMCUpdatePbyP(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomBase<FullPrecRealType>& rg);
+  VMCUpdatePbyP(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomGenerator_t& rg);
 
   ~VMCUpdatePbyP() override;
 

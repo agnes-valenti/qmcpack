@@ -26,17 +26,34 @@
 
 namespace qmcplusplus
 {
+/**  TaskWrapper code from
+  *  https://stackoverflow.com/questions/48268322/wrap-stdthread-call-function
+  *
+  *  Required to forward an arbitrary var args function
+  */
+template<typename F>
+struct TaskWrapper
+{
+  F f;
+
+  template<typename... T>
+  void operator()(T&&... args)
+  {
+    f(std::forward<T>(args)...);
+  }
+};
+
 /** implements parallel tasks executed by STD threads. One task one thread mapping.
  */
 template<>
 template<typename F, typename... Args>
 void ParallelExecutor<Executor::STD_THREADS>::operator()(int num_tasks, F&& f, Args&&... args)
 {
-  std::vector<std::thread> threads(num_tasks);
+  std::vector<std::thread> threads(num_tasks_);
 
   for (int task_id = 0; task_id < num_tasks; ++task_id)
   {
-    threads[task_id] = std::thread(f, task_id, std::ref(std::forward<Args>(args))...);
+    threads[task_id] = std::thread(TaskWrapper<F>{std::forward<F>(f)}, task_id, std::forward<Args>(args)...);
   }
 
   for (int task_id = 0; task_id < num_tasks; ++task_id)

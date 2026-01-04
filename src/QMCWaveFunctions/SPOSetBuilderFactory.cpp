@@ -17,24 +17,22 @@
 
 
 #include "SPOSetBuilderFactory.h"
-#include "SPOSetScanner.h"
-#include "HarmonicOscillator/SHOSetBuilder.h"
-#include "PlaneWave/PWOrbitalSetBuilder.h"
-#include "ModernStringUtils.hpp"
-#include "ElectronGas/FreeOrbitalBuilder.h"
+#include "QMCWaveFunctions/SPOSetScanner.h"
+#include "QMCWaveFunctions/ElectronGas/ElectronGasOrbitalBuilder.h"
+#include "QMCWaveFunctions/HarmonicOscillator/SHOSetBuilder.h"
 #if OHMMS_DIM == 3
-#include "LCAO/LCAOrbitalBuilder.h"
+#include "QMCWaveFunctions/LCAO/LCAOrbitalBuilder.h"
 
 #if defined(QMC_COMPLEX)
-#include "BsplineFactory/EinsplineSpinorSetBuilder.h"
-#include "LCAO/LCAOSpinorBuilder.h"
+#include "QMCWaveFunctions/EinsplineSpinorSetBuilder.h"
+#include "QMCWaveFunctions/LCAO/LCAOSpinorBuilder.h"
 #endif
 
 #if defined(HAVE_EINSPLINE)
-#include "BsplineFactory/EinsplineSetBuilder.h"
+#include "QMCWaveFunctions/EinsplineSetBuilder.h"
 #endif
 #endif
-#include "CompositeSPOSet.h"
+#include "QMCWaveFunctions/CompositeSPOSet.h"
 #include "Utilities/ProgressReportEngine.h"
 #include "Utilities/IteratorUtility.h"
 #include "OhmmsData/AttributeSet.h"
@@ -43,24 +41,59 @@
 
 namespace qmcplusplus
 {
-const SPOSet* SPOSetBuilderFactory::getSPOSet(const std::string& name) const
+SPOSet* SPOSetBuilderFactory::getSPOSet(const std::string& name) const
 {
-  if (auto spoit = sposets.find(name); spoit == sposets.end())
+  int nfound  = 0;
+  SPOSet* spo = nullptr;
+  for (const auto& sposet_builder : sposet_builders_)
   {
-    // keep this commented until legacy input styles are moved.
-    // In legacy input styles, this look up may fail and need to build SPOSet on the fly.
-    return nullptr;
+    auto& sposets = sposet_builder->sposets;
+    for (auto& sposet : sposets)
+      if (sposet->getName() == name)
+      {
+        spo = sposet.get();
+        nfound++;
+      }
   }
-  else
-    return spoit->second.get();
+  if (nfound > 1)
+  {
+    write_sposet_builders_();
+    throw std::runtime_error("getSPOSet: requested sposet " + name + " is not unique!");
+  }
+  // keep this commented until legacy input styles are moved.
+  // In legacy input styles, this look up may fail and need to build SPOSet on the fly.
+  //else if (nfound == 0)
+  //  throw std::runtime_error("getSPOSet: requested sposet " + name + " is not found!");
+  return spo;
 }
+
+
+void SPOSetBuilderFactory::write_sposet_builders_(const std::string& pad) const
+{
+  std::string pad2 = pad + "  ";
+  for (const auto& sposet_builder : sposet_builders_)
+  {
+    auto& sposets = sposet_builder->sposets;
+    app_log() << pad << "sposets for SPOSetBuilder of type " << sposet_builder->getTypeName() << std::endl;
+    for (int i = 0; i < sposets.size(); ++i)
+      app_log() << pad2 << "sposet " << sposets[i]->getName() << std::endl;
+  }
+}
+
+SPOSetBuilder& SPOSetBuilderFactory::getLastBuilder()
+{
+  if (sposet_builders_.empty())
+    myComm->barrier_and_abort("SPOSetBuilderFactory::getLastBuilder BUG! No SPOSetBuilder has been created.");
+  return *sposet_builders_.back();
+}
+
 
 /** constructor
  * \param els reference to the electrons
  * \param psi reference to the wavefunction
  * \param ions reference to the ions
  */
-SPOSetBuilderFactory::SPOSetBuilderFactory(Communicate* comm, ParticleSet& els, const PSetMap& psets)
+SPOSetBuilderFactory::SPOSetBuilderFactory(Communicate* comm, ParticleSet& els, PtclPoolType& psets)
     : MPIObjectBase(comm), targetPtcl(els), ptclPool(psets)
 {
   ClassName = "SPOSetBuilderFactory";
@@ -68,7 +101,7 @@ SPOSetBuilderFactory::SPOSetBuilderFactory(Communicate* comm, ParticleSet& els, 
 
 SPOSetBuilderFactory::~SPOSetBuilderFactory() { DEBUG_MEMORY("SPOSetBuilderFactory::~SPOSetBuilderFactory"); }
 
-std::unique_ptr<SPOSetBuilder> SPOSetBuilderFactory::createSPOSetBuilder(xmlNodePtr rootNode)
+SPOSetBuilder& SPOSetBuilderFactory::createSPOSetBuilder(xmlNodePtr rootNode)
 {
   ReportEngine PRE(ClassName, "createSPOSetBuilder");
   std::string sourceOpt("ion0");
@@ -83,7 +116,7 @@ std::unique_ptr<SPOSetBuilder> SPOSetBuilderFactory::createSPOSetBuilder(xmlNode
     aAttrib.put(rootNode);
 
   std::string type_in = type;
-  type                = lowerCase(type);
+  tolower(type);
 
   //when name is missing, type becomes the input
   if (name.empty())
@@ -96,25 +129,20 @@ std::unique_ptr<SPOSetBuilder> SPOSetBuilderFactory::createSPOSetBuilder(xmlNode
     app_log() << "Composite SPO set with existing SPOSets." << std::endl;
     bb = std::make_unique<CompositeSPOSetBuilder>(myComm, *this);
   }
-  else if (type == "jellium" || type == "heg" || type == "free")
+  else if (type == "jellium" || type == "heg")
   {
-    app_log() << "Free-particle SPO set" << std::endl;
-    bb = std::make_unique<FreeOrbitalBuilder>(targetPtcl, myComm, rootNode);
+    app_log() << "Electron gas SPO set" << std::endl;
+    bb = std::make_unique<ElectronGasSPOBuilder>(targetPtcl, myComm, rootNode);
   }
   else if (type == "sho")
   {
     app_log() << "Harmonic Oscillator SPO set" << std::endl;
     bb = std::make_unique<SHOSetBuilder>(targetPtcl, myComm);
   }
-  else if (type == "PWBasis" || type == "PW" || type == "pw")
-  {
-    app_log() << "Planewave basis SPO set" << std::endl;
-    bb = std::make_unique<PWOrbitalSetBuilder>(targetPtcl, myComm, rootNode);
-  }
 #if OHMMS_DIM == 3
   else if (type.find("spline") < type.size())
   {
-    if (targetPtcl.isSpinor())
+    if (targetPtcl.is_spinor_)
     {
 #ifdef QMC_COMPLEX
       app_log() << "Einspline Spinor Set\n";
@@ -141,8 +169,8 @@ std::unique_ptr<SPOSetBuilder> SPOSetBuilderFactory::createSPOSetBuilder(xmlNode
     if (pit == ptclPool.end())
       PRE.error("Missing basisset/@source.", true);
     else
-      ions = pit->second.get();
-    if (targetPtcl.isSpinor())
+      ions = (*pit).second;
+    if (targetPtcl.is_spinor_)
 #ifdef QMC_COMPLEX
       bb = std::make_unique<LCAOSpinorBuilder>(targetPtcl, *ions, myComm, rootNode);
 #else
@@ -154,11 +182,13 @@ std::unique_ptr<SPOSetBuilder> SPOSetBuilderFactory::createSPOSetBuilder(xmlNode
 #endif //OHMMS_DIM==3
   PRE.flush();
 
-  if (!bb)
+  if (bb == 0)
     myComm->barrier_and_abort("SPOSetBuilderFactory::createSPOSetBuilder SPOSetBuilder creation failed.");
 
   app_log() << "  Created SPOSet builder named '" << name << "' of type " << type << std::endl;
-  return bb;
+  sposet_builders_.push_back(std::move(bb));
+
+  return *sposet_builders_.back();
 }
 
 
@@ -182,19 +212,14 @@ void SPOSetBuilderFactory::buildSPOSetCollection(xmlNodePtr cur)
   app_summary() << std::endl;
 
   // create the SPOSet builder
-  auto bb = createSPOSetBuilder(cur);
+  auto& bb = createSPOSetBuilder(cur);
 
   // going through a list of sposet entries
   int nsposets = 0;
   processChildren(cur, [&](const std::string& cname, const xmlNodePtr element) {
     if (cname == "sposet")
     {
-      addSPOSet(std::unique_ptr<SPOSet>(bb->createSPOSet(element)));
-      nsposets++;
-    }
-    if (cname == "rotated_sposet")
-    {
-      addSPOSet(std::unique_ptr<SPOSet>(bb->createRotatedSPOSet(element)));
+      SPOSet* spo = bb.createSPOSet(element);
       nsposets++;
     }
   });
@@ -207,21 +232,10 @@ void SPOSetBuilderFactory::buildSPOSetCollection(xmlNodePtr cur)
     if (cname == "spo_scanner")
       if (myComm->rank() == 0)
       {
-        SPOSetScanner ascanner(sposets, targetPtcl, ptclPool);
+        SPOSetScanner ascanner(bb.sposets, targetPtcl, ptclPool);
         ascanner.put(element);
       }
   });
-}
-
-void SPOSetBuilderFactory::addSPOSet(std::unique_ptr<SPOSet> spo)
-{
-  if (spo->getName().empty())
-    myComm->barrier_and_abort("sposet created in sposet_collection must have a name!");
-
-  if (sposets.find(spo->getName()) != sposets.end())
-    myComm->barrier_and_abort("The name of each sposet must be unique! '" + spo->getName() + "' exists.");
-  else
-    sposets.emplace(spo->getName(), std::move(spo));
 }
 
 std::string SPOSetBuilderFactory::basisset_tag = "basisset";

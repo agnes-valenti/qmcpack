@@ -23,7 +23,7 @@
 #define OHMMS_CRYSTALLATTICE_H
 #include <limits>
 #include <iostream>
-#include "config/stdlib/Constants.h"
+#include "CPU/math.hpp"
 #include "OhmmsPETE/TinyVector.h"
 #include "OhmmsPETE/Tensor.h"
 #include "LRBreakupParameters.h"
@@ -54,8 +54,6 @@ enum
 template<class T, unsigned D>
 struct CrystalLattice : public LRBreakupParameters<T, D>
 {
-public:
-  using Real = T;
   /// alias to the base class
   using Base = LRBreakupParameters<T, D>;
 
@@ -65,58 +63,24 @@ public:
     DIM = D
   };
   //@{
-  ///the type of scalar, actually can only be real based on Configuration.h
-  using Scalar_t = T;
+  ///the type of scalar
+  typedef T Scalar_t;
   ///the type of a D-dimensional position vector
-  using SingleParticlePos = TinyVector<T, D>;
+  typedef TinyVector<T, D> SingleParticlePos_t;
+  ///the type of a D-dimensional index vector
+  typedef TinyVector<int, D> SingleParticleIndex_t;
   ///the type of a D-dimensional Tensor
-  using Tensor_t = Tensor<T, D>;
+  typedef Tensor<T, D> Tensor_t;
   //@}
-
-  ///default constructor, assign a huge supercell
-  CrystalLattice();
-
-  const auto& getBoxBConds() const { return BoxBConds; }
-  const auto& getG() const { return G; }
-  const auto& getGv() const { return Gv; }
-  int getSuperCellEnum() const { return SuperCellEnum; }
-  const auto& getR() const { return R; };
-  const auto& getOneOverLength() const { return OneOverLength; }
-  const auto& getLength() const { return Length; }
-  const auto& getRv() const { return Rv; }
-  const auto& getVacuumScale() const { return VacuumScale; }
-  bool getExplicitlyDefined() const { return explicitly_defined; }
-  // \todo remove this and factor resetLRBox into lattice?
-  auto& getR() { return R; };
-  auto getVolume() const { return Volume; }
-  auto getCenter() const { return Center; }
-  // These are all a result of calling LatticeAnalyzer and not valid until reset is called after any number of changes
-  // to the lattice.
-  auto getCellRadiusSq() const { return CellRadiusSq; }
-  auto getWignerSeitzRadius() const { return WignerSeitzRadius; }
-  auto getWignerSeitzRadius_G() const { return WignerSeitzRadius_G; }
-  auto getSimulationCellRadius() const { return SimulationCellRadius; }
-  bool getDiagonalOnly() const { return DiagonalOnly; }
-
-  void setBoxBConds(TinyVector<int, D> bbc)
-  {
-    BoxBConds = bbc;
-    reset();
-  }
-  void setVacuumScale(Real vscale)
-  {
-    VacuumScale = vscale;
-    reset();
-  }
 
   ///true, if off-diagonal elements are zero so that other classes can take advantage of this
   bool DiagonalOnly;
   ///supercell enumeration
   int SuperCellEnum;
   ///The boundary condition in each direction.
-  TinyVector<int, D> BoxBConds{false, false, false};
+  TinyVector<int, D> BoxBConds;
   ///The scale factor for adding vacuum.
-  T VacuumScale = 1.0;
+  T VacuumScale;
   //@{
   /**@brief Physical properties of a supercell*/
   /// Volume of a supercell
@@ -140,54 +104,63 @@ public:
   ///Metric tensor for G vectors
   Tensor_t Mg;
   ///Length[idim] length of the idim-th lattice vector
-  SingleParticlePos Length;
+  SingleParticlePos_t Length;
   ///OneOverLength[idim] 1/length of the idim-th lattice vector
-  SingleParticlePos OneOverLength;
+  SingleParticlePos_t OneOverLength;
   ///Center of the cell sum(Rv[i])/2
-  SingleParticlePos Center;
+  SingleParticlePos_t Center;
   /**@brief Real-space unit vectors.
    *
    *Introduced to efficiently return one vector at a time.
    *Rv[i] is D-dim vector of the ith direction.
    */
-  TinyVector<SingleParticlePos, D> Rv;
+  TinyVector<SingleParticlePos_t, D> Rv;
   /**@brief Reciprocal unit vectors.
    *
    *Introduced to efficiently return one vector at a time.
    *Gv[i] is D-dim vector of the ith direction.
    */
-  TinyVector<SingleParticlePos, D> Gv;
+  TinyVector<SingleParticlePos_t, D> Gv;
   //@}
   //angles between the two lattice vectors
-  SingleParticlePos ABC;
+  SingleParticlePos_t ABC;
   ///true, the lattice is defined by the input instead of an artificial default
-  bool explicitly_defined = false;
+  bool explicitly_defined;
+
+  ///default constructor, assign a huge supercell
+  CrystalLattice();
+
+  ///copy constructor
+  CrystalLattice(const CrystalLattice&) = default;
+
+  ///destructor
+  virtual ~CrystalLattice() {}
 
   /**@param i the index of the directional vector, \f$i\in [0,D)\f$
    *@return The lattice vector of the ith direction
    *@brief Provide interfaces familiar to fotran users
    */
-  inline SingleParticlePos a(int i) const { return Rv[i]; }
+  inline SingleParticlePos_t a(int i) const { return Rv[i]; }
 
   /**@param i the index of the directional vector, \f$i\in [0,D)\f$
    *@return The reciprocal vector of the ith direction
    *@brief Provide interfaces familiar to fotran users
    */
-  inline SingleParticlePos b(int i) const { return Gv[i]; }
+  inline SingleParticlePos_t b(int i) const { return Gv[i]; }
 
   /** Convert a cartesian vector to a unit vector.
    * Boundary conditions are not applied.
    */
   template<class T1>
-  inline SingleParticlePos toUnit(const TinyVector<T1, D>& r) const
+  inline SingleParticlePos_t toUnit(const TinyVector<T1, D>& r) const
   {
     return dot(r, G);
   }
 
   template<class T1>
-  inline SingleParticlePos toUnit_floor(const TinyVector<T1, D>& r) const
+  inline SingleParticlePos_t toUnit_floor(const TinyVector<T1, D>& r) const
   {
-    SingleParticlePos val_dot;
+    SingleParticlePos_t val_dot;
     val_dot = toUnit(r);
     for (int i = 0; i < D; i++)
       if (-std::numeric_limits<T1>::epsilon() < val_dot[i] && val_dot[i] < 0)
@@ -201,7 +174,7 @@ public:
    * Boundary conditions are not applied.
    */
   template<class T1>
-  inline SingleParticlePos toCart(const TinyVector<T1, D>& c) const
+  inline SingleParticlePos_t toCart(const TinyVector<T1, D>& c) const
   {
     return dot(c, R);
   }
@@ -216,10 +189,15 @@ public:
   }
 
   /// return true if any direction of reduced coordinates u goes larger than 0.5
-  bool outOfBound(const TinyVector<T, D>& u) const;
+  inline bool outOfBound(const TinyVector<T, D>& u) const
+  {
+    for (int i = 0; i < D; ++i)
+      if (std::abs(u[i]) > 0.5)
+        return true;
+    return false;
+  }
 
-  template <typename PT>
-  inline void applyMinimumImage(TinyVector<PT, D>& c) const
+  inline void applyMinimumImage(TinyVector<T, D>& c) const
   {
     if (SuperCellEnum)
     {
@@ -238,40 +216,41 @@ public:
    @note The distance between two cartesian vectors are handled
    *by dot function defined in OhmmsPETE/TinyVector.h
    */
-  inline T Dot(const SingleParticlePos& ra, const SingleParticlePos& rb) const { return dot(ra, dot(M, rb)); }
+  inline T Dot(const SingleParticlePos_t& ra, const SingleParticlePos_t& rb) const { return dot(ra, dot(M, rb)); }
 
   /** conversion of a reciprocal-vector
    *@param kin an input reciprocal vector in the Reciprocal-vector unit
    *@return k(reciprocal vector) in cartesian unit
   */
-  inline SingleParticlePos k_cart(const SingleParticlePos& kin) const { return TWOPI * dot(G, kin); }
+  inline SingleParticlePos_t k_cart(const SingleParticlePos_t& kin) const { 
+   //std::cout<<"AV in CrystalLattice.h: careful, k_cart is called"<<std::endl;
+   return TWOPI * dot(G, kin); }
 
   /** conversion of a caresian reciprocal-vector to unit k-vector
    *@param kin an input reciprocal vector in cartesian form
    *@return k(reciprocal vector) as unit vector
   */
-  inline SingleParticlePos k_unit(const SingleParticlePos& kin) const { return dot(R, kin) / TWOPI; }
+  inline SingleParticlePos_t k_unit(const SingleParticlePos_t& kin) const { return dot(R, kin) / TWOPI; }
 
   /** evaluate \f$k^2\f$
    *
    *@param kin an input reciprocal vector in reciprocal-vector unit
    *@return \f$k_{in}^2\f$
    */
-  inline T ksq(const SingleParticlePos& kin) const { return dot(kin, dot(Mg, kin)); }
+  inline T ksq(const SingleParticlePos_t& kin) const { 
+     std::cout<<"AV in CrystalLattice.h: careful, ksq is called"<<std::endl;
+     return dot(kin, dot(Mg, kin)); } //AV: Mg: metric tensor for G vectors. Square/ electron gas: should be unity (test!). Put anisotropic masses here. 2D -> 2D dot
 
   ///assignment operator
   template<typename T1>
   CrystalLattice<T, D>& operator=(const CrystalLattice<T1, D>& rhs)
   {
-    Base::LR_dim_cutoff         = rhs.LR_dim_cutoff;
-    Base::LR_kc                 = rhs.LR_kc;
-    Base::LR_rc                 = rhs.LR_rc;
-    Base::num_ewald_grid_points = rhs.num_ewald_grid_points;
-    Base::ndim                  = rhs.ndim;
+    Base::LR_dim_cutoff = rhs.LR_dim_cutoff;
+    Base::LR_kc         = rhs.LR_kc;
+    Base::LR_rc         = rhs.LR_rc;
 
     explicitly_defined = rhs.explicitly_defined;
     BoxBConds          = rhs.BoxBConds;
-    SuperCellEnum      = rhs.getSuperCellEnum();
     VacuumScale        = rhs.VacuumScale;
     R                  = rhs.R;
     reset();
@@ -309,23 +288,10 @@ public:
 
   //! Print out CrystalLattice Data
   void print(std::ostream&, int level = 2) const;
-
-  // Allow assignment operator between say T=double and T=float
-  template<class TT, unsigned DD>
-  friend struct CrystalLattice;
-
-  friend class LatticeParser;
 };
-
-extern template struct CrystalLattice<double, OHMMS_DIM>;
-extern template void CrystalLattice<double, OHMMS_DIM>::set(const Tensor<double, OHMMS_DIM>& tensor);
-extern template void CrystalLattice<double, OHMMS_DIM>::set(const Tensor<float, OHMMS_DIM>& tensor);
-
-extern template struct CrystalLattice<float, OHMMS_DIM>;
-extern template void CrystalLattice<float, OHMMS_DIM>::set(const Tensor<double, OHMMS_DIM>& tensor);
-extern template void CrystalLattice<float, OHMMS_DIM>::set(const Tensor<float, OHMMS_DIM>& tensor);
 
 } // namespace qmcplusplus
 //including the definitions of the member functions
+#include "CrystalLattice.cpp"
 
 #endif

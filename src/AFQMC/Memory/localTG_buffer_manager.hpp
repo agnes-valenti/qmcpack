@@ -29,8 +29,8 @@ namespace afqmc
 // Reserved for buffers with the localTG communicator.
 // Follows a monostate-type pattern. All variables are static and refer to a global instance
 // of the resource.
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
-//  using DeviceBufferManager = LocalTGBufferManager;
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
+//  typedef LocalTGBufferManager DeviceBufferManager;
 class LocalTGBufferManager : public DeviceBufferManager
 {
 public:

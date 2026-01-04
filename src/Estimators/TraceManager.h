@@ -29,25 +29,21 @@
 #include "OhmmsPETE/OhmmsArray.h"
 #include "Particle/ParticleSet.h"
 #include "Utilities/IteratorUtility.h"
-#include "ModernStringUtils.hpp"
 #include "Message/Communicate.h"
 #include "hdf/hdf_archive.h"
-#include "Concurrency/OpenMP.h"
-
-#include <algorithm>
-#include <array>
+#include "Message/OpenMP.h"
 #include <map>
-#include <memory>
 #include <set>
+#include <algorithm>
 
 namespace qmcplusplus
 {
 //#define TRACE_CHECK
 
 const unsigned int DMAX = 4;
-using TraceInt          = long;
-using TraceReal         = OHMMS_PRECISION;
-using TraceComp         = std::complex<TraceReal>;
+typedef long TraceInt;
+typedef OHMMS_PRECISION TraceReal;
+typedef std::complex<TraceReal> TraceComp;
 
 
 struct TraceQuantity
@@ -432,7 +428,7 @@ struct TraceRequest
     for (it = quantities.begin(); it != quantities.end(); ++it)
     {
       TraceQuantity& q = it->second;
-      bool selected    = false;
+      bool selected = false;
       if (selector == "scalar_available")
         selected = q.scalar_available;
       else if (selector == "array_available")
@@ -523,7 +519,7 @@ struct TraceSample
   int unit_size;
   int data_size;
   TinyVector<int, DMAX> shape;
-  Vector<T>& sample;
+  std::vector<T>& sample;
   bool write;
   int buffer_start, buffer_end;
   std::map<std::string, TraceInt> meta_int;
@@ -531,7 +527,11 @@ struct TraceSample
   std::map<std::string, std::string> meta_string;
   bool verbose;
 
-  inline TraceSample(const std::string& sdomain, const std::string& sname, int sindex, int sdim, Vector<T>& ssample)
+  inline TraceSample(const std::string& sdomain,
+                     const std::string& sname,
+                     int sindex,
+                     int sdim,
+                     std::vector<T>& ssample)
       : sample(ssample), verbose(false)
   {
     initialize(sdomain, sname, sindex, sdim);
@@ -543,7 +543,7 @@ struct TraceSample
                      int sindex,
                      int sdim,
                      TinyVector<int, DMAX> sshape,
-                     Vector<T>& ssample)
+                     std::vector<T>& ssample)
       : sample(ssample), verbose(false)
   {
     initialize(sdomain, sname, sindex, sdim);
@@ -658,7 +658,7 @@ struct CombinedTraceSample : public TraceSample<T>
                              const std::string& sname,
                              int sindex,
                              int sdim,
-                             Vector<T>& ssample)
+                             std::vector<T>& ssample)
       : TraceSample<T>(sdomain, sname, sindex, sdim, ssample)
   {
     reset();
@@ -670,7 +670,7 @@ struct CombinedTraceSample : public TraceSample<T>
                              int sindex,
                              int sdim,
                              TinyVector<int, DMAX> sshape,
-                             Vector<T>& ssample)
+                             std::vector<T>& ssample)
       : TraceSample<T>(sdomain, sname, sindex, sdim, sshape, ssample)
   {
     reset();
@@ -709,12 +709,12 @@ struct CombinedTraceSample : public TraceSample<T>
 
   inline void combine()
   {
-    std::fill(this->sample.begin(), this->sample.end(), T(0));
-    for (size_t i = 0; i < components.size(); ++i)
+    fill(this->sample.begin(), this->sample.end(), T(0));
+    for (int i = 0; i < components.size(); ++i)
     {
-      T weight        = weights[i];
-      auto& component = components[i]->sample;
-      for (size_t j = 0; j < this->sample.size(); ++j)
+      T weight                  = weights[i];
+      std::vector<T>& component = components[i]->sample;
+      for (int j = 0; j < this->sample.size(); ++j)
         this->sample[j] += weight * component[j];
     }
     combined = true;
@@ -729,7 +729,7 @@ struct CombinedTraceSample : public TraceSample<T>
     app_log() << pad2 << "domain      = " << this->domain << std::endl;
     app_log() << pad2 << "ncomponents = " << components.size() << std::endl;
     app_log() << pad2 << "components" << std::endl;
-    for (size_t i = 0; i < components.size(); ++i)
+    for (int i = 0; i < components.size(); ++i)
     {
       TraceSample<T>& c = *components[i];
       app_log() << pad3 << c.name << " " << c.index << " " << weights[i] << std::endl;
@@ -754,7 +754,7 @@ struct TraceSamples
   std::map<std::string, std::map<std::string, int>> sample_indices;
   std::vector<TraceSample<T>*> ordered_samples;
   std::vector<CombinedTraceSample<T>*> combined_samples;
-  std::vector<Vector<T>*> combined_sample_vectors;
+  std::vector<std::vector<T>*> combined_sample_vectors;
   bool verbose;
 
   inline TraceSamples() : verbose(false) {}
@@ -785,10 +785,7 @@ struct TraceSamples
   {
     int index = samples.size();
     assign_sample_index(domain, name, index, "array");
-    std::array<size_t, D> subshape;
-    for (int idim = 0; idim < D; idim++)
-      subshape[idim] = shape[idim];
-    Array<T, D>* a    = new Array<T, D>(subshape);
+    Array<T, D>* a    = new Array<T, D>(shape.data());
     TraceSample<T>* s = new TraceSample<T>(domain, name, index, D, shape, a->storage());
     samples.push_back(s);
     if (verbose)
@@ -803,10 +800,7 @@ struct TraceSamples
     const std::string& domain = P.parentName();
     int index                 = samples.size();
     assign_sample_index(domain, name, index, "array");
-    std::array<size_t, D> subshape;
-    for (int idim = 0; idim < D; idim++)
-      subshape[idim] = shape[idim];
-    Array<T, D>* a    = new Array<T, D>(subshape);
+    Array<T, D>* a    = new Array<T, D>(shape.data());
     TraceSample<T>* s = new TraceSample<T>(domain, name, index, D, shape, a->storage());
     samples.push_back(s);
     s->array_trace = true;
@@ -819,7 +813,7 @@ struct TraceSamples
   inline TraceSample<T>* get_trace(const std::string& domain, const std::string& name)
   {
     TraceSample<T>* ts = NULL;
-    for (size_t i = 0; i < samples.size(); ++i)
+    for (int i = 0; i < samples.size(); ++i)
     {
       TraceSample<T>& tsc = *samples[i];
       if (tsc.domain == domain && tsc.name == name)
@@ -837,7 +831,7 @@ struct TraceSamples
   inline CombinedTraceSample<T>* get_combined_trace(const std::string& domain, const std::string& name)
   {
     CombinedTraceSample<T>* ts = NULL;
-    for (size_t i = 0; i < combined_samples.size(); ++i)
+    for (int i = 0; i < combined_samples.size(); ++i)
     {
       CombinedTraceSample<T>& tsc = *combined_samples[i];
       if (tsc.domain == domain && tsc.name == name)
@@ -863,14 +857,14 @@ struct TraceSamples
       std::string domain                  = it->first;
       std::map<std::string, int>& indices = it->second;
       bool any_present                    = false;
-      for (size_t i = 0; i < names.size(); ++i)
+      for (int i = 0; i < names.size(); ++i)
         any_present = any_present || indices.count(names[i]) > 0;
       if (any_present)
       {
         int index                        = samples.size();
-        auto* sample                     = new Vector<T>;
+        std::vector<T>* sample           = new std::vector<T>;
         CombinedTraceSample<T>* combined = new CombinedTraceSample<T>(domain, name, index, 0, *sample);
-        for (size_t i = 0; i < names.size(); ++i)
+        for (int i = 0; i < names.size(); ++i)
         {
           if (indices.count(names[i]) > 0)
           {
@@ -891,14 +885,14 @@ struct TraceSamples
 
   inline void set_unit_size(int usize)
   {
-    for (size_t i = 0; i < samples.size(); i++)
+    for (int i = 0; i < samples.size(); i++)
       samples[i]->set_unit_size(usize);
   }
 
 
   inline void screen_writes(TraceRequest& request)
   {
-    for (size_t i = 0; i < samples.size(); i++)
+    for (int i = 0; i < samples.size(); i++)
     {
       TraceSample<T>& s = *samples[i];
       bool stream       = request.screen_sample(s.domain, s.name, s.write);
@@ -915,7 +909,7 @@ struct TraceSamples
 
   inline void order_by_size()
   {
-    for (size_t i = 0; i < samples.size(); i++)
+    for (int i = 0; i < samples.size(); i++)
       samples[i]->set_data_size();
     ordered_samples.resize(samples.size());
     copy(samples.begin(), samples.end(), ordered_samples.begin());
@@ -925,7 +919,7 @@ struct TraceSamples
 
   inline void set_buffer_ranges(int& starting_index)
   {
-    for (size_t i = 0; i < ordered_samples.size(); i++)
+    for (int i = 0; i < ordered_samples.size(); i++)
     {
       TraceSample<T>& sample = *ordered_samples[i];
       sample.set_buffer_range(starting_index);
@@ -936,7 +930,7 @@ struct TraceSamples
   inline int total_size()
   {
     int s = 0;
-    for (size_t i = 0; i < samples.size(); i++)
+    for (int i = 0; i < samples.size(); i++)
       s += samples[i]->sample.size() * samples[i]->unit_size;
     return s;
   }
@@ -945,7 +939,7 @@ struct TraceSamples
   inline int min_buffer_index()
   {
     int min_index = 2000000000;
-    for (size_t i = 0; i < samples.size(); i++)
+    for (int i = 0; i < samples.size(); i++)
       min_index = std::min(min_index, samples[i]->buffer_start);
     return min_index;
   }
@@ -954,7 +948,7 @@ struct TraceSamples
   inline int max_buffer_index()
   {
     int max_index = -1;
-    for (size_t i = 0; i < samples.size(); i++)
+    for (int i = 0; i < samples.size(); i++)
       max_index = std::max(max_index, samples[i]->buffer_end);
     return max_index;
   }
@@ -962,14 +956,14 @@ struct TraceSamples
 
   inline void combine_samples()
   {
-    for (size_t i = 0; i < combined_samples.size(); ++i)
+    for (int i = 0; i < combined_samples.size(); ++i)
       combined_samples[i]->combine();
   }
 
 
   inline void reset_combined_samples()
   {
-    for (size_t i = 0; i < combined_samples.size(); ++i)
+    for (int i = 0; i < combined_samples.size(); ++i)
       combined_samples[i]->reset();
   }
 
@@ -1039,15 +1033,15 @@ struct TraceSamples
     }
     app_log() << pad2 << "end sample_indices" << std::endl;
     app_log() << pad2 << "combined_sample_vectors = ";
-    for (size_t i = 0; i < combined_sample_vectors.size(); ++i)
+    for (int i = 0; i < combined_sample_vectors.size(); ++i)
       app_log() << (size_t)combined_sample_vectors[i] << " ";
     app_log() << std::endl;
     app_log() << pad2 << "combined_samples" << std::endl;
-    for (size_t i = 0; i < combined_samples.size(); ++i)
+    for (int i = 0; i < combined_samples.size(); ++i)
       combined_samples[i]->write_summary_combined(i, pad3);
     app_log() << pad2 << "end combined_samples" << std::endl;
     app_log() << pad2 << "samples" << std::endl;
-    for (size_t i = 0; i < ordered_samples.size(); ++i)
+    for (int i = 0; i < ordered_samples.size(); ++i)
       ordered_samples[i]->write_summary(i, pad3);
     //for(int i=0; i<samples.size(); ++i)
     //  samples[i]->write_summary(i,pad3);
@@ -1185,10 +1179,7 @@ struct TraceBuffer
       //make space for the row, if necessary
       int current_row = nrows;
       nrows++;
-      // resizing buffer(type Array) doesn't preserve data. Thus keep old data and copy over
-      auto buffer_old(buffer);
       buffer.resize(nrows, row_size);
-      std::copy_n(buffer_old.data(), buffer_old.size(), buffer.data());
       if (verbose)
         app_log() << "  increasing # of rows to " << nrows << std::endl;
       //combine samples
@@ -1196,32 +1187,39 @@ struct TraceBuffer
       if (has_complex)
         complex_samples->combine_samples();
       //collect data from all samples into the buffer row
+      int offset = current_row * row_size;
       {
+        int boffset;
         std::vector<TraceSample<T>*>& ordered_samples = samples->ordered_samples;
-        for (size_t s = 0; s < ordered_samples.size(); s++)
+        for (int s = 0; s < ordered_samples.size(); s++)
         {
           TraceSample<T>& tsample = *ordered_samples[s];
           if (tsample.write)
           {
-            auto& sample = tsample.sample;
-            for (size_t i = 0; i < sample.size(); ++i)
-              buffer(current_row, tsample.buffer_start + i) = sample[i];
+            std::vector<T>& sample = tsample.sample;
+            boffset                = offset + tsample.buffer_start;
+            for (int i = 0; i < sample.size(); ++i)
+            {
+              buffer(boffset + i) = sample[i];
+            }
           }
         }
       }
       if (has_complex)
       {
+        int boffset;
         std::vector<TraceSample<std::complex<T>>*>& ordered_samples = complex_samples->ordered_samples;
-        for (size_t s = 0; s < ordered_samples.size(); s++)
+        for (int s = 0; s < ordered_samples.size(); s++)
         {
           TraceSample<std::complex<T>>& tsample = *ordered_samples[s];
           if (tsample.write)
           {
-            auto& sample = tsample.sample;
-            for (size_t i = 0, ib = 0; i < sample.size(); ++i, ib += 2)
+            std::vector<std::complex<T>>& sample = tsample.sample;
+            boffset                              = offset + tsample.buffer_start;
+            for (int i = 0, ib = 0; i < sample.size(); ++i, ib += 2)
             {
-              buffer(current_row, tsample.buffer_start + ib)     = sample[i].real();
-              buffer(current_row, tsample.buffer_start + ib + 1) = sample[i].imag();
+              buffer(boffset + ib)     = sample[i].real();
+              buffer(boffset + ib + 1) = sample[i].imag();
             }
           }
         }
@@ -1327,7 +1325,7 @@ struct TraceBuffer
       //check that no overlap exists in writes to buffer
       Array<int, 2> test_buffer;
       test_buffer.resize(1, sample_size);
-      std::fill(test_buffer.begin(), test_buffer.end(), 0);
+      fill(test_buffer.begin(), test_buffer.end(), 0);
       int row      = 0;
       int row_size = test_buffer.size(1);
       int offset   = row * row_size;
@@ -1338,7 +1336,7 @@ struct TraceBuffer
       {
         int boffset;
         std::vector<TraceSample<T>*>& ordered_samples = samples->ordered_samples;
-        for (size_t s = 0; s < ordered_samples.size(); s++)
+        for (int s = 0; s < ordered_samples.size(); s++)
         {
           TraceSample<T>& tsample = *ordered_samples[s];
           std::vector<T>& sample  = tsample.sample;
@@ -1351,7 +1349,7 @@ struct TraceBuffer
       {
         int boffset;
         std::vector<TraceSample<std::complex<T>>*>& ordered_samples = complex_samples->ordered_samples;
-        for (size_t s = 0; s < ordered_samples.size(); s++)
+        for (int s = 0; s < ordered_samples.size(); s++)
         {
           TraceSample<std::complex<T>>& tsample = *ordered_samples[s];
           std::vector<std::complex<T>>& sample  = tsample.sample;
@@ -1448,9 +1446,9 @@ public:
   bool hdf_format;
   std::string file_root;
   Communicate* communicator;
-  std::unique_ptr<hdf_archive> hdf_file;
+  hdf_archive* hdf_file;
 
-  TraceManager(Communicate* comm = 0) : verbose(false)
+  TraceManager(Communicate* comm = 0) : verbose(false), hdf_file(0)
   {
     reset_permissions();
     master_copy    = true;
@@ -1522,7 +1520,12 @@ public:
     method_allows_traces  = allow_traces;
     file_root             = series_root;
     bool traces_requested = cur != NULL;
+    //AV added to avoid error messages:
+    traces_requested=false;
+    method_allows_traces=false;
+    //------------------------------
     streaming_traces      = traces_requested && method_allows_traces;
+    //std::cout<<" traces_requested: "<<traces_requested<<" method_allows_traces: "<<method_allows_traces<<std::endl;
     if (streaming_traces)
     {
       if (omp_get_thread_num() == 0)
@@ -1558,7 +1561,7 @@ public:
       bool use_scalar_defaults = scalar_defaults == "yes";
       bool use_array_defaults  = array_defaults == "yes";
       verbose                  = verbose_write == "yes";
-      format                   = lowerCase(format);
+      tolower(format);
       if (format == "hdf")
       {
         hdf_format = true;
@@ -1850,7 +1853,7 @@ public:
   {
     std::vector<TraceReal> weights;
     weights.resize(names.size());
-    std::fill(weights.begin(), weights.end(), 1.0);
+    fill(weights.begin(), weights.end(), 1.0);
     make_combined_trace(name, names, weights);
   }
 
@@ -1877,7 +1880,7 @@ public:
       bool int_same;
       bool real_same;
       TraceManager& ref = *clones[0];
-      for (size_t i = 0; i < clones.size(); ++i)
+      for (int i = 0; i < clones.size(); ++i)
       {
         TraceManager& tm = *clones[i];
         int_same         = tm.int_buffer.same_as(ref.int_buffer);
@@ -1886,7 +1889,7 @@ public:
       }
       if (!all_same)
       {
-        for (size_t i = 0; i < clones.size(); ++i)
+        for (int i = 0; i < clones.size(); ++i)
           clones[i]->write_summary();
         APP_ABORT("TraceManager::check_clones  trace buffer widths of clones do not match\n  contiguous write is "
                   "impossible\n  this was first caused by clones contributing array traces from identical, but "
@@ -2068,25 +2071,22 @@ public:
       APP_ABORT("TraceManager::open_hdf_file  no trace clones exist, cannot open file");
     int nprocs = communicator->size();
     int rank   = communicator->rank();
-    std::array<char, 32> ptoken;
+    char ptoken[32];
     std::string file_name = file_root;
     if (nprocs > 1)
     {
-      int length{0};
       if (nprocs > 10000)
-        length = std::snprintf(ptoken.data(), ptoken.size(), ".p%05d", rank);
+        sprintf(ptoken, ".p%05d", rank);
       else if (nprocs > 1000)
-        length = std::snprintf(ptoken.data(), ptoken.size(), ".p%04d", rank);
+        sprintf(ptoken, ".p%04d", rank);
       else
-        length = std::snprintf(ptoken.data(), ptoken.size(), ".p%03d", rank);
-      if (length < 0)
-        throw std::runtime_error("Error generating filename");
-      file_name.append(ptoken.data(), length);
+        sprintf(ptoken, ".p%03d", rank);
+      file_name += ptoken;
     }
     file_name += ".traces.h5";
     if (verbose)
       app_log() << "TraceManager::open_hdf_file  opening traces hdf file " << file_name << std::endl;
-    hdf_file        = std::make_unique<hdf_archive>();
+    hdf_file        = new hdf_archive(communicator, false);
     bool successful = hdf_file->create(file_name);
     if (!successful)
       APP_ABORT("TraceManager::open_hdf_file  failed to open hdf file " + file_name);
@@ -2102,7 +2102,7 @@ public:
   {
     if (verbose)
       app_log() << "TraceManager::write_buffers_hdf " << master_copy << std::endl;
-    for (size_t ip = 0; ip < clones.size(); ++ip)
+    for (int ip = 0; ip < clones.size(); ++ip)
     {
       TraceManager& tm = *clones[ip];
       tm.int_buffer.write_hdf(*hdf_file, int_buffer.hdf_file_pointer);
@@ -2110,7 +2110,7 @@ public:
     }
   }
 
-  inline void close_hdf_file() { hdf_file.reset(); }
+  inline void close_hdf_file() { delete hdf_file; }
 };
 
 
@@ -2127,9 +2127,9 @@ public:
 
 namespace qmcplusplus
 {
-using TraceInt  = long;
-using TraceReal = double;
-using TraceComp = std::complex<TraceReal>;
+typedef long TraceInt;
+typedef double TraceReal;
+typedef std::complex<TraceReal> TraceComp;
 
 struct TraceRequest
 {

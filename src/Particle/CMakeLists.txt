@@ -14,14 +14,12 @@
 ####################################
 set(PARTICLE
     InitMolecularSystem.cpp
-    SimulationCell.cpp
     ParticleSetPool.cpp
     ParticleSet.cpp
     PSdispatcher.cpp
     VirtualParticleSet.cpp
     ParticleSet.BC.cpp
     DynamicCoordinatesBuilder.cpp
-    MCCoords.cpp
     MCWalkerConfiguration.cpp
     WalkerConfigurations.cpp
     SpeciesSet.cpp
@@ -29,18 +27,31 @@ set(PARTICLE
     createDistanceTableAA.cpp
     createDistanceTableAB.cpp
     HDFWalkerInputManager.cpp
-    Lattice/CrystalLattice.cpp
     LongRange/KContainer.cpp
     LongRange/StructFact.cpp
     LongRange/LPQHIBasis.cpp
     LongRange/LPQHISRCoulombBasis.cpp
-    LongRange/EwaldHandlerQuasi2D.cpp
-    LongRange/EwaldHandler3D.cpp
-    LongRange/EwaldHandler2D.cpp
+    LongRange/TwoDEwaldHandler.cpp
     LongRange/LRCoulombSingleton.cpp)
 
-set(PARTICLEIO ParticleTags.cpp ParticleIO/LatticeIO.cpp ParticleIO/XMLParticleIO.cpp HDFWalkerOutput.cpp
-               HDFWalkerInput_0_4.cpp)
+if(OHMMS_DIM MATCHES 3)
+  set(PARTICLE ${PARTICLE} LongRange/EwaldHandler.cpp)
+  set(PARTICLE ${PARTICLE} LongRange/EwaldHandler3D.cpp)
+endif(OHMMS_DIM MATCHES 3)
+
+
+if(ENABLE_OFFLOAD)
+  set(PARTICLE ${PARTICLE} createDistanceTableAAOMPTarget.cpp createDistanceTableABOMPTarget.cpp)
+endif(ENABLE_OFFLOAD)
+
+
+set(PARTICLEIO
+    ParticleTags.cpp
+    ParticleIO/ParticleLayoutIO.cpp
+    ParticleIO/XMLParticleIO.cpp
+    ParticleIO/ParticleIOUtility.cpp
+    HDFWalkerOutput.cpp
+    HDFWalkerInput_0_4.cpp)
 
 if(USE_OBJECT_TARGET)
   add_library(qmcparticle OBJECT ${PARTICLE} ${PARTICLEIO})
@@ -51,16 +62,16 @@ endif(USE_OBJECT_TARGET)
 target_include_directories(qmcparticle PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(qmcparticle PRIVATE platform_cpu_LA)
 target_link_libraries(qmcparticle PUBLIC qmcnumerics qmcutil platform_runtime)
-set(PARTICLE_OMPTARGET_SRCS
-    createDistanceTableAAOMPTarget.cpp
-    createDistanceTableABOMPTarget.cpp)
 
-add_library(qmcparticle_omptarget OBJECT ${PARTICLE_OMPTARGET_SRCS})
-
-target_include_directories(qmcparticle_omptarget PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(qmcparticle_omptarget PUBLIC qmcutil containers)
-
-target_link_libraries(qmcparticle PUBLIC qmcparticle_omptarget)
+if(QMC_CUDA)
+  if(NOT QMC_CUDA2HIP)
+    add_library(qmcparticle_cuda accept_kernel.cu)
+  else()
+    hip_add_library(qmcparticle_cuda accept_kernel.cu)
+  endif(NOT QMC_CUDA2HIP)
+  target_link_libraries(qmcparticle_cuda PRIVATE platform_runtime)
+  target_link_libraries(qmcparticle PRIVATE qmcparticle_cuda)
+endif(QMC_CUDA)
 
 if(BUILD_UNIT_TESTS)
   add_subdirectory(tests)

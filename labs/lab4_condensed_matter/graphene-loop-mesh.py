@@ -143,7 +143,6 @@ linopt2.samples = 20000
 
 # optimization run
 opt = generate_qmcpack(
-    driver       = 'legacy',
     identifier   = 'opt',
     path         = directory+'/opt',
     job          = qmc_job,
@@ -165,7 +164,6 @@ factors = [0.6,0.7,0.8,0.9]
 for factor in factors:
     fc = '{0:.2f}'.format(factor)
     qmc = generate_qmcpack(
-        driver       = 'legacy',
         identifier   = 'vmc',
         path         = directory+'/vmc-factor-'+fc,
         job          = qmc_job,

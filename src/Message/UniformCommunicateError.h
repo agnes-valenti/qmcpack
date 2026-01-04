@@ -10,8 +10,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #ifndef QMCPLUSPLUS_UNIFORMCOMMUNICATEERROR_H
 #define QMCPLUSPLUS_UNIFORMCOMMUNICATEERROR_H
-#include <stdexcept>
-
+#include <exception>
 namespace qmcplusplus
 {
 /** This a subclass for runtime errors that will occur on all ranks.

@@ -39,16 +39,11 @@ namespace formic {
   /// \brief  An iterator used for iterating over the elements of a matrix row.
   ///
   ///////////////////////////////////////////////////////////////////////////////////////////////////
-  template<class S> class RowConstIterator {
+  template<class S> class RowConstIterator : public std::iterator<std::bidirectional_iterator_tag, const S> {
     private:
       const S * m_x;
       size_t m_n;
     public:
-      using iterator_category = std::bidirectional_iterator_tag;
-      using value_type = S;
-      using difference_type = S;
-      using pointer = S*;
-      using reference = S&;
       RowConstIterator(const S * x, size_t n) : m_x(x), m_n(n) {}
       const S & operator*() const { return *m_x; }
       const S * operator->() const { return m_x; }
@@ -64,16 +59,11 @@ namespace formic {
   /// \brief  An iterator used for iterating over the elements of a matrix row.
   ///
   ///////////////////////////////////////////////////////////////////////////////////////////////////
-  template<class S> class RowIterator {
+  template<class S> class RowIterator : public std::iterator<std::bidirectional_iterator_tag, S> {
     private:
       S * m_x;
       size_t m_n;
     public:
-      using iterator_category = std::bidirectional_iterator_tag;
-      using value_type = S;
-      using difference_type = S;
-      using pointer = S*;
-      using reference = S&;
       RowIterator(S * x, size_t n) : m_x(x), m_n(n) {}
       S & operator*() { return *m_x; }
       S * operator->() { return m_x; }

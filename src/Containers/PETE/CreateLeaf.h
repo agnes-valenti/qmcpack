@@ -53,7 +53,7 @@ class Expression
 public:
   // Type of the expression.
 
-  using Expression_t = T;
+  typedef T Expression_t;
 
   // Construct from an expression.
 
@@ -92,7 +92,7 @@ private:
 template<class T>
 struct CreateLeaf
 {
-  using Leaf_t = Scalar<T>;
+  typedef Scalar<T> Leaf_t;
 
   inline static Leaf_t make(const T& a) { return Scalar<T>(a); }
 };
@@ -106,7 +106,7 @@ struct CreateLeaf
 template<class T>
 struct CreateLeaf<Expression<T>>
 {
-  using Leaf_t = typename Expression<T>::Expression_t;
+  typedef typename Expression<T>::Expression_t Leaf_t;
 
   inline static const Leaf_t& make(const Expression<T>& a) { return a.expression(); }
 };
@@ -128,7 +128,7 @@ struct CreateLeaf<Expression<T>>
 template<class T>
 struct MakeReturn
 {
-  using Expression_t = Expression<T>;
+  typedef Expression<T> Expression_t;
   inline static Expression_t make(const T& a) { return Expression_t(a); }
 };
 

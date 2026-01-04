@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="LiH" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="LiH" series="0"/>
   <include href="LiH.structure.xml"/>
   <include href="LiH.wfnoj.xml"/>
   <hamiltonian name="h0" type="generic" target="e">

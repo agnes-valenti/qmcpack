@@ -20,12 +20,10 @@
 #include "OhmmsData/AttributeSet.h"
 #include <cmath>
 
-namespace qmcplusplus
-{
 template<class T>
 struct GaussianTimesRN : public OptimizableFunctorBase
 {
-  using value_type = T;
+  typedef T value_type;
   real_type Y, dY, d2Y;
 
   struct BasicGaussian
@@ -66,31 +64,31 @@ struct GaussianTimesRN : public OptimizableFunctorBase
     inline real_type f(real_type r, real_type rr)
     {
       if (Power == 0)
-        return Coeff * std::exp(MinusSigma * rr);
+        return Coeff * exp(MinusSigma * rr);
       else if (Power == 1)
-        return r * Coeff * std::exp(MinusSigma * rr);
+        return r * Coeff * exp(MinusSigma * rr);
       else
-        return std::pow(r, Power) * Coeff * std::exp(MinusSigma * rr);
+        return std::pow(r, Power) * Coeff * exp(MinusSigma * rr);
     }
 
     inline real_type df(real_type r, real_type rr)
     {
       if (Power == 0)
-        return CoeffP * r * std::exp(MinusSigma * rr);
+        return CoeffP * r * exp(MinusSigma * rr);
       else if (Power == 1)
-        return (Coeff + CoeffP * r) * std::exp(MinusSigma * rr);
+        return (Coeff + CoeffP * r) * exp(MinusSigma * rr);
       else
       {
-        return std::pow(r, Power - 1) * (PowerC + CoeffP * rr) * std::exp(MinusSigma * rr);
+        return std::pow(r, Power - 1) * (PowerC + CoeffP * rr) * exp(MinusSigma * rr);
       }
     }
 
     inline real_type evaluate(real_type r, real_type rr, real_type& du, real_type& d2u)
     {
-      T v = std::exp(MinusSigma * rr);
+      T v = exp(MinusSigma * rr);
       if (Power == 0)
       {
-        du += CoeffP * r * v;
+        du  += CoeffP * r * v;
         d2u += (CoeffP + CoeffPP * rr) * v;
         return Coeff * v;
       }
@@ -122,9 +120,9 @@ struct GaussianTimesRN : public OptimizableFunctorBase
 
   void reset() override;
 
-  void checkInVariablesExclusive(opt_variables_type& active) override {}
+  void checkInVariables(opt_variables_type& active) override {}
   void checkOutVariables(const opt_variables_type& active) override {}
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     ///DO NOTHING FOR NOW
   }
@@ -237,9 +235,8 @@ void GaussianTimesRN<T>::reset()
 template<class T>
 bool GaussianTimesRN<T>::putBasisGroup(xmlNodePtr cur, int baseOff)
 {
-  const std::string t(getXMLAttributeValue(cur, "basePower"));
-  if (!t.empty())
-    basePower = std::stoi(t);
+  const XMLAttrString t(cur, "basePower");
+  if (!t.empty()) basePower = std::stoi(t);
   basePower += baseOff;
   cur = cur->children;
   while (cur != NULL)
@@ -255,5 +252,4 @@ bool GaussianTimesRN<T>::putBasisGroup(xmlNodePtr cur, int baseOff)
   return true;
 }
 
-} // namespace qmcplusplus
 #endif

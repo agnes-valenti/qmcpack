@@ -18,12 +18,9 @@
 #define QMCPLUSPLUS_BAREKINETICENERGY_H
 
 #include "QMCHamiltonians/OperatorBase.h"
-#include <ResourceCollection.h>
-#include <ResourceHandle.h>
 
 namespace qmcplusplus
 {
-
 /** @ingroup hamiltonian
   @brief Evaluate the kinetic energy with a single mass
 
@@ -43,19 +40,41 @@ namespace qmcplusplus
 class BareKineticEnergy : public OperatorBase
 {
 public:
+  ///true, if all the species have the same mass
+  bool SameMass;
+  ///mass of the particle
+  FullPrecRealType M;
+  ///\f$ 1/(2 m^*) \f$
+  FullPrecRealType OneOver2M;
+  ///MinusOver2M[i] = \f$ -1/2m[i]\f$ for the ith species
+  std::vector<FullPrecRealType> MinusOver2M;
+
+  ParticleSet::ParticleGradient_t Gtmp;
+  ParticleSet::ParticleLaplacian_t Ltmp;
+
+  ///single particle trace samples
+  bool streaming_kinetic;
+  bool streaming_kinetic_comp;
+  bool streaming_momentum;
+
+#if !defined(REMOVE_TRACEMANAGER)
+  Array<TraceReal, 1>* T_sample;
+  Array<TraceComp, 1>* T_sample_comp;
+  Array<TraceComp, 2>* p_sample;
+#endif
+  ParticleSet& Ps;
+
   /** constructor with particleset
    * @param target particleset
    *
    * Store mass per species and use SameMass to choose the methods.
    * if SameMass, probably faster and easy to vectorize but no impact on the performance.
    */
-  BareKineticEnergy(ParticleSet& p, TrialWaveFunction& psi);
+  BareKineticEnergy(ParticleSet& p);
   ///destructor
   ~BareKineticEnergy() override;
 
-  bool dependsOnWaveFunction() const override;
-  std::string getClassName() const override;
-  void resetTargetParticleSet(ParticleSet& p) override;
+  void resetTargetParticleSet(ParticleSet& P) override {}
 
 #if !defined(REMOVE_TRACEMANAGER)
   void contributeParticleQuantities() override;
@@ -65,66 +84,28 @@ public:
 
   Return_t evaluate(ParticleSet& P) override;
 
-  Return_t evaluateValueAndDerivatives(ParticleSet& P,
-                                       const opt_variables_type& optvars,
-                                       const Vector<ValueType>& dlogpsi,
-                                       Vector<ValueType>& dhpsioverpsi) override;
-
-  void mw_evaluateWithParameterDerivatives(const RefVectorWithLeader<OperatorBase>& o_list,
-                                           const RefVectorWithLeader<ParticleSet>& p_list,
-                                           const opt_variables_type& optvars,
-                                           const RecordArray<ValueType>& dlogpsi,
-                                           RecordArray<ValueType>& dhpsioverpsi) const override;
-
-  /** Evaluate the contribution of this component for multiple walkers reporting
-   *  to registered listeners from Estimators.
-   */
-  void mw_evaluatePerParticle(const RefVectorWithLeader<OperatorBase>& o_list,
-                              const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-                              const RefVectorWithLeader<ParticleSet>& p_list,
-                              const std::vector<ListenerVector<RealType>>& listeners,
-                              const std::vector<ListenerVector<RealType>>& ion_listeners) const override;
-
-  /** For BareKineticEnergy since it does override any Toperator evals this needs to decay to
-   *  mw_evaluatePerParticle.
-   *
-   *  This method must be overrideen since the default behavior is to decay to mw_evaluateWithToperator
-   *  and its default behavior is to call mw_evaluate.
-   */
-  void mw_evaluatePerParticleWithToperator(const RefVectorWithLeader<OperatorBase>& o_list,
-                                           const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-                                           const RefVectorWithLeader<ParticleSet>& p_list,
-                                           const std::vector<ListenerVector<RealType>>& listeners,
-                                           const std::vector<ListenerVector<RealType>>& ion_listeners) const override;
-
   /**@brief Function to compute the value, direct ionic gradient terms, and pulay terms for the local kinetic energy.
-  *  
-  *  This general function represents the OperatorBase interface for computing.  For an operator \hat{O}, this
-  *  function will return \frac{\hat{O}\Psi_T}{\Psi_T},  \frac{\partial(\hat{O})\Psi_T}{\Psi_T}, and 
-  *  \frac{\hat{O}\partial\Psi_T}{\Psi_T} - \frac{\hat{O}\Psi_T}{\Psi_T}\frac{\partial \Psi_T}{\Psi_T}.  These are 
-  *  referred to as Value, HF term, and pulay term respectively.
-  *
-  * @param P electron particle set.
-  * @param ions ion particle set
-  * @param psi Trial wave function object.
-  * @param hf_terms 3Nion dimensional object. All direct force terms, or ionic gradient of operator itself.
-  *                 Contribution of this operator is ADDED onto hf_terms.
-  * @param pulay_terms The terms coming from ionic gradients of trial wavefunction.  Contribution of this operator is
-  *                 ADDED onto pulay_terms.
-  */
-  void evaluateIonDerivs(ParticleSet& P,
-                         ParticleSet& ions,
-                         TrialWaveFunction& psi,
-                         ParticleSet::ParticlePos& hf_terms,
-                         ParticleSet::ParticlePos& pulay_terms) override;
-
-  void evaluateOneBodyOpMatrix(ParticleSet& P, const TWFFastDerivWrapper& psi, std::vector<ValueMatrix>& B) override;
-
-  void evaluateOneBodyOpMatrixForceDeriv(ParticleSet& P,
-                                         ParticleSet& source,
-                                         const TWFFastDerivWrapper& psi,
-                                         const int iat,
-                                         std::vector<std::vector<ValueMatrix>>& Bforce) override;
+ *  
+ *  This general function represents the OperatorBase interface for computing.  For an operator \hat{O}, this
+ *  function will return \frac{\hat{O}\Psi_T}{\Psi_T},  \frac{\partial(\hat{O})\Psi_T}{\Psi_T}, and 
+ *  \frac{\hat{O}\partial\Psi_T}{\Psi_T} - \frac{\hat{O}\Psi_T}{\Psi_T}\frac{\partial \Psi_T}{\Psi_T}.  These are 
+ *  referred to as Value, HF term, and pulay term respectively.
+ *
+ * @param P electron particle set.
+ * @param ions ion particle set
+ * @param psi Trial wave function object.
+ * @param hf_terms 3Nion dimensional object. All direct force terms, or ionic gradient of operator itself.
+ *                 Contribution of this operator is ADDED onto hf_terms.
+ * @param pulay_terms The terms coming from ionic gradients of trial wavefunction.  Contribution of this operator is
+ *                 ADDED onto pulay_terms.
+ * @return Value of kinetic energy operator at electron/ion positions given by P and ions.  The force contributions from
+ *          this operator are added into hf_terms and pulay_terms.
+ */
+  Return_t evaluateWithIonDerivs(ParticleSet& P,
+                                 ParticleSet& ions,
+                                 TrialWaveFunction& psi,
+                                 ParticleSet::ParticlePos_t& hf_terms,
+                                 ParticleSet::ParticlePos_t& pulay_terms) override;
 
 #if !defined(REMOVE_TRACEMANAGER)
   Return_t evaluate_sp(ParticleSet& P);
@@ -142,42 +123,13 @@ public:
 
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& qp, TrialWaveFunction& psi) final;
 
-  /** initialize a shared resource and hand it to a collection
-   */
-  void createResource(ResourceCollection& collection) const override;
-
-  /** acquire a shared resource from a collection
-   */
-  void acquireResource(ResourceCollection& collection, const RefVectorWithLeader<OperatorBase>& o_list) const override;
-
-  /** return a shared resource to a collection
-   */
-  void releaseResource(ResourceCollection& collection, const RefVectorWithLeader<OperatorBase>& o_list) const override;
-
-private:
-  ///true, if all the species have the same mass
-  bool same_mass_;
-
-  ///mass of the particle
-  FullPrecRealType particle_mass_;
-
-  ///\f$ 1/(2 m^*) \f$
-  FullPrecRealType one_over_2m_;
-  ///minus_over_2m_[i] = \f$ -1/2m[i]\f$ for the ith species
-  std::vector<FullPrecRealType> minus_over_2m_;
-
-#if !defined(REMOVE_TRACEMANAGER)
-  Array<TraceReal, 1>* t_sample_;
-  Array<TraceComp, 1>* t_sample_comp_;
-  Array<TraceComp, 2>* p_sample_;
+#ifdef QMC_CUDA
+  ////////////////////////////////
+  // Vectorized version for GPU //
+  ////////////////////////////////
+  // Nothing is done on GPU here, just copy into vector
+  void addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy) override;
 #endif
-
-  ParticleSet& ps_;
-
-  struct MultiWalkerResource;
-  ResourceHandle<MultiWalkerResource> mw_res_;
-
-  TrialWaveFunction& psi_;
 };
 
 } // namespace qmcplusplus

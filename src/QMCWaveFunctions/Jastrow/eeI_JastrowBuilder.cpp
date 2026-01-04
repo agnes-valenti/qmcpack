@@ -32,7 +32,7 @@ eeI_JastrowBuilder::eeI_JastrowBuilder(Communicate* comm, ParticleSet& target, P
 template<typename J3type>
 bool eeI_JastrowBuilder::putkids(xmlNodePtr kids, J3type& J3)
 {
-  auto& jname      = J3.getName();
+  auto& jname      = J3.myName;
   SpeciesSet& iSet = sourcePtcl->getSpeciesSet();
   SpeciesSet& eSet = targetPtcl.getSpeciesSet();
   //read in xml
@@ -51,10 +51,8 @@ bool eeI_JastrowBuilder::putkids(xmlNodePtr kids, J3type& J3)
       rAttrib.add(ee_cusp, "ecusp");
       rAttrib.add(eI_cusp, "icusp");
       rAttrib.put(kids);
-      using FT           = typename J3type::FuncType;
-      const auto coef_id = extractCoefficientsID(kids);
-      auto functor =
-          std::make_unique<FT>(coef_id.empty() ? jname + "_"  + iSpecies + eSpecies1 + eSpecies2 : coef_id, ee_cusp, eI_cusp);
+      typedef typename J3type::FuncType FT;
+      auto functor       = std::make_unique<FT>(ee_cusp, eI_cusp);
       functor->iSpecies  = iSpecies;
       functor->eSpecies1 = eSpecies1;
       functor->eSpecies2 = eSpecies2;
@@ -79,9 +77,9 @@ bool eeI_JastrowBuilder::putkids(xmlNodePtr kids, J3type& J3)
         APP_ABORT("electron species " + illegal_eSpecies + " requested for Jastrow " + jname +
                   " does not exist in ParticleSet " + targetPtcl.getName());
       functor->put(kids);
-      if (sourcePtcl->getLattice().SuperCellEnum != SUPERCELL_OPEN)
+      if (sourcePtcl->Lattice.SuperCellEnum != SUPERCELL_OPEN)
       {
-        const RealType WSRadius = sourcePtcl->getLattice().WignerSeitzRadius;
+        const RealType WSRadius = sourcePtcl->Lattice.WignerSeitzRadius;
         if (functor->cutoff_radius > WSRadius)
         {
           if (functor->cutoff_radius - WSRadius > 1e-4)
@@ -114,6 +112,7 @@ bool eeI_JastrowBuilder::putkids(xmlNodePtr kids, J3type& J3)
   }
   //check that each ion species has up and down components
   J3.check_complete();
+  J3.setOptimizable(true);
   return true;
 }
 
@@ -130,13 +129,14 @@ std::unique_ptr<WaveFunctionComponent> eeI_JastrowBuilder::buildComponent(xmlNod
     tAttrib.add(ftype, "function");
     tAttrib.put(cur);
 
-    std::string input_name(getXMLAttributeValue(cur, "name"));
+    XMLAttrString input_name(cur, "name");
     std::string jname = input_name.empty() ? "JeeI_" + ftype : input_name;
-    SpeciesSet& iSet  = sourcePtcl->getSpeciesSet();
+
+    SpeciesSet& iSet = sourcePtcl->getSpeciesSet();
     if (ftype == "polynomial")
     {
-      using J3Type = JeeIOrbitalSoA<PolynomialFunctor3D>;
-      auto J3      = std::make_unique<J3Type>(jname, *sourcePtcl, targetPtcl);
+      typedef JeeIOrbitalSoA<PolynomialFunctor3D> J3Type;
+      auto J3 = std::make_unique<J3Type>(jname, *sourcePtcl, targetPtcl, true);
       putkids(kids, *J3);
       return J3;
     }

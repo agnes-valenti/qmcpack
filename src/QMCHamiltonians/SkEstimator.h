@@ -30,14 +30,13 @@ class SkEstimator : public OperatorBase
 public:
   SkEstimator(ParticleSet& elns);
 
-  std::string getClassName() const override { return "SkEstimator"; }
   void resetTargetParticleSet(ParticleSet& P) override;
 
   Return_t evaluate(ParticleSet& P) override;
 
   void addObservables(PropertySetType& plist);
   void addObservables(PropertySetType& plist, BufferType& collectables) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
   void setObservables(PropertySetType& plist) override;
   void setParticlePropertyList(PropertySetType& plist, int offset) override;
   bool put(xmlNodePtr cur) override;
@@ -61,7 +60,11 @@ protected:
   /** 1.0/degenracy for a ksell */
   std::vector<RealType> OneOverDnk;
   /** \f$rho_k = \sum_{\alpha} \rho_k^{\alpha} \f$ for species index \f$\alpha\f$ */
+#if defined(USE_REAL_STRUCT_FACTOR)
   Vector<RealType> RhokTot_r, RhokTot_i;
+#else
+  Vector<ComplexType> RhokTot;
+#endif
   Vector<RealType> values;
   /** resize the internal data
    *

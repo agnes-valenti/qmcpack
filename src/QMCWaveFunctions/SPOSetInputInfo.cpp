@@ -18,7 +18,7 @@
 
 namespace qmcplusplus
 {
-using RealType = QMCTraits::RealType;
+typedef QMCTraits::RealType RealType;
 
 const int inone          = std::numeric_limits<int>::min();
 const RealType rnone     = std::numeric_limits<RealType>::max();

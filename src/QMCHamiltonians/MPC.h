@@ -15,7 +15,6 @@
 
 #ifndef QMCPLUSPLUS_MPC_H
 #define QMCPLUSPLUS_MPC_H
-
 #include "QMCHamiltonians/OperatorBase.h"
 #include "LongRange/LRCoulombSingleton.h"
 
@@ -36,24 +35,23 @@ protected:
   std::shared_ptr<UBspline_3d_d> VlongSpline;
   //std::shared_ptr<UBspline_3d_d> DensitySpline;
   double Vconst;
+  void compute_g_G(double& g_0_N, std::vector<double>& g_G_N, int N);
+  void init_gvecs();
+  void init_f_G();
+  void init_spline();
   double Ecut;
   std::vector<TinyVector<int, OHMMS_DIM>> Gints;
   std::vector<PosType> Gvecs;
   std::vector<ComplexType> Rho_G;
-  std::array<size_t, OHMMS_DIM> SplineDim;
+  TinyVector<int, OHMMS_DIM> SplineDim;
   int MaxDim;
+  Return_t evalSR(ParticleSet& P) const;
+  Return_t evalLR(ParticleSet& P) const;
   // AA table ID
   const int d_aa_ID;
 
-  void initBreakup(const ParticleSet& ptcl);
-  void compute_g_G(const ParticleSet& ptcl, double& g_0_N, std::vector<double>& g_G_N, int N);
-  void init_gvecs(const ParticleSet& ptcl);
-  void init_f_G(const ParticleSet& ptcl);
-  void init_spline(const ParticleSet& ptcl);
-  Return_t evalSR(ParticleSet& P) const;
-  Return_t evalLR(ParticleSet& P) const;
-
 public:
+  ParticleSet* PtclRef;
   // Store the average electron charge density in reciprocal space
   std::vector<ComplexType> RhoAvg_G;
   std::vector<RealType> f_G;
@@ -77,21 +75,25 @@ public:
 
   ~MPC() override;
 
-  std::string getClassName() const override { return "MPC"; }
   void resetTargetParticleSet(ParticleSet& P) override;
 
   Return_t evaluate(ParticleSet& P) override;
+
+  /** implement all-walker stuff */
+  void addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy) override;
 
   /** Do nothing */
   bool put(xmlNodePtr cur) override;
 
   bool get(std::ostream& os) const override
   {
-    //os << "MPC potential: " << PtclRef->getName();
+    os << "MPC potential: " << PtclRef->getName();
     return true;
   }
 
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& qp, TrialWaveFunction& psi) override;
+
+  void initBreakup();
 };
 
 } // namespace qmcplusplus

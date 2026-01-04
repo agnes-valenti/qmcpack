@@ -16,7 +16,8 @@
 #ifndef QMCPLUSPLUS_WALKER_OUTPUT_H
 #define QMCPLUSPLUS_WALKER_OUTPUT_H
 
-#include "Particle/WalkerConfigurations.h"
+#include "Particle/MCWalkerConfiguration.h"
+// #include "QMCDrivers/ForwardWalking/ForwardWalkingStructure.h"
 #include <utility>
 #include "hdf/hdf_archive.h"
 
@@ -34,35 +35,46 @@ class HDFWalkerOutput
    * When the number of walkers per state has changed, NumOfWalkers is used
    * to reallocate the hdf5 group.
    */
-  size_t number_of_walkers_;
+  size_t number_of_walkers;
   /** number of particles */
-  const size_t number_of_particles_;
+  size_t number_of_particles;
+  ///current number of backups
+  int number_of_backups;
+  ///current number of backups
+  int max_number_of_backups;
   ///communicator
   Communicate* myComm;
   int currentConfigNumber;
   ///rootname
   std::string RootName;
   std::string prevFile;
+  //     ///handle for the storeConfig.h5
+  //     hdf_archive fw_out;
 public:
   ///constructor
-  HDFWalkerOutput(size_t num_ptcls, const std::string& fname, Communicate* c);
+  HDFWalkerOutput(MCWalkerConfiguration& W, const std::string& fname, Communicate* c);
   ///destructor
   ~HDFWalkerOutput();
 
   /** dump configurations
    * @param w walkers
    */
-  bool dump(const WalkerConfigurations& w, int block);
+  bool dump(MCWalkerConfiguration& w, int block);
   //     bool dump(ForwardWalkingHistoryObject& FWO);
 
 private:
   ///PooledData<T> is used to define the shape of multi-dimensional array
-  using BufferType = PooledData<OHMMS_PRECISION>;
+  typedef PooledData<OHMMS_PRECISION> BufferType;
   std::vector<Communicate::request> myRequest;
-  std::array<BufferType, 2> RemoteData;
-  std::array<std::vector<QMCTraits::FullPrecRealType>, 2> RemoteDataW;
+  std::vector<BufferType*> RemoteData;
   int block;
-  void write_configuration(const WalkerConfigurations& W, hdf_archive& hout, int block);
+
+  //     //define some types for the FW collection
+  //     typedef std::vector<ForwardWalkingData> FWBufferType;
+  //     std::vector<FWBufferType*> FWData;
+  //     std::vector<std::vector<int> > FWCountData;
+
+  void write_configuration(MCWalkerConfiguration& W, hdf_archive& hout, int block);
 };
 
 } // namespace qmcplusplus

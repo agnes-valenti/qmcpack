@@ -10,36 +10,24 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "OptimizableFunctorBase.h"
-#include "OhmmsData/XMLParsingString.h"
 
-namespace qmcplusplus
-{
 void print(OptimizableFunctorBase& func, std::ostream& os, double extent)
 {
-  using real_type = OptimizableFunctorBase::real_type;
-  int n           = 1000;
-  real_type d     = extent == -1.0 ? func.cutoff_radius / n : extent / n;
-  real_type r     = 0;
-  real_type u, du;
+  typedef OptimizableFunctorBase::real_type real_type;
+  int n       = 1000;
+  real_type d = extent == -1.0 ? func.cutoff_radius / n : extent / n;
+  real_type r = 0;
+  real_type u, du, u2;
   for (int i = 0; i < n; ++i)
   {
-    u  = func.f(r);
-    du = func.df(r);
-    os << std::setw(22) << r << std::setw(22) << u << std::setw(22) << du << std::endl;
-    r += d;
-  }
-}
+    real_type x=r; //d;
+    real_type y=0; //2*d;
 
-std::string extractCoefficientsID(xmlNodePtr cur)
-{
-  xmlNodePtr xmlCoefs = cur->xmlChildrenNode;
-  while (xmlCoefs != NULL)
-  {
-    std::string cname((const char*)xmlCoefs->name);
-    if (cname == "coefficients")
-      return getXMLAttributeValue(xmlCoefs, "id");
-    xmlCoefs = xmlCoefs->next;
+    //u  = func.f(r);
+    u=0;
+    //u2  = func.f(std::sqrt(x*x+y*y),x*x,y*y,0,-2);
+    //du = func.df(std::sqrt(x*x+y*y),x*x,y*y,0,-2);
+    //os << std::setw(22) << r << std::setw(22) << u2 << std::setw(22) << du << std::endl;
+    //r += d;
   }
-  return "";
 }
-} // namespace qmcplusplus

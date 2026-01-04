@@ -38,6 +38,12 @@ std::unique_ptr<SPOSet> PWRealOrbitalSet::makeClone() const
   return myclone;
 }
 
+
+void PWRealOrbitalSet::resetParameters(const opt_variables_type& active)
+{
+  //DO NOTHING FOR NOW
+}
+
 void PWRealOrbitalSet::setOrbitalSetSize(int norbs) {}
 
 void PWRealOrbitalSet::resize(PWBasisPtr bset, int nbands, bool cleanup)
@@ -87,19 +93,19 @@ void PWRealOrbitalSet::addVector(const std::vector<ComplexType>& coefs, int jorb
   }
 }
 
-void PWRealOrbitalSet::evaluateValue(const ParticleSet& P, int iat, ValueVector& psi)
+void PWRealOrbitalSet::evaluateValue(const ParticleSet& P, int iat, ValueVector_t& psi)
 {
   myBasisSet->evaluate(P.activeR(iat));
-  MatrixOperators::product(CC, myBasisSet->Zv, tempPsi);
+  MatrixOperators::product(CC, myBasisSet->Zv, tempPsi.data());
   for (int j = 0; j < OrbitalSetSize; j++)
     psi[j] = tempPsi[j].real();
 }
 
 void PWRealOrbitalSet::evaluateVGL(const ParticleSet& P,
                                    int iat,
-                                   ValueVector& psi,
-                                   GradVector& dpsi,
-                                   ValueVector& d2psi)
+                                   ValueVector_t& psi,
+                                   GradVector_t& dpsi,
+                                   ValueVector_t& d2psi)
 {
   myBasisSet->evaluateAll(P, iat);
   MatrixOperators::product(CC, myBasisSet->Z, Temp);
@@ -123,9 +129,9 @@ void PWRealOrbitalSet::evaluateVGL(const ParticleSet& P,
 void PWRealOrbitalSet::evaluate_notranspose(const ParticleSet& P,
                                             int first,
                                             int last,
-                                            ValueMatrix& logdet,
-                                            GradMatrix& dlogdet,
-                                            ValueMatrix& d2logdet)
+                                            ValueMatrix_t& logdet,
+                                            GradMatrix_t& dlogdet,
+                                            ValueMatrix_t& d2logdet)
 {
   for (int iat = first, i = 0; iat < last; iat++, i++)
   {

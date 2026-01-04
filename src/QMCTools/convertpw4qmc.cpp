@@ -109,6 +109,5 @@ int main(int argc, char* argv[])
 #ifdef HAVE_MPI
   MPI_Finalize();
 #endif
-  cout << "convertpw4qmc execution completed successfully" << endl;
   return 0;
 }

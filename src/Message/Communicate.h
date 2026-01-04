@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
 //                    Miguel Morales, moralessilva2@llnl.gov, Lawrence Livermore National Laboratory
@@ -11,7 +11,6 @@
 //                    Mark Dewing, markdewing@gmail.com, University of Illinois at Urbana-Champaign
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
 //                    Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
-//                    Alfredo A. Correa, correaa@llnl.gov, Lawrence Livermore National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
@@ -32,17 +31,17 @@ namespace mpi3 = boost::mpi3;
 #ifdef HAVE_MPI
 struct CommunicatorTraits
 {
-  using mpi_comm_type = MPI_Comm;
-  using status        = MPI_Status;
-  using request       = MPI_Request;
+  typedef MPI_Comm mpi_comm_type;
+  typedef MPI_Status status;
+  typedef MPI_Request request;
 };
 
 #else
 struct CommunicatorTraits
 {
-  using mpi_comm_type               = int;
-  using status                      = int;
-  using request                     = int;
+  typedef int mpi_comm_type;
+  typedef int status;
+  typedef int request;
   static const int MPI_COMM_NULL    = 0;
   static const int MPI_REQUEST_NULL = 1;
 };
@@ -71,10 +70,12 @@ public:
   ///constructor
   Communicate();
 
+  ///constructor from mpi3 environment
 #ifdef HAVE_MPI
+  Communicate(const mpi3::environment& env);
+
   ///constructor with communicator
-  Communicate(mpi3::communicator& in_comm);
-  Communicate(mpi3::communicator&& in_comm);
+  Communicate(const mpi3::communicator& in_comm);
 #endif
 
   /** constructor that splits in_comm
@@ -89,9 +90,14 @@ public:
   ///disable constructor
   Communicate(const Communicate&) = delete;
 
-  /// provide a node/shared-memory communicator from current (parent) communicator
-  Communicate NodeComm() const;
+  // Only for unit tests
+  void initialize(int argc, char** argv);
 
+#ifdef HAVE_MPI
+  void initialize(const mpi3::environment& env);
+#endif
+  /// initialize this as a node/shared-memory communicator
+  void initializeAsNodeComm(const Communicate& parent);
   void finalize();
   void barrier() const;
   void abort() const;
@@ -100,32 +106,32 @@ public:
 
 #if defined(HAVE_MPI)
   ///operator for implicit conversion to MPI_Comm
-  operator MPI_Comm() const { return myMPI; }
+  inline operator MPI_Comm() const { return myMPI; }
 #endif
 
   ///return the Communicator ID (typically MPI_WORLD_COMM)
-  mpi_comm_type getMPI() const { return myMPI; }
+  inline mpi_comm_type getMPI() const { return myMPI; }
 
   ///return the rank
-  int rank() const { return d_mycontext; }
+  inline int rank() const { return d_mycontext; }
   ///return the number of tasks
-  int size() const { return d_ncontexts; }
+  inline int size() const { return d_ncontexts; }
 
   ///return the group id
-  int getGroupID() const { return d_groupid; }
+  inline int getGroupID() const { return d_groupid; }
   ///return the number of intra_comms which belong to the same group
-  int getNumGroups() const { return d_ngroups; }
-
+  inline int getNumGroups() const { return d_ngroups; }
+  //inline bool master() const { return (d_mycontext == 0);}
+  //intra_comm_type split(int n);
   void cleanupMessage(void*);
-  void setNodeID(int i) { d_mycontext = i; }
-  void setNumNodes(int n) { d_ncontexts = n; }
+  inline void setNodeID(int i) { d_mycontext = i; }
+  inline void setNumNodes(int n) { d_ncontexts = n; }
 
-  void setName(const std::string& aname) { myName = aname; }
-  void setName(const char* aname, int alen) { myName = std::string(aname, alen); }
-  const std::string& getName() const { return myName; }
+  inline void setName(const std::string& aname) { myName = aname; }
+  inline const std::string& getName() const { return myName; }
 
   ///return true if the current MPI rank is the group lead
-  bool isGroupLeader() { return d_mycontext == 0; }
+  inline bool isGroupLeader() { return d_mycontext == 0; }
 
   // MMORALES: leaving this here temprarily, but it doesn;t belong here.
   // MMORALES: FIX FIX FIX
@@ -149,7 +155,7 @@ public:
    *  and managing the communicator directly
    *  \todo THIS MUST BE FIXED!!!
    */
-  void split_comm(int key, MPI_Comm& comm)
+  inline void split_comm(int key, MPI_Comm& comm)
   {
     int myrank = rank();
     MPI_Comm_split(myMPI, key, myrank, &comm);
@@ -225,7 +231,7 @@ public:
 
 #ifdef HAVE_MPI
   /// mpi3 communicator wrapper
-  mutable mpi3::communicator comm;
+  mpi3::communicator comm;
 #endif
 };
 

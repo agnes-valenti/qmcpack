@@ -21,9 +21,9 @@ namespace qmcplusplus
 class StaticStructureFactor : public OperatorBase
 {
 public:
-  using k2_t   = std::vector<RealType>;
-  using dens_t = std::vector<RealType>;
-  using pts_t  = std::vector<PosType>;
+  typedef std::vector<RealType> k2_t;
+  typedef std::vector<RealType> dens_t;
+  typedef std::vector<PosType> pts_t;
 
   //data members
   int nspecies;
@@ -37,14 +37,13 @@ public:
   ~StaticStructureFactor() override {}
 
   //standard interface
-  std::string getClassName() const override { return "StaticStructureFactor"; }
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& P, TrialWaveFunction& psi) final;
   bool put(xmlNodePtr cur) override;
   Return_t evaluate(ParticleSet& P) override;
 
   //required for Collectables interface
   void addObservables(PropertySetType& plist, BufferType& olist) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
 
   //should be empty for Collectables interface
   void resetTargetParticleSet(ParticleSet& P) override {}

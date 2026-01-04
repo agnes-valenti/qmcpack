@@ -45,7 +45,7 @@ TEST_CASE("Fixed node branch", "[drivers][walker_control]")
   fnb.setEstimatorManager(std::move(emb_uptr));
   REQUIRE(fnb.getEstimatorManager() == emb);
 
-  CHECK(fnb.getTau() == Approx(tau));
+  REQUIRE(fnb.getTau() == Approx(tau));
 
   fnb.advanceQMCCounter();
   REQUIRE(fnb.iParam[SimpleFixedNodeBranch::B_COUNTER] == 0);

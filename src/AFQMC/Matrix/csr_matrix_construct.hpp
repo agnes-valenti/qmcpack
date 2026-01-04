@@ -56,14 +56,12 @@ CSR construct_csr_matrix_single_input(MultiArray2D&& M, double cutoff, char TA, 
   std::vector<std::size_t> counts;
   using int_type = typename CSR::index_type;
   int_type nr, nc;
-
-  using std::get;
   if (comm.rank() == 0)
   {
     if (TA == 'N')
     {
-      nr = get<0>(M.sizes());
-      nc = get<1>(M.sizes());
+      nr = M.size(0);
+      nc = M.size(1);
       counts.resize(nr);
       for (int_type i = 0; i < nr; i++)
         for (int_type j = 0; j < nc; j++)
@@ -72,11 +70,11 @@ CSR construct_csr_matrix_single_input(MultiArray2D&& M, double cutoff, char TA, 
     }
     else
     {
-      nr = get<1>(M.sizes());
-      nc = get<0>(M.sizes());
+      nr = M.size(1);
+      nc = M.size(0);
       counts.resize(nr);
-      for (int_type i = 0; i < get<0>(M.sizes()); i++)
-        for (int_type j = 0; j < get<1>(M.sizes()); j++)
+      for (int_type i = 0; i < M.size(0); i++)
+        for (int_type j = 0; j < M.size(1); j++)
           if (std::abs(M[i][j]) > cutoff)
             ++counts[j];
     }
@@ -90,7 +88,6 @@ CSR construct_csr_matrix_single_input(MultiArray2D&& M, double cutoff, char TA, 
   CSR csr_mat(std::tuple<std::size_t, std::size_t>{nr, nc}, std::tuple<std::size_t, std::size_t>{0, 0}, counts,
               qmcplusplus::afqmc::shared_allocator<typename CSR::value_type>(comm));
 
-  using std::get;
   if (comm.rank() == 0)
   {
     if (TA == 'N')
@@ -102,15 +99,15 @@ CSR construct_csr_matrix_single_input(MultiArray2D&& M, double cutoff, char TA, 
     }
     else if (TA == 'T')
     {
-      for (int_type i = 0; i < get<1>(M.sizes()); i++)
-        for (int_type j = 0; j < get<0>(M.sizes()); j++)
+      for (int_type i = 0; i < M.size(1); i++)
+        for (int_type j = 0; j < M.size(0); j++)
           if (std::abs(M[j][i]) > cutoff)
             csr_mat.emplace_back({i, j}, static_cast<typename CSR::value_type>(M[j][i]));
     }
     else if (TA == 'H')
     {
-      for (int_type i = 0; i < get<1>(M.sizes()); i++)
-        for (int_type j = 0; j < get<0>(M.sizes()); j++)
+      for (int_type i = 0; i < M.size(1); i++)
+        for (int_type j = 0; j < M.size(0); j++)
           if (std::abs(M[j][i]) > cutoff)
             csr_mat.emplace_back({i, j}, static_cast<typename CSR::value_type>(ma::conj(M[j][i])));
     }
@@ -322,7 +319,7 @@ CSR construct_csr_matrix_from_distributed_containers(Container const& Q,
 /*
  * Constructs a new csr_matrix from the elements in the container Q. 
  * The global matrix (including all elements in all cores) will be evenly distributed
- * across the nodes in every task group. No particular structure will be followed in the
+ * accross the nodes in every task group. No particular stucture will be followed in the
  * partitioning, only strict distribution of non-zero elements.
  * All TGs will have identical distributions among its nodes. 
  * This approach uses more memory (up to 2 copies of the submatrix), but avoids

@@ -21,22 +21,20 @@ class MomentumEstimator : public OperatorBase
 {
 public:
   MomentumEstimator(ParticleSet& elns, TrialWaveFunction& psi);
-  bool dependsOnWaveFunction() const override { return true; }
-  std::string getClassName() const override { return "MomentumEstimator"; }
   void resetTargetParticleSet(ParticleSet& P) override;
 
   Return_t evaluate(ParticleSet& P) override;
 
   void addObservables(PropertySetType& plist) {}
   void addObservables(PropertySetType& plist, BufferType& olist) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
   void setObservables(PropertySetType& plist) override;
   void setParticlePropertyList(PropertySetType& plist, int offset) override;
   bool putSpecial(xmlNodePtr cur, ParticleSet& elns, bool rootNode);
   bool put(xmlNodePtr cur) override { return false; };
   bool get(std::ostream& os) const override;
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& qp, TrialWaveFunction& psi) final;
-  void setRandomGenerator(RandomBase<FullPrecRealType>* rng) override;
+  void setRandomGenerator(RandomGenerator_t* rng) override;
   //resize the internal data by input k-point list
   void resize(const std::vector<PosType>& kin, const int Min);
   ///number of samples
@@ -44,11 +42,11 @@ public:
   ///reference to the trial wavefunction for ratio evaluations
   TrialWaveFunction& refPsi;
   ///lattice vector
-  const Lattice& lattice_;
+  ParticleSet::ParticleLayout_t Lattice;
   ///normalization factor for n(k)
   RealType norm_nofK;
   ///random generator
-  std::unique_ptr<RandomBase<FullPrecRealType>> myRNG;
+  RandomGenerator_t myRNG;
   ///sample positions
   std::vector<PosType> vPos;
   ///wavefunction ratios

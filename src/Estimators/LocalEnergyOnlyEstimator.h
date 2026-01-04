@@ -29,8 +29,6 @@ struct LocalEnergyOnlyEstimator : public ScalarEstimatorBase
     scalars_saved.resize(2);
   }
 
-  std::string getName() const override { return "LocalEnergyOnlyEstimator"; }
-  
   inline void accumulate(const MCWalkerConfiguration& W,
                          WalkerIterator first,
                          WalkerIterator last,
@@ -52,7 +50,7 @@ struct LocalEnergyOnlyEstimator : public ScalarEstimatorBase
     }
   }
 
-  void registerObservables(std::vector<ObservableHelper>& h5dec, hdf_archive& file) override {}
+  void registerObservables(std::vector<ObservableHelper>& h5dec, hid_t gid) override {}
 
   /**  add the local energy, variance and all the Hamiltonian components to the scalar record container
    * @param record storage of scalar records (name,value)
@@ -68,9 +66,6 @@ struct LocalEnergyOnlyEstimator : public ScalarEstimatorBase
   }
 
   LocalEnergyOnlyEstimator* clone() override { return new LocalEnergyOnlyEstimator(); }
-
-  const std::string type_str = "LocalEnergyOnlyEstimatorNotSupportedInBatchedVersion";
-  const std::string& getSubTypeStr() const override { return type_str; }
 };
 } // namespace qmcplusplus
 #endif

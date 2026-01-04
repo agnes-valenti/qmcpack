@@ -11,6 +11,7 @@
 
 message(VERBOSE "Adding test test_sharedwset")
 
+
 set(SRC_DIR afqmc_walkers)
 set(UTEST_EXE test_${SRC_DIR})
 set(UTEST_NAME deterministic-unit_test_${SRC_DIR})

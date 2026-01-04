@@ -22,7 +22,6 @@
 #include <numeric>
 #include "Message/CommOperators.h"
 #include "OhmmsData/ParameterSet.h"
-#include "CPU/math.hpp"
 
 namespace qmcplusplus
 {
@@ -667,7 +666,7 @@ void DescentEngine::updateParameters()
       denom           = 1;
       ValueType alpha = (static_cast<ValueType>(rand() / RAND_MAX));
       ValueType sign  = std::abs(cur_deriv_set[i]) / cur_deriv_set[i];
-      if (qmcplusplus::isnan(std::real(sign)))
+      if (std::isnan(std::real(sign)))
       {
         app_log() << "Got a nan, choosing sign randomly with 50-50 probability" << std::endl;
 
@@ -1012,7 +1011,7 @@ void DescentEngine::computeFinalizationUncertainties(std::vector<ValueType>& wei
   // Depending on when this function is called, this will be the uncertainty in
   // the variance
   // of either the energy or the target function.
-  // Which one should be clear from the preceding print statements in the
+  // Which one should be clear from the preceeding print statements in the
   // output file.
   app_log() << "Uncertainty in variance of averaged quantity: " << var_uncertainty << std::endl;
 

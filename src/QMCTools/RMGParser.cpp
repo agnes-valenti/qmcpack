@@ -136,7 +136,7 @@ void RMGParser::dumpPBC(const std::string& psi_tag, const std::string& ion_tag)
       xmlAddChild(wfPtr, detsetPtr);
       if (addJastrow)
       {
-        std::cout << R"(Adding Two-Body and One-Body jastrows with rcut="10" and size="10")" << std::endl;
+        std::cout << "Adding Two-Body and One-Body jastrows with rcut=\"10\" and size=\"10\"" << std::endl;
         if (NumberOfEls > 1)
         {
           xmlAddChild(wfPtr, createJ2());
@@ -189,7 +189,7 @@ void RMGParser::parse(const std::string& fname)
   std::cout << "Number of atoms: " << NumberOfAtoms << std::endl;
   getCell(fname);
 
-  IonSystem.create({NumberOfAtoms});
+  IonSystem.create(NumberOfAtoms);
   GroupName.resize(NumberOfAtoms);
   Matrix<double> IonPos(NumberOfAtoms, 3);
   //atomic numbers

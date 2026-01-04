@@ -4,7 +4,6 @@
 <application name="qmcapp">
 Sample qmc run for Slater-Jastrow HEG.
 </application>
-    <parameter name="driver_version">legacy</parameter>
 </project>
 <include href="heg.ptcl.xml"/>
 <include href="heg.sj.wfs.xml"/>

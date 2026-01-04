@@ -18,47 +18,38 @@
 namespace qmcplusplus
 {
 
-template<typename T>
-class FakeSPO : public SPOSetT<T>
+class FakeSPO : public SPOSet
 {
 public:
-  using SPOSet = SPOSetT<T>;
-  using SPOSet::DIM;
-  using Value       = typename SPOSet::ValueType;
-  using ValueVector = typename SPOSet::ValueVector;
-  using ValueMatrix = typename SPOSet::ValueMatrix;
-  using Grad        = typename SPOSet::GradType;
-  using GradVector  = typename SPOSet::GradVector;
-  using GradMatrix  = typename SPOSet::GradMatrix;
+  Matrix<ValueType> a;
+  Matrix<ValueType> a2;
+  Vector<ValueType> v;
+  Matrix<ValueType> v2;
 
-  Matrix<Value> a;
-  Matrix<Value> a2;
-  Vector<Value> v;
-  Matrix<Value> v2;
-
-  GradVector gv;
+  SPOSet::GradVector_t gv;
 
   FakeSPO();
   ~FakeSPO() override {}
 
-  std::string getClassName() const override { return "FakeSPO"; }
-
   std::unique_ptr<SPOSet> makeClone() const override;
   virtual void report() {}
+  void resetParameters(const opt_variables_type& optVariables) override {}
   void setOrbitalSetSize(int norbs) override;
 
-  void evaluateValue(const ParticleSet& P, int iat, ValueVector& psi) override;
+  void evaluateValue(const ParticleSet& P, int iat, ValueVector_t& psi) override;
 
-  void evaluateVGL(const ParticleSet& P, int iat, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi) override;
+  void evaluateVGL(const ParticleSet& P,
+                   int iat,
+                   ValueVector_t& psi,
+                   GradVector_t& dpsi,
+                   ValueVector_t& d2psi) override;
 
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            ValueMatrix& d2logdet) override;
-private:
-  using SPOSet::OrbitalSetSize;
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            ValueMatrix_t& d2logdet) override;
 };
 
 } // namespace qmcplusplus

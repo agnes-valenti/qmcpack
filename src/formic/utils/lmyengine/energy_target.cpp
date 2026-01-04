@@ -62,14 +62,14 @@ void cqmc::engine::et(const bool exact_sampling,
   if ( variance_correct ) 
     etcal.correct_finite_variance();
 
-  // get the energy and relevant quantities
+  // get the energy and relevent quantities
   energy = etcal.energy();
 
   esdev = std::sqrt(etcal.variance());
 
   eserr = etcal.eserr(output);
 
-  // get the target function value and relevant quantities 
+  // get the target function value and relevent quantities 
   if ( !ground_state ) {
     target = etcal.tar_fn_val();
 

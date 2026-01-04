@@ -35,8 +35,7 @@ class CSVMC : public QMCDriver, public CloneManager
 {
 public:
   /// Constructor.
-  CSVMC(const ProjectData& project_data,
-        MCWalkerConfiguration& w,
+  CSVMC(MCWalkerConfiguration& w,
         TrialWaveFunction& psi,
         QMCHamiltonian& h,
         Communicate* comm);
@@ -51,16 +50,13 @@ private:
   int prevStepsBetweenSamples;
   ///blocks over which normalization factors are accumulated
   int equilBlocks;
-
-  ///driver copy of Random number generators
-  UPtrVector<RandomBase<QMCTraits::FullPrecRealType>> Rng;
-
   /// Copy Constructor (disabled)
   CSVMC(const CSVMC&) = delete;
   /// Copy operator (disabled).
   CSVMC& operator=(const CSVMC&) = delete;
 
   void resetRun();
+
 
   CSEnergyEstimator* multiEstimator;
   CSUpdateBase* Mover;

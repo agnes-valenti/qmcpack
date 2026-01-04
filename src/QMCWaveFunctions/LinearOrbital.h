@@ -24,20 +24,23 @@ namespace qmcplusplus
 class LinearOrbital : public WaveFunctionComponent
 {
 public:
+  void checkInVariables(opt_variables_type& active) override {}
+  void checkOutVariables(const opt_variables_type& active) override {}
+  void resetParameters(const opt_variables_type& active) override {}
+  void reportStatus(std::ostream& os) override {}
+
   TinyVector<ValueType, 3> coeff;
 
-  LinearOrbital()
+  LinearOrbital() : WaveFunctionComponent("LinearOrbital")
   {
     coeff[0] = 1.0;
     coeff[1] = 2.0;
     coeff[2] = 3.0;
   }
 
-  std::string getClassName() const override { return "LinearOrbital"; }
-
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override
   {
     ValueType v = 0.0;
     for (int i = 0; i < P.R.size(); i++)
@@ -48,7 +51,7 @@ public:
       }
       G[i] = coeff;
     }
-    L          = 0.0;
+    L        = 0.0;
     log_value_ = convertValueToLog(v);
     return log_value_;
   }
@@ -57,26 +60,20 @@ public:
 
   void restore(int iat) override {}
 
-  PsiValue ratio(ParticleSet& P, int iat) override { return 1.0; }
+  PsiValueType ratio(ParticleSet& P, int iat) override { return 1.0; }
 
   GradType evalGrad(ParticleSet& P, int iat) override { return GradType(coeff); }
 
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override { return 1.0; }
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override { return 1.0; }
 
   void registerData(ParticleSet& P, WFBufferType& buf) override {}
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override
   {
     return evaluateLog(P, P.G, P.L);
   }
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override {}
-
-  void evaluateDerivatives(ParticleSet& P,
-                           const opt_variables_type& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
-  {}
 };
 
 

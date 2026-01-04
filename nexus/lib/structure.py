@@ -5199,14 +5199,7 @@ class Structure(Sobj):
 
     def symmetry_data(self,*args,**kwargs):
         ds = self.get_symmetry_dataset(*args,**kwargs)
-        if isinstance(ds,dict):
-            # Spglib version < v.2.5.0, see https://spglib.readthedocs.io/en/stable/releases.html
-            ds = obj(ds)
-        elif isinstance(ds,spglib.SpglibDataset):
-            # Spglib version >= v.2.5.0
-            ds = obj(ds.__dict__)
-        else:
-            raise TypeError('Invalid symmetry dataset type: {}'.format(type(ds)))
+        ds = obj(ds)
         for k,v in ds.items():
             if isinstance(v,dict):
                 ds[k] = obj(v)

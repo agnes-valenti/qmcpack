@@ -12,26 +12,24 @@
 #ifndef QMCPLUSPLUS_SETUP_POOLS_H
 #define QMCPLUSPLUS_SETUP_POOLS_H
 
+#include "Particle/tests/MinimalParticlePool.h"
+#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
+#include "QMCHamiltonians/tests/MinimalHamiltonianPool.h"
 #include "Message/Communicate.h"
 #include "type_traits/template_types.hpp"
-#include "OhmmsData/Libxml2Doc.h"
-#include "FakeRandom.h"
-#include "Configuration.h"
 
 namespace qmcplusplus
 {
-
-class ParticleSetPool;
-class WaveFunctionPool;
-class HamiltonianPool;
-
 namespace testing
 {
 class SetupPools
 {
 public:
   SetupPools();
-  ~SetupPools();
+
+  MinimalParticlePool mpp;
+  MinimalWaveFunctionPool wfp;
+  MinimalHamiltonianPool mhp;
 
   UPtr<ParticleSetPool> particle_pool;
   UPtr<WaveFunctionPool> wavefunction_pool;
@@ -41,20 +39,6 @@ public:
   xmlNodePtr node;
 
   Communicate* comm;
-};
-
-class RandomNumberGeneratorPool
-{
-public:
-  using FullPrecRealType = QMCTraits::FullPrecRealType;
-
-  RandomNumberGeneratorPool(const size_t num);
-  ~RandomNumberGeneratorPool();
-
-  RefVector<RandomBase<FullPrecRealType>> getRngRefs();
-
-private:
-  std::vector<FakeRandom<FullPrecRealType>> rng_pool;
 };
 
 } // namespace testing

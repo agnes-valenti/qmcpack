@@ -16,33 +16,33 @@
 
 #include <type_traits>
 #include "type_traits/type_mapping.hpp"
-#include <hipblas/hipblas.h>
+#include <hipblas.h>
 
 namespace qmcplusplus
 {
 
-// This saves us writing specific overloads with reinterpret casts for different std::complex to hipFloatComplex types.
+// This saves us writing specific overloads with reinterpret casts for different std::complex to hipblasComplex types.
 template<typename T>
 using hipblasTypeMap =
-    typename std::disjunction<OnTypesEqual<T, float, float>,
-                              OnTypesEqual<T, double, double>,
-                              OnTypesEqual<T, float*, float*>,
-                              OnTypesEqual<T, double*, double*>,
-                              OnTypesEqual<T, float**, float**>,
-                              OnTypesEqual<T, double**, double**>,
-                              OnTypesEqual<T, std::complex<double>, hipDoubleComplex>,
-                              OnTypesEqual<T, std::complex<float>, hipFloatComplex>,
-                              OnTypesEqual<T, std::complex<double>*, hipDoubleComplex*>,
-                              OnTypesEqual<T, std::complex<float>**, hipFloatComplex**>,
-                              OnTypesEqual<T, std::complex<double>**, hipDoubleComplex**>,
-                              OnTypesEqual<T, std::complex<float>*, hipFloatComplex*>,
-                              OnTypesEqual<T, const std::complex<double>*, const hipDoubleComplex*>,
-                              OnTypesEqual<T, const std::complex<float>*, const hipFloatComplex*>,
-                              OnTypesEqual<T, const std::complex<float>**, const hipFloatComplex**>,
-                              OnTypesEqual<T, const std::complex<double>**, const hipDoubleComplex**>,
-                              OnTypesEqual<T, const std::complex<float>* const*, const hipFloatComplex* const*>,
-                              OnTypesEqual<T, const std::complex<double>* const*, const hipDoubleComplex* const*>,
-                              default_type<void>>::type;
+    typename c14disjunction::disjunction<OnTypesEqual<T, float, float>,
+                                         OnTypesEqual<T, double, double>,
+                                         OnTypesEqual<T, float*, float*>,
+                                         OnTypesEqual<T, double*, double*>,
+                                         OnTypesEqual<T, float**, float**>,
+                                         OnTypesEqual<T, double**, double**>,
+                                         OnTypesEqual<T, std::complex<double>, hipblasDoubleComplex>,
+                                         OnTypesEqual<T, std::complex<float>, hipblasComplex>,
+                                         OnTypesEqual<T, std::complex<double>*, hipblasDoubleComplex*>,
+                                         OnTypesEqual<T, std::complex<float>**, hipblasComplex**>,
+                                         OnTypesEqual<T, std::complex<double>**, hipblasDoubleComplex**>,
+                                         OnTypesEqual<T, std::complex<float>*, hipblasComplex*>,
+                                         OnTypesEqual<T, const std::complex<double>*, const hipblasDoubleComplex*>,
+                                         OnTypesEqual<T, const std::complex<float>*, const hipblasComplex*>,
+                                         OnTypesEqual<T, const std::complex<float>**, const hipblasComplex**>,
+                                         OnTypesEqual<T, const std::complex<double>**, const hipblasDoubleComplex**>,
+                                         OnTypesEqual<T, const std::complex<float>* const *, const hipblasComplex* const *>,
+                                         OnTypesEqual<T, const std::complex<double>* const *, const hipblasDoubleComplex* const *>,
+                                         default_type<void>>::type;
 
 template<typename T>
 hipblasTypeMap<T> casthipblasType(T var)

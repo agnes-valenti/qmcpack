@@ -25,7 +25,7 @@
 #include "Message/CommOperators.h"
 // #include "QMCDrivers/ForwardWalking/ForwardWalkingStructure.h"
 
-#include <filesystem>
+//#include <boost/archive/binary_oarchive.hpp>
 
 namespace qmcplusplus
 {
@@ -53,11 +53,11 @@ class WalkerControlBase : public MPIObjectBase
 {
 public:
   ///typedef of Walker_t
-  using Walker_t = MCWalkerConfiguration::Walker_t;
+  typedef MCWalkerConfiguration::Walker_t Walker_t;
   ///typedef of FullPrecRealType
   using FullPrecRealType = QMCTraits::FullPrecRealType;
   ///typedef of IndexType
-  using IndexType = QMCTraits::IndexType;
+  typedef QMCTraits::IndexType IndexType;
 
   /** An enum to access curData and accumData for reduction
    *
@@ -85,7 +85,7 @@ public:
    *
    * Set the SwapMode to zero so that instantiation can be done
    */
-  WalkerControlBase(Communicate* c);
+  WalkerControlBase(Communicate* c, bool rn = false);
 
   /** empty destructor to clean up the derived classes */
   virtual ~WalkerControlBase();
@@ -93,8 +93,7 @@ public:
   /** start a block */
   void start();
 
-  /** start controller  and initialize the IDs of walkers
-      \todo remove when legacy is dropped*/
+  /** legacy: start controller  and initialize the IDs of walkers*/
   void setWalkerID(MCWalkerConfiguration& walkers);
 
   /** take averages and writes to a file */
@@ -162,6 +161,7 @@ public:
     ensemble_property_ = ensemble_property;
   }
   IndexType get_num_contexts() const { return num_contexts_; }
+  void set_write_release_nodes(bool write_release_nodes) { write_release_nodes_ = write_release_nodes; }
   IndexType get_method() const { return method_; }
   void set_method(IndexType method) { method_ = method; }
 
@@ -188,7 +188,7 @@ protected:
   std::vector<int> FairOffSet;
 
   ///filename for dmc.dat
-  std::filesystem::path dmcFname;
+  std::string dmcFname;
   ///file to save energy histogram
   std::unique_ptr<std::ofstream> dmcStream;
   ///Number of walkers created by this rank
@@ -207,6 +207,8 @@ protected:
   std::vector<std::unique_ptr<Walker_t>> good_w, bad_w;
   ///temporary storage for copy counters
   std::vector<int> ncopy_w;
+  ///Add released-node fields to .dmc.dat file
+  bool write_release_nodes_;
   ///Use non-blocking isend/irecv
   bool use_nonblocking;
 

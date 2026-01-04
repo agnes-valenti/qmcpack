@@ -11,7 +11,7 @@
 
 #include <type_traits>
 #include "Platforms/CPU/BLAS.hpp"
-#include "Platforms/CPU/SIMD/algorithm.hpp"
+#include "Platforms/CPU/SIMD/simd.hpp"
 #include "OhmmsPETE/OhmmsMatrix.h"
 #include "Utilities/for_testing/RandomForTest.h"
 #include "type_traits/complex_help.hpp"
@@ -24,11 +24,11 @@ namespace qmcplusplus
  *  Probably a more elegant way to do this especially in c++17
  */
 template<typename T>
-using RngValueType = typename std::disjunction<OnTypesEqual<T, float, float>,
-                                               OnTypesEqual<T, double, double>,
-                                               OnTypesEqual<T, std::complex<float>, float>,
-                                               OnTypesEqual<T, std::complex<double>, double>,
-                                               default_type<void>>::type;
+using RngValueType = typename c14disjunction::disjunction<OnTypesEqual<T, float, float>,
+                                                          OnTypesEqual<T, double, double>,
+                                                          OnTypesEqual<T, std::complex<float>, float>,
+                                                          OnTypesEqual<T, std::complex<double>, double>,
+                                                          default_type<void>>::type;
 
 namespace testing
 {
@@ -119,7 +119,6 @@ class MakeRngSpdMatrix
 {
 public:
   void operator()(Matrix<T>& mat_spd) { makeRngSpdMatrix(rng, mat_spd); }
-
 private:
   testing::RandomForTest<RngValueType<T>> rng;
 };
@@ -140,7 +139,6 @@ class MakeRngVector
 {
 public:
   void operator()(Vector<T>& vec) { makeRngSpdMatrix(rng, vec); }
-
 private:
   testing::RandomForTest<RngValueType<T>> rng;
 };

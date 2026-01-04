@@ -13,9 +13,8 @@
 #include "catch.hpp"
 #include "QMCWaveFunctions/CompositeSPOSet.h"
 #include <exception>
-#include <MinimalParticlePool.h>
-#include <MinimalWaveFunctionPool.h>
-#include "Utilities/ProjectData.h"
+#include "Particle/tests/MinimalParticlePool.h"
+#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
 
 namespace qmcplusplus
 {
@@ -24,30 +23,33 @@ TEST_CASE("CompositeSPO::diamond_1x1x1", "[wavefunction")
 {
   Libxml2Document doc;
 
-  ProjectData test_project("test", ProjectData::DriverVersion::BATCH);
   Communicate* comm;
   comm = OHMMS::Controller;
   outputManager.pause();
 
-  auto particle_pool = MinimalParticlePool::make_diamondC_1x1x1(comm);
-  auto wavefunction_pool =
-      MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& pset = *particle_pool.getParticleSet("e");
-  auto& twf  = *wavefunction_pool.getWaveFunction("wavefunction");
+  MinimalParticlePool mpp;
+  ParticleSetPool particle_pool = mpp(comm);
+  MinimalWaveFunctionPool wfp;
+  WaveFunctionPool wavefunction_pool = wfp(comm, particle_pool);
+  wavefunction_pool.setPrimary(wavefunction_pool.getWaveFunction("psi0"));
+  auto& pset       = *particle_pool.getParticleSet("e");
+  auto& wf_factory = *wavefunction_pool.getWaveFunctionFactory("wavefunction");
 
-  CompositeSPOSet<SPOSet::ValueType> comp_sposet("one_composite_set");
+  CompositeSPOSet comp_sposet;
 
   std::vector<std::string> sposets{"spo_ud", "spo_dm"};
   for (auto sposet_str : sposets)
   {
-    auto& sposet = twf.getSPOSet(sposet_str);
-    comp_sposet.add(sposet.makeClone());
+    SPOSet* sposet = wf_factory.getSPOSet(sposet_str);
+    if (sposet == 0)
+      throw std::runtime_error("MinimalWaveFunctionPool sposet " + sposet_str + " does not exist");
+    comp_sposet.add(sposet->makeClone());
   }
   CHECK(comp_sposet.size() == 8);
 
-  SPOSet::ValueMatrix psiM(pset.R.size(), comp_sposet.getOrbitalSetSize());
-  SPOSet::GradMatrix dpsiM(pset.R.size(), comp_sposet.getOrbitalSetSize());
-  SPOSet::ValueMatrix d2psiM(pset.R.size(), comp_sposet.getOrbitalSetSize());
+  SPOSet::ValueMatrix_t psiM(pset.R.size(), comp_sposet.getOrbitalSetSize());
+  SPOSet::GradMatrix_t dpsiM(pset.R.size(), comp_sposet.getOrbitalSetSize());
+  SPOSet::ValueMatrix_t d2psiM(pset.R.size(), comp_sposet.getOrbitalSetSize());
   comp_sposet.evaluate_notranspose(pset, 0, pset.R.size(), psiM, dpsiM, d2psiM);
 }
 } // namespace qmcplusplus

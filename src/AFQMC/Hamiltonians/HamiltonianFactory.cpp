@@ -99,7 +99,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
       app_error() << " Error opening integral file in SparseGeneralHamiltonian. \n";
       APP_ABORT("");
     }
-    dump.push("Hamiltonian", false);
+    if (!dump.push("Hamiltonian", false))
+    {
+      app_error() << " Error in HamiltonianFactory::fromHDF5(): Group not Hamiltonian found. \n";
+      APP_ABORT("");
+    }
   }
 
   HamiltonianTypes htype = UNKNOWN;
@@ -164,10 +168,15 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
     //      APP_ABORT(" ");
   }
   nvecs = Idata[7];
+#ifdef QMC_COMPLEX
+  int nkpts = -1;
+  if (htype == KPFactorized || htype == KPTHC)
+    nkpts = Idata[2];
+#endif
 
   // MAM: this is wrong in NONCOLLINEAR, but how do I know what
   // walker type it is right here???
-  // Might need to read dimensions ahead of time from hdf5 file and check consistency
+  // Might need to read dimensions ahead of time from hdf5 file and check consistensy
   // later
   // Also, OneBodyHamiltonian doesn't make much sense now that you have KP classes.
   // Consider refactoring this part of the code...
@@ -262,9 +271,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
   if (htype == KPTHC)
   {
     APP_ABORT(" Error: KPTHC hamiltonian not yet working. \n");
-    if (coreid < nread)
-      dump.push("KPTHC", false);
-
+    if (coreid < nread && !dump.push("KPTHC", false))
+    {
+      app_error() << " Error in HamiltonianFactory::fromHDF5(): Group not KPTHC found. \n";
+      APP_ABORT("");
+    }
     if (coreid < nread)
     {
       dump.pop();
@@ -278,9 +289,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
   }
   else if (htype == KPFactorized)
   {
-    if (coreid < nread)
-      dump.push("KPFactorized", false);
-
+    if (coreid < nread && !dump.push("KPFactorized", false))
+    {
+      app_error() << " Error in HamiltonianFactory::fromHDF5(): Group not KPFactorized found. \n";
+      APP_ABORT("");
+    }
     if (coreid < nread)
     {
       dump.pop();
@@ -296,9 +309,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
 #else
   if (htype == RealDenseFactorized)
   {
-    if (coreid < nread)
-      dump.push("DenseFactorized", false);
-
+    if (coreid < nread && !dump.push("DenseFactorized", false))
+    {
+      app_error() << " Error in HamiltonianFactory::fromHDF5(): Group not DenseFactorized found. \n";
+      APP_ABORT("");
+    }
     if (coreid < nread)
     {
       dump.pop();
@@ -308,7 +323,7 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
     TG.global_barrier();
     // KPFactorizedHamiltonian matrices are read by THCHamiltonian object when needed,
     // since their ownership is passed to the HamOps object.
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
     //      if(alt == "yes" || alt == "true")
     //        return Hamiltonian(RealDenseHamiltonian(AFinfo,cur,std::move(H1),TG,
     //                                        NuclearCoulombEnergy,FrozenCoreEnergy));
@@ -322,9 +337,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
 #endif
       if (htype == THC)
   {
-    if (coreid < nread)
-      dump.push("THC", false);
-
+    if (coreid < nread && !dump.push("THC", false))
+    {
+      app_error() << " Error in HamiltonianFactory::fromHDF5(): Group not THC found. \n";
+      APP_ABORT("");
+    }
     if (coreid < nread)
     {
       dump.pop();
@@ -338,8 +355,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
   }
   else if (htype == Factorized)
   {
-    if (coreid < nread)
-      dump.push("Factorized", false);
+    if (coreid < nread && !dump.push("Factorized", false))
+    {
+      app_error() << " Error in HamiltonianFactory::fromHDF5(): Group Factorized not found. \n";
+      APP_ABORT("");
+    }
 
     if (TG.getNumberOfTGs() > 1)
       APP_ABORT(" Error: Distributed Factorized hamiltonian not yet implemented. \n\n");

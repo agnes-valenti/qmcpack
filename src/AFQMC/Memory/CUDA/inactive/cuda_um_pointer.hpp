@@ -81,7 +81,7 @@ struct cuda_um_allocator
   template<class U>
   struct rebind
   {
-    using other = cuda_um_allocator<U>;
+    typedef cuda_um_allocator<U> other;
   };
   using value_type       = T;
   using const_value_type = T const;

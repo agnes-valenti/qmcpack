@@ -57,7 +57,7 @@ template<class T, unsigned D>
 class SymTensor
 {
 public:
-  using Type_t = T;
+  typedef T Type_t;
   enum
   {
     ElemDim = 2
@@ -119,23 +119,23 @@ public:
   ~SymTensor(){};
 
   // assignment operators
-  SymTensor<T, D>& operator=(const SymTensor<T, D>& rhs)
+  const SymTensor<T, D>& operator=(const SymTensor<T, D>& rhs)
   {
     OTAssign<SymTensor<T, D>, SymTensor<T, D>, OpAssign>::apply(*this, rhs, OpAssign());
     return *this;
   }
   template<class T1>
-  SymTensor<T, D>& operator=(const SymTensor<T1, D>& rhs)
+  const SymTensor<T, D>& operator=(const SymTensor<T1, D>& rhs)
   {
     OTAssign<SymTensor<T, D>, SymTensor<T1, D>, OpAssign>::apply(*this, rhs, OpAssign());
     return *this;
   }
-  SymTensor<T, D>& operator=(const T& rhs)
+  const SymTensor<T, D>& operator=(const T& rhs)
   {
     OTAssign<SymTensor<T, D>, T, OpAssign>::apply(*this, rhs, OpAssign());
     return *this;
   }
-  SymTensor<T, D>& operator=(const Tensor<T, D>& rhs)
+  const SymTensor<T, D>& operator=(const Tensor<T, D>& rhs)
   {
     for (int i = 0; i < D; ++i)
     {

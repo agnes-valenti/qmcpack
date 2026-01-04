@@ -23,7 +23,7 @@
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
 //#define TEST_INNERBRANCH
 #include "QMCDrivers/DMC/DMCUpdatePbyP.h"
@@ -36,9 +36,11 @@ using WP = WalkerProperties::Indexes;
 DMCUpdatePbyPL2::DMCUpdatePbyPL2(MCWalkerConfiguration& w,
                                  TrialWaveFunction& psi,
                                  QMCHamiltonian& h,
-                                 RandomBase<FullPrecRealType>& rg)
-    : QMCUpdateBase(w, psi, h, rg), myTimers(getGlobalTimerManager(), DMCTimerNames, timer_level_medium)
-{}
+                                 RandomGenerator_t& rg)
+    : QMCUpdateBase(w, psi, h, rg)
+{
+  setup_timers(myTimers, DMCTimerNames, timer_level_medium);
+}
 
 /// destructor
 DMCUpdatePbyPL2::~DMCUpdatePbyPL2() {}
@@ -173,7 +175,7 @@ void DMCUpdatePbyPL2::advanceWalker(Walker_t& thisWalker, bool recompute)
           //Use the force of the particle iat
           DriftModifier->getDrift(tauovermass, grad_iat, drtmp);
           dr                     = drtmp; // upcast for mixed precision
-          dr                     = W.R[iat] - W.getActivePos() - dr;
+          dr                     = W.R[iat] - W.activePos - dr;
           FullPrecRealType logGb = -oneover2tau * dot(dr, dr);
           RealType prob          = std::norm(ratio) * std::exp(logGb - logGf);
           bool is_accepted       = false;
@@ -211,7 +213,7 @@ void DMCUpdatePbyPL2::advanceWalker(Walker_t& thisWalker, bool recompute)
     }
     {
       ScopedTimer local_timer(myTimers[DMC_hamiltonian]);
-      enew = non_local_ops_.getMoveKind() == TmoveKind::OFF ? H.evaluate(W) : H.evaluateWithToperator(W);
+      enew = H.evaluateWithToperator(W);
     }
     thisWalker.resetProperty(logpsi, Psi.getPhase(), enew, rr_accepted, rr_proposed, 1.0);
     thisWalker.Weight *= branchEngine->branchWeight(enew, eold);
@@ -233,7 +235,7 @@ void DMCUpdatePbyPL2::advanceWalker(Walker_t& thisWalker, bool recompute)
     H.rejectedMove(W, thisWalker);
     thisWalker.Weight = wtmp;
     ++nAllRejected;
-    enew = eold; //copy back old energy
+    enew   = eold; //copy back old energy
     thisWalker.Weight *= branchEngine->branchWeight(enew, eold);
   }
 #if !defined(REMOVE_TRACEMANAGER)
@@ -241,7 +243,7 @@ void DMCUpdatePbyPL2::advanceWalker(Walker_t& thisWalker, bool recompute)
 #endif
   {
     ScopedTimer local_timer(myTimers[DMC_tmoves]);
-    const int NonLocalMoveAcceptedTemp = H.makeNonLocalMoves(W, non_local_ops_);
+    const int NonLocalMoveAcceptedTemp = H.makeNonLocalMoves(W);
     if (NonLocalMoveAcceptedTemp > 0)
     {
       RealType logpsi = Psi.updateBuffer(W, w_buffer, false);

@@ -92,11 +92,9 @@ public:
     wset.getProperty(WEIGHT, wgt);
 
     int nx((wset.getWalkerType() == COLLINEAR) ? 2 : 1);
-
-    using std::get;
-    if (get<0>(wDMsum.sizes()) != wset.size() || get<1>(wDMsum.sizes()) != nx)
+    if (wDMsum.size(0) != wset.size() || wDMsum.size(2) != nx)
       wDMsum.reextent({wset.size(), nx});
-    if (get<0>(wOvlp.sizes()) != wset.size() || get<1>(wOvlp.sizes()) != nx)
+    if (wOvlp.size(0) != wset.size() || wOvlp.size(2) != nx)
       wOvlp.reextent({wset.size(), nx});
 
     if (!importanceSampling)
@@ -128,10 +126,8 @@ public:
         denom_average[0] /= block_size;
         dump.push("Mixed");
         std::string padded_iblock = std::string(n_zero - std::to_string(iblock).length(), '0') + std::to_string(iblock);
-
-        using std::get;
-        boost::multi::array_ref<ComplexType, 1> wOvlp_(wOvlp.origin(), {get<0>(wOvlp.sizes()) * get<1>(wOvlp.sizes())});
-        boost::multi::array_ref<ComplexType, 1> wDMsum_(wDMsum.origin(), {get<0>(wDMsum.sizes()) * get<1>(wDMsum.sizes())});
+        boost::multi::array_ref<ComplexType, 1> wOvlp_(wOvlp.origin(), {wOvlp.size(0) * wOvlp.size(1)});
+        boost::multi::array_ref<ComplexType, 1> wDMsum_(wDMsum.origin(), {wDMsum.size(0) * wDMsum.size(1)});
         dump.write(DMAverage, "one_rdm_" + padded_iblock);
         dump.write(denom_average, "one_rdm_denom_" + padded_iblock);
         dump.write(wOvlp_, "one_rdm_walker_overlaps_" + padded_iblock);

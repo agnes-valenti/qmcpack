@@ -7,37 +7,23 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
   if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 2021.3)
     message(FATAL_ERROR "Requires Intel oneAPI 2021.3 or higher!")
   endif()
+elseif(INTEL_ONEAPI_COMPILER_FOUND)
+  # in this case, the version string reported based on Clang, not accurate enough. just skip check.
 else()
-  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 2021.1)
-    message(FATAL_ERROR "Requires Intel classic compiler 2021.1 or higher!")
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.0.0.20190206)
+    message(FATAL_ERROR "Requires Intel 19 update 3 (19.0.0.20190206) or higher!")
   endif()
 endif()
 
 # Enable OpenMP
 if(QMC_OMP)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+  set(ENABLE_OPENMP 1)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM" OR INTEL_ONEAPI_COMPILER_FOUND)
     if(ENABLE_OFFLOAD)
-      if(OFFLOAD_ARCH OR QMC_GPU_ARCHS)
-        # for ahead-of-time compilation and linking
-        # if OFFLOAD_ARCH not defined, overwrite it with QMC_GPU_ARCHS
-        if(NOT OFFLOAD_ARCH AND QMC_GPU_ARCHS)
-          set(OFFLOAD_ARCH ${QMC_GPU_ARCHS})
-        endif()
-        if(OFFLOAD_ARCH MATCHES "^intel_gpu_")
-          set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-fopenmp-targets=spir64_gen")
-	  string(REGEX REPLACE "^intel_gpu_" "" INTEL_GPU_ARCH "${OFFLOAD_ARCH}")
-          set(OpenMP_OFFLOAD_LINKER_FLAGS "-Xs \"-device ${INTEL_GPU_ARCH}\"")
-        else()
-          message(FATAL_ERROR "Invalid Intel GPU architecture \"${OFFLOAD_ARCH}\"! Did you miss \"intel_gpu_\" prefix?")
-        endif()
-      else()
-        set(OFFLOAD_TARGET
-            "spir64"
-            CACHE STRING "Offload target architecture")
-        set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-fopenmp-targets=${OFFLOAD_TARGET}")
-      endif()
-      # Select the intra-team reduction implementation using shared local memory.
-      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -mllvm -vpo-paropt-atomic-free-reduction-slm=true" )
+      set(OFFLOAD_TARGET
+          "spir64"
+          CACHE STRING "Offload target architecture")
+      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-fopenmp-targets=${OFFLOAD_TARGET}")
     endif(ENABLE_OFFLOAD)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fiopenmp")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fiopenmp")
@@ -50,12 +36,8 @@ if(QMC_OMP)
   endif()
 endif(QMC_OMP)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM" OR INTEL_ONEAPI_COMPILER_FOUND)
   # oneAPI compiler options
-
-  # Set extra optimization specific flags
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffast-math")
 
   # Set clang specific flags (which we always want)
   add_compile_definitions(restrict=__restrict__)
@@ -103,7 +85,7 @@ endif()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "CrayLinuxEnvironment")
 
   # use -x for classic compiler only. this option is not robust with oneAPI compiler as 2021.3 release
-  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM" AND NOT INTEL_ONEAPI_COMPILER_FOUND)
     set(X_OPTION "^-x| -x")
     set(AX_OPTION "^-ax| -ax")
     #check if the user has already specified -x option for cross-compiling.
@@ -145,11 +127,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "CrayLinuxEnvironment")
       endif() #(CMAKE_CXX_FLAGS MATCHES "-march=" AND CMAKE_C_FLAGS MATCHES "-march=")
     else() #(CMAKE_CXX_FLAGS MATCHES "-march=" OR CMAKE_C_FLAGS MATCHES "-march=")
       # use -march=native
-      # skipped in OneAPI 2022.0 when using SYCL which caused linking failure.
-      if (NOT (CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 2022.0 AND ENABLE_SYCL))
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-      endif()
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
     endif() #(CMAKE_CXX_FLAGS MATCHES "-march=" OR CMAKE_C_FLAGS MATCHES "-march=")
   endif()
 

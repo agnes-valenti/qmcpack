@@ -22,10 +22,7 @@
 #define QMCPLUSPLUS_BASISSETBASE_H
 
 #include "Particle/ParticleSet.h"
-#include "Particle/VirtualParticleSet.h"
 #include "QMCWaveFunctions/OrbitalSetTraits.h"
-#include "OMPTarget/OffloadAlignedAllocators.hpp"
-
 
 namespace qmcplusplus
 {
@@ -41,20 +38,20 @@ struct BasisSetBase : public OrbitalSetTraits<T>
   {
     MAXINDEX = 2 + OHMMS_DIM
   };
-  using RealType    = typename OrbitalSetTraits<T>::RealType;
-  using ValueType   = typename OrbitalSetTraits<T>::ValueType;
-  using IndexType   = typename OrbitalSetTraits<T>::IndexType;
-  using HessType    = typename OrbitalSetTraits<T>::HessType;
-  using IndexVector = typename OrbitalSetTraits<T>::IndexVector;
-  using ValueVector = typename OrbitalSetTraits<T>::ValueVector;
-  using ValueMatrix = typename OrbitalSetTraits<T>::ValueMatrix;
-  using GradVector  = typename OrbitalSetTraits<T>::GradVector;
-  using GradMatrix  = typename OrbitalSetTraits<T>::GradMatrix;
-  using HessVector  = typename OrbitalSetTraits<T>::HessVector;
-  using HessMatrix  = typename OrbitalSetTraits<T>::HessMatrix;
-  using GGGType     = TinyVector<HessType, OHMMS_DIM>;
-  using GGGVector   = Vector<GGGType>;
-  using GGGMatrix   = Matrix<GGGType>;
+  typedef typename OrbitalSetTraits<T>::RealType RealType;
+  typedef typename OrbitalSetTraits<T>::ValueType ValueType;
+  typedef typename OrbitalSetTraits<T>::IndexType IndexType;
+  typedef typename OrbitalSetTraits<T>::HessType HessType;
+  typedef typename OrbitalSetTraits<T>::IndexVector_t IndexVector_t;
+  typedef typename OrbitalSetTraits<T>::ValueVector_t ValueVector_t;
+  typedef typename OrbitalSetTraits<T>::ValueMatrix_t ValueMatrix_t;
+  typedef typename OrbitalSetTraits<T>::GradVector_t GradVector_t;
+  typedef typename OrbitalSetTraits<T>::GradMatrix_t GradMatrix_t;
+  typedef typename OrbitalSetTraits<T>::HessVector_t HessVector_t;
+  typedef typename OrbitalSetTraits<T>::HessMatrix_t HessMatrix_t;
+  typedef TinyVector<HessType, OHMMS_DIM> GGGType;
+  typedef Vector<GGGType> GGGVector_t;
+  typedef Matrix<GGGType> GGGMatrix_t;
 
 
   ///size of the basis set
@@ -64,21 +61,21 @@ struct BasisSetBase : public OrbitalSetTraits<T>
   ///counter to keep track
   unsigned long Counter;
   ///phi[i] the value of the i-th basis set
-  ValueVector Phi;
+  ValueVector_t Phi;
   ///dphi[i] the gradient of the i-th basis set
-  GradVector dPhi;
+  GradVector_t dPhi;
   ///d2phi[i] the laplacian of the i-th basis set
-  ValueVector d2Phi;
+  ValueVector_t d2Phi;
   ///grad_grad_Phi[i] the full hessian of the i-th basis set
-  HessVector grad_grad_Phi;
+  HessVector_t grad_grad_Phi;
   ///grad_grad_grad_Phi the full hessian of the i-th basis set
-  GGGVector grad_grad_grad_Phi;
+  GGGVector_t grad_grad_grad_Phi;
   ///container to store value, laplacian and gradient
-  ValueMatrix Temp;
+  ValueMatrix_t Temp;
 
-  ValueMatrix Y;
-  GradMatrix dY;
-  ValueMatrix d2Y;
+  ValueMatrix_t Y;
+  GradMatrix_t dY;
+  ValueMatrix_t d2Y;
 
   ///default constructor
   BasisSetBase() : BasisSetSize(0), ActivePtcl(-1), Counter(0) {}
@@ -110,6 +107,14 @@ struct BasisSetBase : public OrbitalSetTraits<T>
   /** return the basis set size */
   inline IndexType getBasisSetSize() const { return BasisSetSize; }
 
+  /**@{ functions to perform optimizations  */
+  /** checkIn optimizable variables */
+  virtual void checkInVariables(opt_variables_type& active) {}
+  /** checkOut optimizable variables */
+  virtual void checkOutVariables(const opt_variables_type& active) {}
+  /** reset parameters */
+  virtual void resetParameters(const opt_variables_type& active) {}
+  /**@}*/
   ///resize the basis set
   virtual void setBasisSetSize(int nbs) = 0;
 
@@ -131,14 +136,10 @@ struct BasisSetBase : public OrbitalSetTraits<T>
 template<typename T>
 struct SoaBasisSetBase
 {
-  using value_type        = T;
-  using vgl_type          = VectorSoaContainer<T, OHMMS_DIM + 2>;
-  using vgh_type          = VectorSoaContainer<T, 10>;
-  using vghgh_type        = VectorSoaContainer<T, 20>;
-  using ValueType         = QMCTraits::ValueType;
-  using OffloadMWVGLArray = Array<ValueType, 3, OffloadPinnedAllocator<ValueType>>; // [VGL, walker, Orbs]
-  using OffloadMWVArray   = Array<ValueType, 2, OffloadPinnedAllocator<ValueType>>; // [walker, Orbs]
-
+  typedef T value_type;
+  typedef VectorSoaContainer<T, OHMMS_DIM + 2> vgl_type;
+  typedef VectorSoaContainer<T, 10> vgh_type;
+  typedef VectorSoaContainer<T, 20> vghgh_type;
   ///size of the basis set
   int BasisSetSize;
 
@@ -150,20 +151,6 @@ struct SoaBasisSetBase
 
   //Evaluates value, gradient, and laplacian for electron "iat".  Parks them into a temporary data structure "vgl".
   virtual void evaluateVGL(const ParticleSet& P, int iat, vgl_type& vgl) = 0;
-  //Evaluates value, gradient, and laplacian for electron "iat".  places them in a offload array for batched code.
-  virtual void mw_evaluateVGL(const RefVectorWithLeader<SoaBasisSetBase<T>>& basis_list,
-                              const RefVectorWithLeader<ParticleSet>& P_list,
-                              int iat,
-                              OffloadMWVGLArray& vgl) = 0;
-  //Evaluates value for electron "iat".  places it in a offload array for batched code.
-  virtual void mw_evaluateValue(const RefVectorWithLeader<SoaBasisSetBase<T>>& basis_list,
-                                const RefVectorWithLeader<ParticleSet>& P_list,
-                                int iat,
-                                OffloadMWVArray& v) = 0;
-  //Evaluates value for all the electrons of the virtual particles. places it in a offload array for batched code.
-  virtual void mw_evaluateValueVPs(const RefVectorWithLeader<SoaBasisSetBase<T>>& basis_list,
-                                   const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
-                                   OffloadMWVArray& v) = 0;
   //Evaluates value, gradient, and Hessian for electron "iat".  Parks them into a temporary data structure "vgh".
   virtual void evaluateVGH(const ParticleSet& P, int iat, vgh_type& vgh) = 0;
   //Evaluates value, gradient, and Hessian, and Gradient Hessian for electron "iat".  Parks them into a temporary data structure "vghgh".
@@ -178,27 +165,10 @@ struct SoaBasisSetBase
                                      int jion,
                                      vghgh_type& vghgh)                            = 0;
   virtual void evaluateV(const ParticleSet& P, int iat, value_type* restrict vals) = 0;
-
   virtual bool is_S_orbital(int mo_idx, int ao_idx) { return false; }
 
   /// Determine which orbitals are S-type.  Used for cusp correction.
   virtual void queryOrbitalsForSType(const std::vector<bool>& corrCenter, std::vector<bool>& is_s_orbital) const {}
-
-  /** initialize a shared resource and hand it to collection
-   */
-  virtual void createResource(ResourceCollection& collection) const {}
-
-  /** acquire a shared resource from collection
-   */
-  virtual void acquireResource(ResourceCollection& collection,
-                               const RefVectorWithLeader<SoaBasisSetBase>& bset_list) const
-  {}
-
-  /** return a shared resource to collection
-   */
-  virtual void releaseResource(ResourceCollection& collection,
-                               const RefVectorWithLeader<SoaBasisSetBase>& bset_list) const
-  {}
 };
 
 } // namespace qmcplusplus

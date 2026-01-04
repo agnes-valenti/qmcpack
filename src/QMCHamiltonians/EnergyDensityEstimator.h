@@ -25,18 +25,17 @@ namespace qmcplusplus
 class EnergyDensityEstimator : public OperatorBase, public PtclOnLatticeTraits
 {
 public:
-  using Point  = ReferencePoints::Point;
-  using PSPool = std::map<std::string, const std::unique_ptr<ParticleSet>>;
+  typedef ReferencePoints::Point Point;
+  typedef std::map<std::string, ParticleSet*> PSPool;
 
-  EnergyDensityEstimator(const PSPool& PSP, const std::string& defaultKE);
+  EnergyDensityEstimator(PSPool& PSP, const std::string& defaultKE);
   ~EnergyDensityEstimator() override;
 
-  std::string getClassName() const override { return "EnergyDensityEstimator"; }
   void resetTargetParticleSet(ParticleSet& P) override;
   Return_t evaluate(ParticleSet& P) override;
   void addObservables(PropertySetType& plist) {}
   void addObservables(PropertySetType& plist, BufferType& olist) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
   void setObservables(PropertySetType& plist) override;
   void setParticlePropertyList(PropertySetType& plist, int offset) override;
   bool put(xmlNodePtr cur) override;
@@ -55,7 +54,7 @@ private:
   xmlNodePtr input_xml;
   //system information
   std::string defKE;
-  const PSPool& psetpool;
+  PSPool& psetpool;
   ParticleSet* Pdynamic;
   ParticleSet* Pstatic;
   ParticleSet* get_particleset(std::string& psname);
@@ -84,7 +83,7 @@ private:
   //  contains the Energy information of particles
   std::vector<SpaceGrid*> spacegrids;
   //particle positions
-  ParticlePos R;
+  ParticlePos_t R;
   //number of samples accumulated
   int nsamples;
 
@@ -92,7 +91,7 @@ private:
   //ParticleSet should carry Zptcl so it doesn't have
   // to be computed everywhere from species
   std::vector<RealType> Zptcl;
-  ParticlePos Rptcl;
+  ParticlePos_t Rptcl;
   void set_ptcl(void);
   void unset_ptcl(void);
 

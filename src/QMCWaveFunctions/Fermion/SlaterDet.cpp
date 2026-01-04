@@ -20,17 +20,18 @@
 
 namespace qmcplusplus
 {
-
 // for return types
-using PsiValue = WaveFunctionComponent::PsiValue;
+using PsiValueType = WaveFunctionComponent::PsiValueType;
 
-SlaterDet::SlaterDet(ParticleSet& targetPtcl,
-                     std::vector<std::unique_ptr<SPOSet>>&& sposets,
-                     std::vector<std::unique_ptr<Determinant_t>>&& dets,
-                     const std::string& class_name)
-    : sposets_(std::move(sposets)), Dets(std::move(dets))
+SlaterDet::SlaterDet(ParticleSet& targetPtcl, std::vector<std::unique_ptr<Determinant_t>> dets, const std::string& class_name) : WaveFunctionComponent(class_name), Dets(std::move(dets))
 {
   assert(Dets.size() == targetPtcl.groups());
+
+  is_fermionic = true;
+
+  Optimizable = false;
+  for(const auto& det : Dets)
+    Optimizable = Optimizable || det->Optimizable;
 
   Last.resize(targetPtcl.groups());
   for (int i = 0; i < Last.size(); ++i)
@@ -40,30 +41,45 @@ SlaterDet::SlaterDet(ParticleSet& targetPtcl,
 ///destructor
 SlaterDet::~SlaterDet() = default;
 
-bool SlaterDet::isOptimizable() const
+void SlaterDet::checkInVariables(opt_variables_type& active)
 {
-  return std::any_of(sposets_.begin(), sposets_.end(), [](const auto& phi) { return phi->isOptimizable(); });
-}
-
-void SlaterDet::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs)
-{
-  for (const auto& sposet : sposets_)
-    sposet->extractOptimizableObjectRefs(opt_obj_refs);
+  myVars.clear();
+  if (Optimizable)
+    for (int i = 0; i < Dets.size(); i++)
+    {
+      Dets[i]->checkInVariables(active);
+      Dets[i]->checkInVariables(myVars);
+    }
 }
 
 void SlaterDet::checkOutVariables(const opt_variables_type& active)
 {
-  for (const auto& sposet : sposets_)
-    if (sposet->isOptimizable())
-      sposet->checkOutVariables(active);
+  myVars.clear();
+  if (Optimizable)
+    for (int i = 0; i < Dets.size(); i++)
+    {
+      Dets[i]->checkOutVariables(active);
+      myVars.insertFrom(Dets[i]->myVars);
+    }
+  myVars.getIndex(active);
 }
 
-PsiValue SlaterDet::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
+///reset all the Dirac determinants, Optimizable is true
+void SlaterDet::resetParameters(const opt_variables_type& active)
+{
+  if (Optimizable)
+    for (int i = 0; i < Dets.size(); i++)
+      Dets[i]->resetParameters(active);
+}
+
+void SlaterDet::reportStatus(std::ostream& os) {}
+
+PsiValueType SlaterDet::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
 {
   return Dets[getDetID(iat)]->ratioGrad(P, iat, grad_iat);
 }
 
-PsiValue SlaterDet::ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad_iat)
+PsiValueType SlaterDet::ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad_iat)
 {
   return Dets[getDetID(iat)]->ratioGradWithSpin(P, iat, grad_iat, spingrad_iat);
 }
@@ -71,34 +87,11 @@ PsiValue SlaterDet::ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_ia
 void SlaterDet::mw_ratioGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                              const RefVectorWithLeader<ParticleSet>& p_list,
                              int iat,
-                             std::vector<PsiValue>& ratios,
+                             std::vector<PsiValueType>& ratios,
                              std::vector<GradType>& grad_now) const
 {
   const int det_id = getDetID(iat);
   Dets[det_id]->mw_ratioGrad(extract_DetRef_list(wfc_list, det_id), p_list, iat, ratios, grad_now);
-}
-
-void SlaterDet::mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                     const RefVectorWithLeader<ParticleSet>& p_list,
-                                     int iat,
-                                     std::vector<PsiValue>& ratios,
-                                     std::vector<GradType>& grad_now,
-                                     std::vector<ComplexType>& spingrad_now) const
-{
-  const int det_id = getDetID(iat);
-  Dets[det_id]->mw_ratioGradWithSpin(extract_DetRef_list(wfc_list, det_id), p_list, iat, ratios, grad_now,
-                                     spingrad_now);
-}
-
-
-void SlaterDet::mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                    const RefVectorWithLeader<ParticleSet>& p_list,
-                                    int iat,
-                                    std::vector<GradType>& grad_now,
-                                    std::vector<ComplexType>& spingrad_now) const
-{
-  const int det_id = getDetID(iat);
-  Dets[det_id]->mw_evalGradWithSpin(extract_DetRef_list(wfc_list, det_id), p_list, iat, grad_now, spingrad_now);
 }
 
 void SlaterDet::evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios)
@@ -107,26 +100,9 @@ void SlaterDet::evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& r
     Dets[i]->evaluateRatiosAlltoOne(P, ratios);
 }
 
-void SlaterDet::evaluateDerivRatios(const VirtualParticleSet& VP,
-                                    const opt_variables_type& optvars,
-                                    std::vector<ValueType>& ratios,
-                                    Matrix<ValueType>& dratios)
-{
-  return Dets[getDetID(VP.refPtcl)]->evaluateDerivRatios(VP, optvars, ratios, dratios);
-}
-
-void SlaterDet::evaluateSpinorDerivRatios(const VirtualParticleSet& VP,
-                                          const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                                          const opt_variables_type& optvars,
-                                          std::vector<ValueType>& ratios,
-                                          Matrix<ValueType>& dratios)
-{
-  return Dets[getDetID(VP.refPtcl)]->evaluateSpinorDerivRatios(VP, spinor_multiplier, optvars, ratios, dratios);
-}
-
-SlaterDet::LogValue SlaterDet::evaluateLog(const ParticleSet& P,
-                                           ParticleSet::ParticleGradient& G,
-                                           ParticleSet::ParticleLaplacian& L)
+SlaterDet::LogValueType SlaterDet::evaluateLog(const ParticleSet& P,
+                                               ParticleSet::ParticleGradient_t& G,
+                                               ParticleSet::ParticleLaplacian_t& L)
 {
   log_value_ = 0.0;
   for (int i = 0; i < Dets.size(); ++i)
@@ -136,10 +112,10 @@ SlaterDet::LogValue SlaterDet::evaluateLog(const ParticleSet& P,
 
 void SlaterDet::mw_evaluateLog(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                                const RefVectorWithLeader<ParticleSet>& p_list,
-                               const RefVector<ParticleSet::ParticleGradient>& G_list,
-                               const RefVector<ParticleSet::ParticleLaplacian>& L_list) const
+                               const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                               const RefVector<ParticleSet::ParticleLaplacian_t>& L_list) const
 {
-  constexpr LogValue czero(0);
+  constexpr LogValueType czero(0);
 
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list.getCastedElement<SlaterDet>(iw).log_value_ = czero;
@@ -153,10 +129,10 @@ void SlaterDet::mw_evaluateLog(const RefVectorWithLeader<WaveFunctionComponent>&
   }
 }
 
-SlaterDet::LogValue SlaterDet::evaluateGL(const ParticleSet& P,
-                                          ParticleSet::ParticleGradient& G,
-                                          ParticleSet::ParticleLaplacian& L,
-                                          bool from_scratch)
+SlaterDet::LogValueType SlaterDet::evaluateGL(const ParticleSet& P,
+                                              ParticleSet::ParticleGradient_t& G,
+                                              ParticleSet::ParticleLaplacian_t& L,
+                                              bool from_scratch)
 {
   log_value_ = 0.0;
   for (int i = 0; i < Dets.size(); ++i)
@@ -166,11 +142,11 @@ SlaterDet::LogValue SlaterDet::evaluateGL(const ParticleSet& P,
 
 void SlaterDet::mw_evaluateGL(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                               const RefVectorWithLeader<ParticleSet>& p_list,
-                              const RefVector<ParticleSet::ParticleGradient>& G_list,
-                              const RefVector<ParticleSet::ParticleLaplacian>& L_list,
+                              const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                              const RefVector<ParticleSet::ParticleLaplacian_t>& L_list,
                               bool fromscratch) const
 {
-  constexpr LogValue czero(0);
+  constexpr LogValueType czero(0);
 
   for (int iw = 0; iw < wfc_list.size(); iw++)
     wfc_list.getCastedElement<SlaterDet>(iw).log_value_ = czero;
@@ -201,10 +177,10 @@ void SlaterDet::mw_recompute(const RefVectorWithLeader<WaveFunctionComponent>& w
   }
 }
 
-void SlaterDet::evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi)
+void SlaterDet::evaluateHessian(ParticleSet& P, HessVector_t& grad_grad_psi)
 {
   grad_grad_psi.resize(P.getTotalNum());
-  HessVector tmp;
+  HessVector_t tmp;
   tmp.resize(P.getTotalNum());
   for (int i = 0; i < Dets.size(); ++i)
   {
@@ -219,29 +195,12 @@ void SlaterDet::evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi)
 
 void SlaterDet::createResource(ResourceCollection& collection) const
 {
-  for (const auto& sposet : sposets_)
-    sposet->createResource(collection);
   for (int i = 0; i < Dets.size(); ++i)
     Dets[i]->createResource(collection);
 }
 
-void SlaterDet::acquireResource(ResourceCollection& collection,
-                                const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const
+void SlaterDet::acquireResource(ResourceCollection& collection, const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const
 {
-  auto& sd_leader = wfc_list.getCastedLeader<SlaterDet>();
-
-  for (int i = 0; i < sposets_.size(); i++)
-  {
-    auto& phi_leader = *sd_leader.sposets_[i];
-    RefVectorWithLeader<SPOSet> phi_list(phi_leader);
-    for (WaveFunctionComponent& wfc : wfc_list)
-    {
-      auto& sd = static_cast<SlaterDet&>(wfc);
-      phi_list.push_back(*sd.sposets_[i]);
-    }
-    phi_leader.acquireResource(collection, phi_list);
-  }
-
   for (int i = 0; i < Dets.size(); ++i)
   {
     const auto det_list(extract_DetRef_list(wfc_list, i));
@@ -249,24 +208,8 @@ void SlaterDet::acquireResource(ResourceCollection& collection,
   }
 }
 
-void SlaterDet::releaseResource(ResourceCollection& collection,
-                                const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const
+void SlaterDet::releaseResource(ResourceCollection& collection, const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const
 {
-  auto& sd_leader = wfc_list.getCastedLeader<SlaterDet>();
-
-  for (int i = 0; i < sposets_.size(); i++)
-  {
-    auto& phi_leader = *sd_leader.sposets_[i];
-    RefVectorWithLeader<SPOSet> phi_list(phi_leader);
-    for (WaveFunctionComponent& wfc : wfc_list)
-    {
-      auto& sd = static_cast<SlaterDet&>(wfc);
-      phi_list.push_back(*sd.sposets_[i]);
-    }
-
-    phi_leader.releaseResource(collection, phi_list);
-  }
-
   for (int i = 0; i < Dets.size(); ++i)
   {
     const auto det_list(extract_DetRef_list(wfc_list, i));
@@ -282,13 +225,17 @@ void SlaterDet::registerData(ParticleSet& P, WFBufferType& buf)
   DEBUG_PSIBUFFER(" SlaterDet::registerData ", buf.current());
 }
 
-SlaterDet::LogValue SlaterDet::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
+SlaterDet::LogValueType SlaterDet::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
 {
+  //std::cout<<"AV entering SlaterDet::LogValueType SlaterDet::updateBuffer"<<std::endl;
   DEBUG_PSIBUFFER(" SlaterDet::updateBuffer ", buf.current());
   log_value_ = 0.0;
+  //Dets.size()=2 (spin up and spin down) -> need here spin 4 for valleys
+  //enters for each component DiracDeterminant.cpp
   for (int i = 0; i < Dets.size(); ++i)
     log_value_ += Dets[i]->updateBuffer(P, buf, fromscratch);
   DEBUG_PSIBUFFER(" SlaterDet::updateBuffer ", buf.current());
+  //std::cout<<"AV exiting SlaterDet::LogValueType SlaterDet::updateBuffer"<<std::endl<<std::endl;
   return log_value_;
 }
 
@@ -302,31 +249,12 @@ void SlaterDet::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
 
 std::unique_ptr<WaveFunctionComponent> SlaterDet::makeClone(ParticleSet& tqp) const
 {
-  std::vector<std::unique_ptr<SPOSet>> sposet_clones;
-  for (const auto& phi : sposets_)
-    sposet_clones.emplace_back(phi->makeClone());
-
   std::vector<std::unique_ptr<Determinant_t>> dets;
   for (const auto& det : Dets)
-  {
-    auto it = std::find_if(sposets_.begin(), sposets_.end(),
-                           [&](const std::unique_ptr<SPOSet>& sposet) { return sposet.get() == &det->getPhi(); });
-    if (it == sposets_.end())
-      throw std::runtime_error("Bug! The sposet of a determinant doesn't reference sposets owned by SlaterDet.");
-    else
-      dets.emplace_back(det->makeCopy(**(sposet_clones.begin() + std::distance(sposets_.begin(), it))));
-  }
-  auto myclone = std::make_unique<SlaterDet>(tqp, std::move(sposet_clones), std::move(dets));
-  assert(myclone->isOptimizable() == isOptimizable());
+    dets.emplace_back(det->makeCopy(det->getPhi()->makeClone()));
+  auto myclone = std::make_unique<SlaterDet>(tqp, std::move(dets));
+  assert(myclone->Optimizable == Optimizable);
   return myclone;
-}
-
-void SlaterDet::registerTWFFastDerivWrapper(const ParticleSet& P, TWFFastDerivWrapper& twf) const
-{
-  for (int i = 0; i < Dets.size(); ++i)
-  {
-    Dets[i]->registerTWFFastDerivWrapper(P, twf);
-  }
 }
 
 } // namespace qmcplusplus

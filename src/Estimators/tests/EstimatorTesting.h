@@ -22,6 +22,8 @@ class SpeciesSet;
 
 namespace testing
 {
+using POLT    = PtclOnLatticeTraits;
+using Lattice = POLT::ParticleLayout_t;
 
 enum class SpeciesCases
 {

@@ -24,7 +24,6 @@ int main(int argc, char* argv[])
 #ifdef HAVE_MPI
   mpi3::environment env(argc, argv);
 #endif
-
   using namespace qmcplusplus;
   if (argc != 2)
   {

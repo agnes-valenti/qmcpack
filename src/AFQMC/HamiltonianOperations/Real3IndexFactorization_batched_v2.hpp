@@ -123,14 +123,13 @@ public:
         Lnak(std::move(move_vector<shmSpC3Tensor>(std::move(vnak)))),
         vn0(std::move(vn0_))
   {
-    using std::get;
-    local_nCV = get<1>(Likn.sizes());
+    local_nCV = Likn.size(1);
     size_t lnak(0);
     for (auto& v : Lnak)
       lnak += v.num_elements();
-    for (int i = 0; i < get<0>(hij.sizes()); i++)
+    for (int i = 0; i < hij.size(0); i++)
     {
-      for (int j = 0; j < get<1>(hij.sizes()); j++)
+      for (int j = 0; j < hij.size(1); j++)
       {
         hij_dev[i][j] = ComplexType(hij[i][j]);
       }
@@ -153,7 +152,7 @@ public:
   boost::multi::array<ComplexType, 2> getOneBodyPropagatorMatrix(TaskGroup_& TG,
                                                                  boost::multi::array<ComplexType, 1> const& vMF)
   {
-    int NMO = hij.size();
+    int NMO = hij.size(0);
     // in non-collinear case with SO, keep SO matrix here and add it
     // for now, stay collinear
 
@@ -211,8 +210,7 @@ public:
               bool addEJ  = true,
               bool addEXX = true)
   {
-    using std::get;
-    assert(get<1>(E.sizes()) >= 3);
+    assert(E.size(1) >= 3);
     assert(nd >= 0);
     assert(nd < haj.size());
     if (walker_type == COLLINEAR)
@@ -220,25 +218,24 @@ public:
     else
       assert(nd < Lnak.size());
 
-    int nwalk = Gc.size();
+    int nwalk = Gc.size(0);
     int nspin = (walker_type == COLLINEAR ? 2 : 1);
-    int NMO   = hij.size();
+    int NMO   = hij.size(0);
     int nel[2];
-
-    nel[0] = get<1>(Lnak[nspin * nd].sizes());
-    nel[1] = ((nspin == 2) ? get<1>(Lnak[nspin * nd + 1].sizes()) : 0);
-    assert(get<0>(Lnak[nspin * nd].sizes()) == local_nCV);
-    assert(get<2>(Lnak[nspin * nd].sizes()) == NMO);
+    nel[0] = Lnak[nspin * nd].size(1);
+    nel[1] = ((nspin == 2) ? Lnak[nspin * nd + 1].size(1) : 0);
+    assert(Lnak[nspin * nd].size(0) == local_nCV);
+    assert(Lnak[nspin * nd].size(2) == NMO);
     if (nspin == 2)
     {
-      assert(get<0>(Lnak[nspin * nd + 1].sizes()) == local_nCV);
-      assert(get<2>(Lnak[nspin * nd + 1].sizes()) == NMO);
+      assert(Lnak[nspin * nd + 1].size(0) == local_nCV);
+      assert(Lnak[nspin * nd + 1].size(2) == NMO);
     }
     assert(Gc.num_elements() == nwalk * (nel[0] + nel[1]) * NMO);
 
     int getKr = KEright != nullptr;
     int getKl = KEleft != nullptr;
-    if (get<0>(E.sizes()) != nwalk || get<1>(E.sizes()) < 3)
+    if (E.size(0) != nwalk || E.size(1) < 3)
       APP_ABORT(" Error in AFQMC/HamiltonianOperations/Real3IndexFactorization_batched_v2::energy(...). Incorrect "
                 "matrix dimensions \n");
 
@@ -258,13 +255,13 @@ public:
       Knc = local_nCV;
       if (getKr)
       {
-        assert(get<0>(KEright->sizes()) == nwalk && get<1>(KEright->sizes()) == local_nCV);
-        assert(KEright->stride(0) == get<1>(KEright->sizes()));
+        assert(KEright->size(0) == nwalk && KEright->size(1) == local_nCV);
+        assert(KEright->stride(0) == KEright->size(1));
       }
       if (getKl)
       {
-        assert(get<0>(KEleft->sizes()) == nwalk && get<1>(KEleft->sizes()) == local_nCV);
-        assert(KEleft->stride(0) == get<1>(KEleft->sizes()));
+        assert(KEleft->size(0) == nwalk && KEleft->size(1) == local_nCV);
+        assert(KEleft->stride(0) == KEleft->size(1));
       }
     }
     else if (getKr or getKl)
@@ -390,10 +387,8 @@ public:
   {
     using BType = typename std::decay<MatB>::type::element;
     using AType = typename std::decay<MatA>::type::element;
-
-    using std::get;
-    boost::multi::array_ref<BType, 2, decltype(v.origin())> v_(v.origin(), {get<0>(v.sizes()), 1});
-    boost::multi::array_ref<AType, 2, decltype(X.origin())> X_(X.origin(), {get<0>(X.sizes()), 1});
+    boost::multi::array_ref<BType, 2, decltype(v.origin())> v_(v.origin(), {v.size(0), 1});
+    boost::multi::array_ref<AType, 2, decltype(X.origin())> X_(X.origin(), {X.size(0), 1});
     return vHS(X_, v_, a, c);
   }
 
@@ -405,18 +400,16 @@ public:
   {
     using XType = typename std::decay_t<typename MatA::element>;
     using vType = typename std::decay<MatB>::type::element;
-
-    using std::get;
-    assert(get<1>(Likn.sizes()) == get<0>(X.sizes()));
-    assert(get<0>(Likn.sizes()) == get<0>(v.sizes()));
-    assert(get<1>(X.sizes()) == get<1>(v.sizes()));
+    assert(Likn.size(1) == X.size(0));
+    assert(Likn.size(0) == v.size(0));
+    assert(X.size(1) == v.size(1));
     // setup buffer space if changing precision in X or v
     size_t vmem(0), Xmem(0);
     if (not std::is_same<XType, SPComplexType>::value)
       Xmem = X.num_elements();
     if (not std::is_same<vType, SPComplexType>::value)
       vmem = v.num_elements();
-    StaticVector SPBuff(iextensions<1u>(Xmem + vmem),
+    StaticVector SPBuff(iextensions<1u>{Xmem + vmem},
                         buffer_manager.get_generator().template get_allocator<SPComplexType>());
     sp_pointer vptr(nullptr);
     const_sp_pointer Xptr(nullptr);
@@ -461,8 +454,8 @@ public:
   {
     using BType = typename std::decay<MatB>::type::element;
     using AType = typename std::decay<MatA>::type::element;
-    boost::multi::array_ref<BType, 2, decltype(v.origin())> v_(v.origin(), {v.size(), 1});
-    boost::multi::array_ref<AType const, 2, decltype(G.origin())> G_(G.origin(), {G.size(), 1});
+    boost::multi::array_ref<BType, 2, decltype(v.origin())> v_(v.origin(), {v.size(0), 1});
+    boost::multi::array_ref<AType const, 2, decltype(G.origin())> G_(G.origin(), {G.size(0), 1});
     return vbias(G_, v_, a, c, k);
   }
 
@@ -483,7 +476,7 @@ public:
       Gmem = G.num_elements();
     if (not std::is_same<vType, SPComplexType>::value)
       vmem = v.num_elements();
-    StaticVector SPBuff(iextensions<1u>(Gmem + vmem),
+    StaticVector SPBuff(iextensions<1u>{Gmem + vmem},
                         buffer_manager.get_generator().template get_allocator<SPComplexType>());
     sp_pointer vptr(nullptr);
     const_sp_pointer Gptr(nullptr);
@@ -513,27 +506,25 @@ public:
     boost::multi::array_cref<SPComplexType const, 2, const_sp_pointer> Gsp(Gptr, G.extensions());
     boost::multi::array_ref<SPComplexType, 2, sp_pointer> vsp(vptr, v.extensions());
 
-    using std::get;
-
-    if (haj.size() == 1)
+    if (haj.size(0) == 1)
     {
-      int nwalk = get<1>(v.sizes());
+      int nwalk = v.size(1);
       if (walker_type == COLLINEAR)
       {
-        assert(get<1>(G.sizes()) == get<1>(v.sizes()));
+        assert(G.size(1) == v.size(1));
         int NMO, nel[2];
-        NMO    = get<2>(Lnak[0].sizes());
-        nel[0] = get<1>(Lnak[0].sizes());
-        nel[1] = get<1>(Lnak[1].sizes());
+        NMO    = Lnak[0].size(2);
+        nel[0] = Lnak[0].size(1);
+        nel[1] = Lnak[1].size(1);
         double c_[2];
         c_[0] = c;
         c_[1] = c;
         if (std::abs(c) < 1e-8)
           c_[1] = 1.0;
-        assert((nel[0]+nel[1])*NMO == get<0>(G.sizes()));
+        assert((nel[0]+nel[1])*NMO == G.size(0));
         for (int ispin = 0, is0 = 0; ispin < 2; ispin++)
         {
-          assert(get<0>(Lnak[ispin].sizes()) == get<0>(v.sizes()));
+          assert(Lnak[ispin].size(0) == v.size(0));
           SpCMatrix_ref Ln(make_device_ptr(Lnak[ispin].origin()), {local_nCV, nel[ispin] * NMO});
           ma::product(SPComplexType(a), Ln, Gsp.sliced(is0, is0 + nel[ispin] * NMO), SPComplexType(c_[ispin]), vsp);
           is0 += nel[ispin] * NMO;
@@ -541,19 +532,19 @@ public:
       }
       else
       {
-        assert(get<1>(G.sizes()) == get<1>(v.sizes()));
-        assert(get<1>(Lnak[0].sizes()) * get<2>(Lnak[0].sizes()) == get<0>(G.sizes()));
-        assert(get<0>(Lnak[0].sizes()) == get<0>(v.sizes()));
-        SpCMatrix_ref Ln(make_device_ptr(Lnak[0].origin()), {local_nCV, get<1>(Lnak[0].sizes()) * get<2>(Lnak[0].sizes())});
+        assert(G.size(1) == v.size(1));
+        assert(Lnak[0].size(1) * Lnak[0].size(2) == G.size(0));
+        assert(Lnak[0].size(0) == v.size(0));
+        SpCMatrix_ref Ln(make_device_ptr(Lnak[0].origin()), {local_nCV, Lnak[0].size(1) * Lnak[0].size(2)});
         ma::product(SPComplexType(a), Ln, Gsp, SPComplexType(c), vsp);
       }
     }
     else
     {
       // multideterminant is not half-rotated, so use Likn
-      assert(get<0>(Likn.sizes()) == get<0>(G.sizes()));
-      assert(get<1>(Likn.sizes()) == get<0>(v.sizes()));
-      assert(get<1>(G.sizes()) == get<1>(v.sizes()));
+      assert(Likn.size(0) == G.size(0));
+      assert(Likn.size(1) == v.size(0));
+      assert(G.size(1) == v.size(1));
 
       ma::product(SPValueType(a), ma::T(Likn), Gsp, SPValueType(c), vsp);
     }
@@ -566,12 +557,12 @@ public:
   template<class Mat, class MatB>
   void generalizedFockMatrix(Mat&& G, MatB&& Fp, MatB&& Fm)
   {
-    int nwalk = G.size();
+    int nwalk = G.size(0);
     int nspin = (walker_type == COLLINEAR ? 2 : 1);
-    int NMO   = hij.size();
+    int NMO   = hij.size(0);
     int nel[2];
-    assert(Fp.size() == nwalk);
-    assert(Fm.size() == nwalk);
+    assert(Fp.size(0) == nwalk);
+    assert(Fm.size(0) == nwalk);
     assert(G[0].num_elements() == nspin * NMO * NMO);
     assert(Fp[0].num_elements() == nspin * NMO * NMO);
     assert(Fm[0].num_elements() == nspin * NMO * NMO);
@@ -887,7 +878,7 @@ private:
   //Cholesky Tensor Lik[i][k][n]
   shmSpRMatrix Likn;
 
-  // permuted half-transformed Cholesky tensor
+  // permuted half-tranformed Cholesky tensor
   // Lnak[ 2*idet + ispin ]
   std::vector<shmSpC3Tensor> Lnak;
 

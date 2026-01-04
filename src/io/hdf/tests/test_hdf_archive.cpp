@@ -1,11 +1,10 @@
-/////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2025 QMCPACK developers.
+// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
 //
 // File developed by: Mark Dewing, markdewing@gmail.com, University of Illinois at Urbana-Champaign
-//                    Peter W. Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
@@ -18,11 +17,11 @@
 #include <string>
 #include <sstream>
 
+
 using std::string;
 using std::vector;
 
-namespace qmcplusplus
-{
+using namespace qmcplusplus;
 
 TEST_CASE("hdf_archive_empty_file", "[hdf]")
 {
@@ -51,7 +50,7 @@ TEST_CASE("hdf_archive_simple_data", "[hdf]")
 {
   hdf_archive hd;
   hd.create("test_simple_data.hdf");
-  bool b    = true;
+  bool b = true;
   bool okay = hd.writeEntry(b, "bool");
   REQUIRE(okay);
 
@@ -63,8 +62,8 @@ TEST_CASE("hdf_archive_simple_data", "[hdf]")
   okay    = hd.writeEntry(f, "float");
   REQUIRE(okay);
 
-  const double d = 4.5;
-  okay           = hd.writeEntry(d, "double");
+  double d = 4.5;
+  okay     = hd.writeEntry(d, "double");
   REQUIRE(okay);
 
   std::complex<float> cf(2.3, 3.4);
@@ -89,7 +88,7 @@ TEST_CASE("hdf_archive_simple_data", "[hdf]")
   hdf_archive hd2;
   hd2.open("test_simple_data.hdf");
   bool b2 = false;
-  okay    = hd2.readEntry(b2, "bool");
+  okay = hd2.readEntry(b2, "bool");
   REQUIRE(okay);
   REQUIRE(b == b2);
 
@@ -177,10 +176,6 @@ TEST_CASE("hdf_archive_vector", "[hdf]")
   bool okay = hd.writeEntry(v, "vector_double");
   REQUIRE(okay);
 
-  const vector<double> v_const(v);
-  okay = hd.writeEntry(v_const, "vector_double_const");
-  REQUIRE(okay);
-
   hd.close();
 
   hdf_archive hd2;
@@ -191,242 +186,27 @@ TEST_CASE("hdf_archive_vector", "[hdf]")
   okay = hd2.readEntry(v2, "vector_double");
   REQUIRE(v2.size() == 3);
   for (int i = 0; i < v.size(); i++)
-    CHECK(v[i] == v2[i]);
-
-  vector<double> v2_for_const;
-  okay = hd2.readEntry(v2_for_const, "vector_double_const");
-  REQUIRE(v2_for_const.size() == 3);
-  for (int i = 0; i < v_const.size(); i++)
-    CHECK(v_const[i] == v2_for_const[i]);
+  {
+    REQUIRE(v[i] == v2[i]);
+  }
 }
-
-TEST_CASE("hdf_archive_append_multiple_pete", "[hdf]")
-{
-  hdf_archive hd;
-  bool okay = hd.create("test_append_pete.hdf");
-  REQUIRE(okay);
-
-  Vector<double> v1{2.3, 3.4, 5.6};
-  hsize_t append_index = 0;
-
-  std::string name = "pete_vector_series_double";
-  append_index     = hd.append(v1, name, append_index);
-
-  Vector<double> v2{4.0, 5.0, 6.0};
-
-  append_index = hd.append(v2, name, append_index);
-
-  std::string name_complex = "pete_vector_series_complex_double";
-  Vector<std::complex<double>> vc1{{4.0, 0.0}, {5.0, 1.0}, {6.0, 2.0}};
-  std::size_t complex_append_index{0};
-
-  complex_append_index = hd.append(vc1, name_complex, complex_append_index);
-  Vector<std::complex<double>> vc2{{2.1, 0.0}, {3.1, 1.0}, {4.1, 2.0}};
-  complex_append_index = hd.append(vc2, name_complex, complex_append_index);
-
-  hd.close();
-  hdf_archive read_hd;
-  // For hdf5@1.14.6+cxx+mpi api=v114
-  okay = read_hd.open("test_append_pete.hdf");
-  REQUIRE(okay);
-
-  Vector<double> v_read;
-  std::array<int, 2> select_one_vector{0, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v1 == v_read);
-
-  // Select the second row in the hyperslab
-  select_one_vector = {1, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v2 == v_read);
-
-  Vector<std::complex<double>> vc_read;
-  // Yes you use the same one since the dataspace hides the
-  // std::complex dimensionality just like would be the case for
-  // tiny vector.
-  select_one_vector = {0, -1};
-  read_hd.readSlabSelection(vc_read, select_one_vector, name_complex);
-  CHECK(vc1 == vc_read);
-  select_one_vector = {1, -1};
-  read_hd.readSlabSelection(vc_read, select_one_vector, name_complex);
-  CHECK(vc2 == vc_read);
-}
-
-TEST_CASE("hdf_archive_real_append_std_vec", "[hdf]")
-{
-  hdf_archive hd;
-  bool okay = hd.create("test_append_std_vec.hdf");
-  REQUIRE(okay);
-
-  std::vector<double> v1{2.3, 3.4, 5.6};
-  hsize_t append_index = 0;
-
-  std::string name = "std_vector_series_double";
-  append_index     = hd.append(v1, name, append_index);
-
-  std::vector<double> v2{4.0, 5.0, 6.0};
-
-  append_index = hd.append(v2, name, append_index);
-
-  hd.close();
-  hdf_archive read_hd;
-  // For hdf5@1.14.6+cxx+mpi api=v114
-  okay = read_hd.open("test_append_std_vec.hdf");
-  REQUIRE(okay);
-
-  std::vector<double> v_read;
-  std::array<int, 2> select_one_vector{0, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v1 == v_read);
-
-  // Select the second row in the hyperslab
-  select_one_vector = {1, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v2 == v_read);
-}
-
-TEST_CASE("hdf_archive_real_append_pete", "[hdf]")
-{
-  hdf_archive hd;
-  bool okay = hd.create("test_append_pete.hdf");
-  REQUIRE(okay);
-
-  Vector<double> v1{2.3, 3.4, 5.6};
-  hsize_t append_index = 0;
-
-  std::string name = "pete_vector_series_double";
-  append_index     = hd.append(v1, name, append_index);
-
-  Vector<double> v2{4.0, 5.0, 6.0};
-
-  append_index = hd.append(v2, name, append_index);
-
-  hd.close();
-  hdf_archive read_hd;
-  // For hdf5@1.14.6+cxx+mpi api=v114
-  okay = read_hd.open("test_append_pete.hdf");
-  REQUIRE(okay);
-
-  Vector<double> v_read;
-  std::array<int, 2> select_one_vector{0, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v1 == v_read);
-
-  // Select the second row in the hyperslab
-  select_one_vector = {1, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v2 == v_read);
-}
-
-TEST_CASE("hdf_archive_complex_append_pete", "[hdf]")
-{
-  using qmcplusplus::Vector;
-  hdf_archive hd;
-  bool okay = hd.create("test_complex_append_pete.hdf");
-  REQUIRE(okay);
-
-  std::string name_complex = "pete_vector_series_complex_double";
-  Vector<std::complex<double>> vc1{{4.0, 0.0}, {5.0, 1.0}, {6.0, 2.0}};
-  std::size_t complex_append_index{0};
-
-  complex_append_index = hd.append(vc1, name_complex, complex_append_index);
-  Vector<std::complex<double>> vc2{{2.1, 0.0}, {3.1, 1.0}, {4.1, 2.0}};
-  complex_append_index = hd.append(vc2, name_complex, complex_append_index);
-
-  hd.close();
-  hdf_archive read_hd;
-  // For hdf5@1.14.6+cxx+mpi api=v114
-  okay = read_hd.open("test_complex_append_pete.hdf");
-  REQUIRE(okay);
-  //this is key, you don't specify the std::complex dimension of the
-  //slab, since hdf_dataspace.h can handle the std::complex.
-  std::array<int, 2> select_one_complex_vector{0, -1};
-
-  Vector<std::complex<double>> vc_read;
-  read_hd.readSlabSelection(vc_read, select_one_complex_vector, name_complex);
-  CHECK(vc1 == vc_read);
-  select_one_complex_vector = {1, -1};
-  read_hd.readSlabSelection(vc_read, select_one_complex_vector, name_complex);
-  CHECK(vc2 == vc_read);
-}
-
-TEST_CASE("hdf_archive_TinyVec_append_pete", "[hdf]")
-{
-  hdf_archive hd;
-  bool okay = hd.create("test_append_TinyVec_pete.hdf");
-  REQUIRE(okay);
-
-  Vector<TinyVector<double, 3>> v1{{2.3, 1.0, 2.0}, {3.4, 2.0, 3.0}, {5.6, 3.0, 4.0}};
-  hsize_t append_index = 0;
-
-  std::string name = "pete_vector_series_TinyVec";
-  append_index     = hd.append(v1, name, append_index);
-
-  Vector<TinyVector<double, 3>> v2{{4.0, 1.1, 2.2}, {5.0, 3.3, 4.4}, {6.0, 5.5, 6.6}};
-
-  append_index = hd.append(v2, name, append_index);
-
-  hd.close();
-  hdf_archive read_hd;
-  // For hdf5@1.14.6+cxx+mpi api=v114
-  okay = read_hd.open("test_append_TinyVec_pete.hdf");
-  REQUIRE(okay);
-
-  Vector<TinyVector<double, 3>> v_read;
-  std::array<int, 2> select_one_vector{0, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v1 == v_read);
-
-  // Select the second row in the hyperslab
-  select_one_vector = {1, -1};
-  read_hd.readSlabSelection(v_read, select_one_vector, name);
-
-  CHECK(v_read.size() == 3);
-  CHECK(v2 == v_read);
-}
-
 
 TEST_CASE("hdf_archive_group", "[hdf]")
 {
   hdf_archive hd;
-  bool okay = hd.create("test_group.hdf");
-  REQUIRE(okay);
+  hd.create("test_group.hdf");
 
-  int i = 3;
-  okay  = hd.writeEntry(i, "int");
+  int i     = 3;
+  bool okay = hd.writeEntry(i, "int");
   REQUIRE(okay);
-
-  CHECK(hd.group_path_as_string() == "");
 
   hd.push("name1");
-
-  CHECK(hd.group_path_as_string() == "name1");
 
   int j = 3;
   okay  = hd.writeEntry(j, "int2");
   REQUIRE(okay);
 
-  hd.push("name2");
-  CHECK(hd.group_path_as_string() == "name1/name2");
-
   hd.close();
-
-  // Check that opening a group on a closed file throws an exception
-  REQUIRE_THROWS(hd.push("group"));
 
   hdf_archive hd2;
   hd2.open("test_group.hdf");
@@ -446,8 +226,6 @@ TEST_CASE("hdf_archive_group", "[hdf]")
   okay = hd2.readEntry(j3, "int2");
   REQUIRE(okay);
   REQUIRE(j3 == j);
-
-  REQUIRE_THROWS(hd2.push("nonexistent_group", false));
 
   hd2.close();
 }
@@ -607,85 +385,3 @@ TEST_CASE("hdf_archive_string_vector", "[hdf]")
   REQUIRE(strings2[0] == "first");
   REQUIRE(strings2[1] == "really long string");
 }
-
-TEST_CASE("hdf_archive_dataset_existence_checking", "[hdf]")
-{
-  hdf_archive hd;
-  hd.create("test_dataset_existence_checking.hdf");
-
-  std::vector<uint64_t> numbers;
-  numbers.push_back(123456);
-  std::string ds_tag = "numbers_vector";
-
-  bool okay = hd.writeEntry(numbers, ds_tag);
-  REQUIRE(okay);
-
-  hd.close();
-
-  hdf_archive hd2;
-  okay = hd2.open("test_dataset_existence_checking.hdf");
-  REQUIRE(okay);
-
-  REQUIRE(hd2.is_dataset(ds_tag));
-  REQUIRE(!hd2.is_dataset("tag_doesnt_exist"));
-}
-
-TEST_CASE("hdf_archive_dataset_type_checking", "[hdf]")
-{
-  hdf_archive hd;
-  hd.create("test_dataset_type_checking.hdf");
-
-  std::vector<uint64_t> numbers;
-  numbers.push_back(123456);
-  std::string ds_tag = "numbers_vector";
-
-  bool okay = hd.writeEntry(numbers, ds_tag);
-  REQUIRE(okay);
-
-  hd.close();
-
-  hdf_archive hd2;
-  okay = hd2.open("test_dataset_type_checking.hdf");
-  REQUIRE(okay);
-
-  bool is_correct_type = hd2.is_dataset_of_type<uint64_t>(ds_tag);
-  REQUIRE(is_correct_type);
-  is_correct_type = hd2.is_dataset_of_type<int64_t>(ds_tag);
-  REQUIRE(is_correct_type == false);
-  REQUIRE_THROWS_AS(hd2.is_dataset_of_type<uint64_t>("tag_doesnt_exist"), std::runtime_error);
-}
-
-TEST_CASE("hdf_std_vec_bool", "[hdf]")
-{
-  hdf_archive hd;
-  hd.create("test_vec_bool.hdf");
-
-  std::vector<bool> v(3, false);
-  v[0] = true;
-
-  bool okay = hd.writeEntry(v, "vector_bool");
-  REQUIRE(okay);
-
-  const std::vector<bool> v_const(v);
-  okay = hd.writeEntry(v_const, "vector_bool_const");
-  REQUIRE(okay);
-
-  hd.close();
-
-  hdf_archive hd2;
-  okay = hd2.open("test_vec_bool.hdf");
-  REQUIRE(okay);
-
-  std::vector<bool> v2;
-  okay = hd2.readEntry(v2, "vector_bool");
-  REQUIRE(v2.size() == 3);
-  for (int i = 0; i < v.size(); i++)
-    CHECK(v[i] == v2[i]);
-
-  std::vector<bool> v2_for_const;
-  okay = hd2.readEntry(v2_for_const, "vector_bool_const");
-  REQUIRE(v2_for_const.size() == 3);
-  for (int i = 0; i < v_const.size(); i++)
-    CHECK(v_const[i] == v2_for_const[i]);
-}
-} // namespace qmcplusplus

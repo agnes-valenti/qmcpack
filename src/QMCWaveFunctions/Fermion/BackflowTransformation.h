@@ -21,39 +21,38 @@
 #include <cmath>
 #include "Particle/ParticleSet.h"
 #include "DistanceTable.h"
-#include "CPU/VectorOps.h"
+#include "Particle/ParticleBase/ParticleAttribOps.h"
 #include "QMCWaveFunctions/Fermion/BackflowFunctionBase.h"
 #include "OhmmsPETE/OhmmsArray.h"
-#include "OptimizableObject.h"
 
 namespace qmcplusplus
 {
-class BackflowTransformation final : public OptimizableObject
+class BackflowTransformation
 {
 public:
-  using WFBufferType = BackflowFunctionBase::WFBufferType;
+  typedef BackflowFunctionBase::WFBufferType WFBufferType;
 
   // All BF quantities should be real, so eliminating complex (ValueType) possibility
   enum
   {
     DIM = OHMMS_DIM
   };
-  using RealType    = OHMMS_PRECISION;
-  using IndexType   = int;
-  using PosType     = TinyVector<RealType, DIM>;
-  using GradType    = TinyVector<RealType, DIM>;
-  using HessType    = Tensor<RealType, DIM>;
-  using IndexVector = Vector<IndexType>;
-  using GradVector  = Vector<GradType>;
-  using GradMatrix  = Matrix<GradType>;
-  using HessVector  = Vector<HessType>;
-  using HessMatrix  = Matrix<HessType>;
+  typedef OHMMS_PRECISION RealType;
+  typedef int IndexType;
+  typedef TinyVector<RealType, DIM> PosType;
+  typedef TinyVector<RealType, DIM> GradType;
+  typedef Tensor<RealType, DIM> HessType;
+  typedef Vector<IndexType> IndexVector_t;
+  typedef Vector<GradType> GradVector_t;
+  typedef Matrix<GradType> GradMatrix_t;
+  typedef Vector<HessType> HessVector_t;
+  typedef Matrix<HessType> HessMatrix_t;
 
-  using HessArray = Array<HessType, 3>;
+  typedef Array<HessType, 3> HessArray_t;
 
-  using PSetMap = std::map<std::string, const std::unique_ptr<ParticleSet>>;
-  //using GradArray_t = Array<GradType,3>      ;
-  //using PosArray_t = Array<PosType,3>       ;
+  typedef std::map<std::string, ParticleSet*> PtclPoolType;
+  //typedef Array<GradType,3>       GradArray_t;
+  //typedef Array<PosType,3>        PosArray_t;
 
   ///number of quantum particles
   int NumTargets;
@@ -94,26 +93,26 @@ public:
 
   // matrix of laplacians
   // /vec{B(i)} = sum_{k} /grad_{k}^2 /vec{x_i}
-  GradVector Bmat;
+  GradVector_t Bmat;
 
-  GradMatrix Bmat_full, Bmat_temp;
+  GradMatrix_t Bmat_full, Bmat_temp;
 
   // matrix of first derivatives
   // A(i,j)[a,b] = (Grad_i)_a (x_j)_b
   //               i,j:particle index
   //               a,b=(x,y,z)
   // notice that A(i,j) is a symmetric matrix, improve later
-  HessMatrix Amat, Amat_temp;
+  HessMatrix_t Amat, Amat_temp;
 
   // \nabla_a A_{i,j}^{\alpha,\beta}
   // derivative of A matrix with respect to var. prms.
-  HessArray Xmat;
+  HessArray_t Xmat;
 
   // \sum_i \nabla_a B_{i,j}^{\alpha}
-  GradMatrix Ymat;
+  GradMatrix_t Ymat;
 
   // \nabla_a x_i^{\alpha}
-  GradMatrix Cmat;
+  GradMatrix_t Cmat;
 
   RealType *FirstOfP, *LastOfP;
   RealType *FirstOfA, *LastOfA;
@@ -131,8 +130,8 @@ public:
   std::vector<std::string> names;
 
   /// new qp coordinates for pbyp moves.
-  ParticleSet::ParticlePos newQP;
-  ParticleSet::ParticlePos oldQP;
+  ParticleSet::ParticlePos_t newQP;
+  ParticleSet::ParticlePos_t oldQP;
 
   //Vector<PosType> storeQP;
   Vector<PosType> storeQP;
@@ -156,17 +155,15 @@ public:
 
   void restore(int iat = 0);
 
-  bool isOptimizable() const;
   void checkInVariables(opt_variables_type& active);
-  void checkOutVariables(const opt_variables_type& active);
-  void resetParameters(const opt_variables_type& active);
-  void reportStatus(std::ostream& os) final;
 
-  // extractOptimizableObjectRefs is not enabled in BackflowTransformation.
-  // it is exposed as a whole to the opitmizer. Thus the underlying OptimizableObject are not explosed.
-  // Simply redirect existing implentation.
-  void checkInVariablesExclusive(opt_variables_type& active) final { checkInVariables(active); }
-  void resetParametersExclusive(const opt_variables_type& active) final { resetParameters(active); }
+  void reportStatus(std::ostream& os);
+
+  void checkOutVariables(const opt_variables_type& active);
+
+  bool isOptimizable();
+
+  void resetParameters(const opt_variables_type& active);
 
   void registerData(ParticleSet& P, WFBufferType& buf);
 

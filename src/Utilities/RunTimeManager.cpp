@@ -17,18 +17,17 @@
 #include "RunTimeManager.h"
 #include <sstream>
 #include <fstream>
-#include <iomanip>
 #include <cstdio>
 
 namespace qmcplusplus
 {
-RunTimeManager<ChronoClock> run_time_manager;
+RunTimeManager<CPUClock> run_time_manager;
 
-template class RunTimeManager<ChronoClock>;
-template class RunTimeManager<FakeChronoClock>;
+template class RunTimeManager<CPUClock>;
+template class RunTimeManager<FakeCPUClock>;
 
 template<class CLOCK>
-LoopTimer<CLOCK>::LoopTimer() : nloop(0), ticking(false), total_time(0.0)
+LoopTimer<CLOCK>::LoopTimer() : nloop(0), ticking(false), start_time(0.0), total_time(0.0)
 {}
 
 template<class CLOCK>
@@ -36,7 +35,7 @@ void LoopTimer<CLOCK>::start()
 {
   if (ticking)
     throw std::runtime_error("LoopTimer started already!");
-  start_time = CLOCK::now();
+  start_time = CLOCK()();
   ticking    = true;
 }
 
@@ -46,9 +45,7 @@ void LoopTimer<CLOCK>::stop()
   if (!ticking)
     throw std::runtime_error("LoopTimer didn't start but called stop!");
   nloop++;
-  std::chrono::duration<double> elapsed = CLOCK::now() - start_time;
-  total_time += elapsed.count();
-
+  total_time += CLOCK()() - start_time;
   ticking = false;
 }
 
@@ -60,8 +57,8 @@ double LoopTimer<CLOCK>::get_time_per_iteration() const
   return 0.0;
 }
 
-template class LoopTimer<ChronoClock>;
-template class LoopTimer<FakeChronoClock>;
+template class LoopTimer<CPUClock>;
+template class LoopTimer<FakeCPUClock>;
 
 template<class CLOCK>
 RunTimeControl<CLOCK>::RunTimeControl(RunTimeManager<CLOCK>& rm,
@@ -131,22 +128,6 @@ bool RunTimeControl<CLOCK>::checkStop(LoopTimer<CLOCK>& loop_timer)
 }
 
 template<class CLOCK>
-std::string RunTimeControl<CLOCK>::generateProgressMessage(const std::string& driverName,
-                                                           int block,
-                                                           int num_blocks) const
-{
-  std::stringstream log;
-  if (block == 0 || block + 1 == num_blocks / 4 || block + 1 == num_blocks / 2 || block + 1 == (num_blocks * 3) / 4 ||
-      block + 1 == num_blocks)
-  {
-    log << "Completed block " << std::setw(4) << block + 1 << " of " << num_blocks << " average "
-        << std::setprecision(4) << m_loop_time << " secs/block after " << std::setprecision(4) << m_elapsed << " secs"
-        << std::endl;
-  }
-  return log.str();
-}
-
-template<class CLOCK>
 std::string RunTimeControl<CLOCK>::generateStopMessage(const std::string& driverName, int block) const
 {
   std::stringstream log;
@@ -170,7 +151,7 @@ std::string RunTimeControl<CLOCK>::generateStopMessage(const std::string& driver
   return log.str();
 }
 
-template class RunTimeControl<ChronoClock>;
-template class RunTimeControl<FakeChronoClock>;
+template class RunTimeControl<CPUClock>;
+template class RunTimeControl<FakeCPUClock>;
 
 } // namespace qmcplusplus

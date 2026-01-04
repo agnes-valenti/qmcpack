@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
@@ -13,16 +13,15 @@
 #include <vector>
 #include "QMCDrivers/MCPopulation.h"
 #include "RandomGenerator.h"
+#include "MultiWalkerDispatchers.h"
 #include "DriverWalkerTypes.h"
 #include "Estimators/EstimatorManagerCrowd.h"
-#include "WalkerLogCollector.h"
 
 namespace qmcplusplus
 {
 // forward declaration
 class ResourceCollection;
 class EstimatorManagerNew;
-class WalkerLogCollector;
 
 /** Driver synchronized step context
  * 
@@ -41,19 +40,11 @@ public:
   using GradType         = QMCTraits::GradType;
   using RealType         = QMCTraits::RealType;
   using FullPrecRealType = QMCTraits::FullPrecRealType;
-  /** The constructor
-   *  this requires all the gold elements because it constructs a valid estimator_manager_crowd
-   *  and valid mw resources for the crowd.  We do not want this to be a multistep process.
-   *  To do this requires temporary walker elements.  You need them all because you need to aquire
-   *  the crowd scope mw QMCHamiltonian resource.
-   *  The Crowd retains none of these references only the now valid mw resource.
-   *  Reduce coupling between walker elements fewer could be necessary.
+  /** This is the data structure for walkers within a crowd
    */
   Crowd(EstimatorManagerNew& emb,
         const DriverWalkerResourceCollection& driverwalker_res,
-        const ParticleSet& pset,
-        const TrialWaveFunction& twf,
-        const QMCHamiltonian& hamiltonian_temp);
+        const MultiWalkerDispatchers& dispatchers);
   ~Crowd();
   /** Because so many vectors allocate them upfront.
    *
@@ -76,19 +67,14 @@ public:
    */
   void clearWalkers();
 
-  void accumulate(RandomBase<FullPrecRealType>& rng)
+  void accumulate(RandomGenerator_t& rng)
   {
     if (this->size() == 0)
       return;
-    estimator_manager_crowd_.accumulate(mcp_walkers_, walker_elecs_, walker_twfs_, walker_hamiltonians_, rng);
+    estimator_manager_crowd_.accumulate(mcp_walkers_, walker_elecs_, walker_twfs_, rng);
   }
 
-  /// activate the collector
-  void setWalkerLogCollector(std::unique_ptr<WalkerLogCollector>&&);
-  /// Collect walker log data
-  void collectStepWalkerLog(int current_step);
-
-  void setRNGForHamiltonian(RandomBase<FullPrecRealType>& rng);
+  void setRNGForHamiltonian(RandomGenerator_t& rng);
 
   auto beginWalkers() { return mcp_walkers_.begin(); }
   auto endWalkers() { return mcp_walkers_.end(); }
@@ -115,8 +101,7 @@ public:
   unsigned long get_accept() { return n_accept_; }
   unsigned long get_reject() { return n_reject_; }
 
-  /// get refereces of active walker log collectors. If walker logging is disabled, the RefVector size can be zero.
-  static RefVector<WalkerLogCollector> getWalkerLogCollectorRefs(const UPtrVector<Crowd>& crowds);
+  const MultiWalkerDispatchers& dispatchers_;
 
 private:
   /** @name Walker Vectors
@@ -135,8 +120,6 @@ private:
   DriverWalkerResourceCollection driverwalker_resource_collection_;
   /// per crowd estimator manager
   EstimatorManagerCrowd estimator_manager_crowd_;
-  // collector for walker logs
-  std::unique_ptr<WalkerLogCollector> wlog_collector_;
 
   /** @name Step State
    * 

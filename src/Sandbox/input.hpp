@@ -12,11 +12,10 @@
 
 #ifndef QMCPLUSPLUS_MINIAPPS_INPUT_H
 #define QMCPLUSPLUS_MINIAPPS_INPUT_H
-
-#include "ParticleIOUtility.h"
+#include "ParticleIO/ParticleIOUtility.h"
 #if defined(USE_NIO)
-#include "input/nio.hpp"
+#include "Sandbox/input/nio.hpp"
 #else
-#include "input/graphite.hpp"
+#include "Sandbox/input/graphite.hpp"
 #endif
 #endif

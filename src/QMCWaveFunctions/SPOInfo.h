@@ -22,7 +22,7 @@ namespace qmcplusplus
    */
 struct SPOInfo
 {
-  using RealType = QMCTraits::RealType;
+  typedef QMCTraits::RealType RealType;
 
   enum
   {
@@ -51,7 +51,7 @@ struct SPOInfo
 
   inline bool has_index() const { return index != no_index; }
 
-  inline bool has_energy() const { return energy != no_energy; }
+  inline bool has_energy() const{ return energy != no_energy; }
 
   inline bool has_degeneracy() const { return degeneracy != no_degeneracy; }
 
@@ -80,7 +80,7 @@ inline bool index_order(const SPOInfo* left, const SPOInfo* right) { return left
 /// comparison functor for sorting SPOInfo based on energy
 struct EnergyOrder
 {
-  using RealType = QMCTraits::RealType;
+  typedef QMCTraits::RealType RealType;
   RealType energy_tol;
   EnergyOrder(RealType tol = 1e-6) : energy_tol(tol){};
   ~EnergyOrder(){};

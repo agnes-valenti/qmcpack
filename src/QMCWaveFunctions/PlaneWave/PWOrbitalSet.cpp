@@ -29,10 +29,15 @@ PWOrbitalSet::~PWOrbitalSet()
 
 std::unique_ptr<SPOSet> PWOrbitalSet::makeClone() const
 {
-  auto myclone        = std::make_unique<PWOrbitalSet>(*this);
-  myclone->myBasisSet = new PWBasis(*myBasisSet);
-  myclone->IsCloned   = true;
+  auto myclone          = std::make_unique<PWOrbitalSet>(*this);
+  myclone->myBasisSet   = new PWBasis(*myBasisSet);
+  myclone->IsCloned     = true;
   return myclone;
+}
+
+void PWOrbitalSet::resetParameters(const opt_variables_type& optVariables)
+{
+  //DO NOTHING FOR NOW
 }
 
 void PWOrbitalSet::setOrbitalSetSize(int norbs) {}
@@ -43,7 +48,7 @@ void PWOrbitalSet::resize(PWBasisPtr bset, int nbands, bool cleanup)
   OrbitalSetSize = nbands;
   OwnBasisSet    = cleanup;
   BasisSetSize   = myBasisSet->NumPlaneWaves;
-  C              = new ValueMatrix(OrbitalSetSize, BasisSetSize);
+  C              = new ValueMatrix_t(OrbitalSetSize, BasisSetSize);
   Temp.resize(OrbitalSetSize, PW_MAXINDEX);
   app_log() << "  PWOrbitalSet::resize OrbitalSetSize =" << OrbitalSetSize << " BasisSetSize = " << BasisSetSize
             << std::endl;
@@ -83,16 +88,16 @@ void PWOrbitalSet::addVector(const std::vector<RealType>& coefs, int jorb)
   }
 }
 
-void PWOrbitalSet::evaluateValue(const ParticleSet& P, int iat, ValueVector& psi)
+void PWOrbitalSet::evaluateValue(const ParticleSet& P, int iat, ValueVector_t& psi)
 {
   //Evaluate every orbital for particle iat.
   //Evaluate the basis-set at these coordinates:
   //myBasisSet->evaluate(P,iat);
   myBasisSet->evaluate(P.activeR(iat));
-  MatrixOperators::product(*C, myBasisSet->Zv, psi);
+  MatrixOperators::product(*C, myBasisSet->Zv, &psi[0]);
 }
 
-void PWOrbitalSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi)
+void PWOrbitalSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi)
 {
   //Evaluate the orbitals and derivatives for particle iat only.
   myBasisSet->evaluateAll(P, iat);
@@ -109,9 +114,9 @@ void PWOrbitalSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector& psi, 
 void PWOrbitalSet::evaluate_notranspose(const ParticleSet& P,
                                         int first,
                                         int last,
-                                        ValueMatrix& logdet,
-                                        GradMatrix& dlogdet,
-                                        ValueMatrix& d2logdet)
+                                        ValueMatrix_t& logdet,
+                                        GradMatrix_t& dlogdet,
+                                        ValueMatrix_t& d2logdet)
 {
   for (int iat = first, i = 0; iat < last; iat++, i++)
   {

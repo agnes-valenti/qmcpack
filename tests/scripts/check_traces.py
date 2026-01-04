@@ -927,22 +927,14 @@ class TracesAnalyzer(DevBase):
             wtot += w
             for qname in qnames:
                 q = trace_file.scalars_by_block[qname]
-                if qname!='Weight':
-                    summed_scalars[qname] += w*q
-                else:
-                    summed_scalars[qname] += w
-                #end if
+                summed_scalars[qname] += w*q
             #end for
         #end for
 
         # Compare summed trace data against scalar.dat/stat.h5 values
         for qname in qnames:
             qscalar = scalars[qname]
-            if qname!='Weight':
-                qb = summed_scalars[qname]/wtot
-            else:
-                qb = summed_scalars[qname]
-            #end if
+            qb = summed_scalars[qname]/wtot
             match = abs(qb-qscalar)<tol
             all_match = match.all()
             self.log('{:<16} {}/{} blocks match'.format(qname,match.sum(),len(match)),n=2)

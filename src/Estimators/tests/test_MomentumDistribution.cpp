@@ -20,11 +20,10 @@
 #include "TrialWaveFunction.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "Message/UniformCommunicateError.h"
-#include <MinimalParticlePool.h>
-#include <MinimalWaveFunctionPool.h>
+#include "Particle/tests/MinimalParticlePool.h"
+#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
 #include "Utilities/StdRandom.h"
 #include "Utilities/StlPrettyPrint.hpp"
-#include "Utilities/ProjectData.h"
 
 #include <stdio.h>
 #include <sstream>
@@ -46,14 +45,12 @@ public:
   {
     MomentumDistribution md2(md);
 
+    CHECK(md2.M == md.M);
     CHECK(md2.twist[0] == Approx(md.twist[0]));
     CHECK(md2.twist[1] == Approx(md.twist[1]));
     CHECK(md2.twist[2] == Approx(md.twist[2]));
     CHECK(md2.kPoints.size() == md.kPoints.size());
     CHECK(md.data_ != md2.data_);
-
-    MomentumDistribution md3(md, DataLocality::crowd);
-    CHECK(md3.get_data_locality() == DataLocality::crowd);
   }
 };
 } // namespace testing
@@ -70,25 +67,28 @@ TEST_CASE("MomentumDistribution::MomentumDistribution", "[estimators]")
   Libxml2Document doc;
   bool okay = doc.parseFromString(xml);
   if (!okay)
-    throw std::runtime_error("cannot parse MomentumDistributionInput section");
+    throw std::runtime_error("cannot parse OneBodyDensitMatricesInput section");
   xmlNodePtr node = doc.getRoot();
-  MomentumDistributionInput mdi(node);
+  MomentumDistributionInput mdi;
+  mdi.readXML(node);
 
   // Instantiate other dependencies (internal QMCPACK objects)
   auto lattice = testing::makeTestLattice();
-  ProjectData test_project("test", ProjectData::DriverVersion::BATCH);
   Communicate* comm;
   comm = OHMMS::Controller;
-
-  auto particle_pool = MinimalParticlePool::make_diamondC_1x1x1(comm);
-  auto wavefunction_pool =
-      MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& pset      = *(particle_pool.getParticleSet("e"));
-  DataLocality dl = DataLocality::crowd;
+  outputManager.pause();
+  MinimalParticlePool mpp;
+  ParticleSetPool particle_pool = mpp(comm);
+  MinimalWaveFunctionPool wfp;
+  WaveFunctionPool wavefunction_pool = wfp(comm, particle_pool);
+  auto& pset                         = *(particle_pool.getParticleSet("e"));
+  auto& wf_factory                   = *(wavefunction_pool.getWaveFunctionFactory("wavefunction"));
+  DataLocality dl                    = DataLocality::crowd;
 
   // Build from input
-  MomentumDistribution md(std::move(mdi), pset.getTotalNum(), pset.getTwist(), pset.getLattice(), dl);
+  MomentumDistribution md(std::move(mdi), pset.getTotalNum(), pset.getTwist(), pset.Lattice, dl);
 
+  CHECK(md.M == 5);
   CHECK(md.twist[0] == Approx(0.0));
   CHECK(md.twist[1] == Approx(0.0));
   CHECK(md.twist[2] == Approx(0.0));
@@ -101,6 +101,8 @@ TEST_CASE("MomentumDistribution::MomentumDistribution", "[estimators]")
 
   MomentumDistributionTests mdt;
   mdt.testCopyConstructor(md);
+
+  outputManager.resume();
 }
 
 
@@ -118,30 +120,32 @@ TEST_CASE("MomentumDistribution::accumulate", "[estimators]")
   Libxml2Document doc;
   bool okay = doc.parseFromString(xml);
   if (!okay)
-    throw std::runtime_error("cannot parse MomentumDistributionInput section");
+    throw std::runtime_error("cannot parse OneBodyDensitMatricesInput section");
   xmlNodePtr node = doc.getRoot();
-  MomentumDistributionInput mdi(node);
+  MomentumDistributionInput mdi;
+  mdi.readXML(node);
 
   // Instantiate other dependencies (internal QMCPACK objects)
   auto lattice = testing::makeTestLattice();
-  ProjectData test_project("test", ProjectData::DriverVersion::BATCH);
   Communicate* comm;
   comm = OHMMS::Controller;
   outputManager.pause();
-  auto particle_pool = MinimalParticlePool::make_diamondC_1x1x1(comm);
-  auto wavefunction_pool =
-      MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& pset      = *(particle_pool.getParticleSet("e"));
-  DataLocality dl = DataLocality::crowd;
+  MinimalParticlePool mpp;
+  ParticleSetPool particle_pool = mpp(comm);
+  MinimalWaveFunctionPool wfp;
+  WaveFunctionPool wavefunction_pool = wfp(comm, particle_pool);
+  auto& pset                         = *(particle_pool.getParticleSet("e"));
+  auto& wf_factory                   = *(wavefunction_pool.getWaveFunctionFactory("wavefunction"));
+  DataLocality dl                    = DataLocality::crowd;
 
   // Setup particleset
-  pset.R = ParticleSet::ParticlePos{{1.751870349, 4.381521229, 2.865202269}, {3.244515371, 4.382273176, 4.21105285},
-                                    {3.000459944, 3.329603408, 4.265030556}, {3.748660329, 3.63420622, 5.393637791},
-                                    {3.033228526, 3.391869137, 4.654413566}, {3.114198787, 2.654334594, 5.231075822},
-                                    {3.657151589, 4.883870516, 4.201243939}, {2.97317591, 4.245644974, 4.284564732}};
+  pset.R = ParticleSet::ParticlePos_t{{1.751870349, 4.381521229, 2.865202269}, {3.244515371, 4.382273176, 4.21105285},
+                                      {3.000459944, 3.329603408, 4.265030556}, {3.748660329, 3.63420622, 5.393637791},
+                                      {3.033228526, 3.391869137, 4.654413566}, {3.114198787, 2.654334594, 5.231075822},
+                                      {3.657151589, 4.883870516, 4.201243939}, {2.97317591, 4.245644974, 4.284564732}};
 
   // Build from input
-  MomentumDistribution md(std::move(mdi), pset.getTotalNum(), pset.getTwist(), pset.getLattice(), dl);
+  MomentumDistribution md(std::move(mdi), pset.getTotalNum(), pset.getTwist(), pset.Lattice, dl);
 
   // Test accumulate
 
@@ -173,18 +177,15 @@ TEST_CASE("MomentumDistribution::accumulate", "[estimators]")
   }
 
   //     Create ref vectors
-  std::vector<QMCHamiltonian> hams;
-
   auto ref_walkers = makeRefVector<MCPWalker>(walkers);
   auto ref_psets   = makeRefVector<ParticleSet>(psets);
   auto ref_wfns    = convertUPtrToRefVector(wfns);
-  auto ref_hams    = makeRefVector<QMCHamiltonian>(hams);
 
   //   Setup RNG
-  FakeRandom<OHMMS_PRECISION_FULL> rng;
+  RandomGenerator_t rng;
 
   //   Perform accumulate
-  md.accumulate(ref_walkers, ref_psets, ref_wfns, ref_hams, rng);
+  md.accumulate(ref_walkers, ref_psets, ref_wfns, rng);
 
   //   Check data
   std::vector<RealType>& data = md.get_data();
@@ -216,48 +217,5 @@ TEST_CASE("MomentumDistribution::accumulate", "[estimators]")
   outputManager.resume();
 }
 
-TEST_CASE("MomentumDistribution::spawnCrowdClone", "[estimators]")
-{
-  // clang-format: off
-  const char* xml = R"(
-<estimator type="MomentumDistribution" name="nofk" samples="5" kmax="3"/>
-)";
-  // clang-format: on
-
-  // Read xml into input object
-  Libxml2Document doc;
-  bool okay = doc.parseFromString(xml);
-  if (!okay)
-    throw std::runtime_error("cannot parse MomentumDistributionInput section");
-  xmlNodePtr node = doc.getRoot();
-  MomentumDistributionInput mdi(node);
-
-  // Instantiate other dependencies (internal QMCPACK objects)
-  auto lattice = testing::makeTestLattice();
-  ProjectData test_project("test", ProjectData::DriverVersion::BATCH);
-  Communicate* comm;
-  comm = OHMMS::Controller;
-
-  auto particle_pool = MinimalParticlePool::make_diamondC_1x1x1(comm);
-  auto wavefunction_pool =
-      MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& pset      = *(particle_pool.getParticleSet("e"));
-  DataLocality dl = DataLocality::crowd;
-
-  // Build from input
-  MomentumDistribution md(std::move(mdi), pset.getTotalNum(), pset.getTwist(), pset.getLattice(), dl);
-
-  auto clone = md.spawnCrowdClone();
-  REQUIRE(clone != nullptr);
-  REQUIRE(clone.get() != &md);
-  REQUIRE(dynamic_cast<decltype(&md)>(clone.get()) != nullptr);
-
-  // This check can be removed once a rank locality memory scheme is implemented
-  // for MomentumDistribution.  Then checks relevant to that should be added.
-  MomentumDistributionInput fail_mdi(node);
-  dl = DataLocality::rank;
-  MomentumDistribution fail_md(std::move(fail_mdi), pset.getTotalNum(), pset.getTwist(), pset.getLattice(), dl);
-  CHECK_THROWS_AS(clone = fail_md.spawnCrowdClone(), std::runtime_error);
-}
 
 } // namespace qmcplusplus

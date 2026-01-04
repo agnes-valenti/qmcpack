@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="C18" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="C18" series="0"/>
   <qmcsystem>
     <particleset name="ion0" size="18">
       <group name="C">
@@ -84,7 +82,6 @@
     <parameter name="blocks">                 2 </parameter>
     <parameter name="timestep">             1.0 </parameter>
     <parameter name="usedrift">              no </parameter>
-    <parameter name="blocks_between_recompute">      2 </parameter>
   </qmc>
   <qmc method="vmc" move="pbyp" gpu="yes">
     <estimator name="LocalEnergy" hdf5="no" />
@@ -95,19 +92,17 @@
     <parameter name="blocks">                 2 </parameter>
     <parameter name="timestep">             1.0 </parameter>
     <parameter name="usedrift">             yes </parameter>
-    <parameter name="blocks_between_recompute">      2 </parameter>
   </qmc>
   <qmc method="dmc" move="pbyp" checkpoint="-1" gpu="yes">
     <estimator name="LocalEnergy" hdf5="no" />
     <parameter name="walkers">                1 </parameter>
     <!--parameter name="targetwalkers">  32000 </parameter-->
     <!--parameter name="max_walkers">   0    </parameter-->
-    <parameter name="debug_disable_branching">      yes </parameter>
+    <parameter name="reconfiguration">      runwhileincorrect </parameter>
     <parameter name="warmupSteps">          250 </parameter>
     <parameter name="timestep">           0.001 </parameter>
     <parameter name="steps">                  5 </parameter>
     <parameter name="blocks">                 5 </parameter>
     <parameter name="nonlocalmoves">        yes </parameter>
-    <parameter name="blocks_between_recompute">      5 </parameter>
   </qmc>
 </simulation>

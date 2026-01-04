@@ -15,20 +15,26 @@
 
 #include "DMCFactory.h"
 #include "QMCDrivers/DMC/DMC.h"
-#include "Concurrency/OpenMP.h"
-#include "RandomNumberControl.h"
+#include "Message/OpenMP.h"
+
+#ifdef QMC_CUDA
+#include "QMCDrivers/DMC/DMC_CUDA.h"
+#endif
 
 //#define PETA_DMC_TEST
 namespace qmcplusplus
 {
-std::unique_ptr<QMCDriver> DMCFactory::create(const ProjectData& project_data,
-                                              MCWalkerConfiguration& w,
-                                              TrialWaveFunction& psi,
-                                              QMCHamiltonian& h,
-                                              Communicate* comm,
-                                              bool enable_profiling)
+QMCDriver* DMCFactory::create(MCWalkerConfiguration& w,
+                              TrialWaveFunction& psi,
+                              QMCHamiltonian& h,
+                              Communicate* comm,
+                              bool enable_profiling)
 {
-  auto qmc = std::make_unique<DMC>(project_data, w, psi, h, RandomNumberControl::getChildren(), comm, enable_profiling);
+#ifdef QMC_CUDA
+  if (GPU)
+    return new DMCcuda(w, psi, h, comm, enable_profiling);
+#endif
+  QMCDriver* qmc = new DMC(w, psi, h, comm, enable_profiling);
   qmc->setUpdateMode(PbyPUpdate);
   return qmc;
 }

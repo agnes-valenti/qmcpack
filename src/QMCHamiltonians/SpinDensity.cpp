@@ -23,15 +23,18 @@ SpinDensity::SpinDensity(ParticleSet& P)
   // get particle information
   SpeciesSet& species = P.getSpeciesSet();
   nspecies            = species.size();
+  int isize           = species.addAttribute("membersize");
+  if (isize == species.numAttributes())
+    APP_ABORT("SpinDensity(P)  Species set does not have the required attribute 'membersize'");
   for (int s = 0; s < nspecies; ++s)
-    species_size.push_back(P.groupsize(s));
+    species_size.push_back(species(isize, s));
   for (int s = 0; s < nspecies; ++s)
     species_name.push_back(species.speciesName[s]);
   reset();
 
   //jtk: spin density only works for periodic bc's for now
   //     abort if using open boundary conditions
-  bool open_bcs = (P.getLattice().SuperCellEnum == SUPERCELL_OPEN);
+  bool open_bcs = (P.Lattice.SuperCellEnum == SUPERCELL_OPEN);
   if (open_bcs)
   {
     APP_ABORT("SpinDensity is not implemented for open boundary conditions at present\n  please contact the developers "
@@ -85,7 +88,7 @@ bool SpinDensity::put(xmlNodePtr cur)
     std::string ename((const char*)element->name);
     if (ename == "parameter")
     {
-      const std::string name(getXMLAttributeValue(element, "name"));
+      const XMLAttrString name(element, "name");
       if (name == "dr")
       {
         have_dr = true;
@@ -133,7 +136,7 @@ bool SpinDensity::put(xmlNodePtr cur)
       APP_ABORT("SpinDensity::put  must provide corner or center");
   }
   else
-    cell = Ptmp->getLattice();
+    cell = Ptmp->Lattice;
 
   if (have_center)
     corner = center - cell.Center;
@@ -187,17 +190,23 @@ void SpinDensity::addObservables(PropertySetType& plist, BufferType& collectable
 }
 
 
-void SpinDensity::registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const
+void SpinDensity::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
+  hid_t sgid = H5Gcreate(gid, name_.c_str(), 0);
+
+  //vector<int> ng(DIM);
+  //for(int d=0;d<DIM;++d)
+  //  ng[d] = grid[d];
+
   std::vector<int> ng(1);
   ng[0] = npoints;
 
-  hdf_path hdf_name{name_};
   for (int s = 0; s < nspecies; ++s)
   {
-    h5desc.emplace_back(hdf_name / species_name[s]);
+    h5desc.emplace_back(species_name[s]);
     auto& oh = h5desc.back();
     oh.set_dimensions(ng, my_index_ + s * npoints);
+    oh.open(sgid);
   }
 }
 
@@ -229,7 +238,7 @@ SpinDensity::Return_t SpinDensity::evaluate(ParticleSet& P)
 void SpinDensity::test(int moves, ParticleSet& P)
 {
   app_log() << "  SpinDensity test" << std::endl;
-  RandomGenerator rng;
+  RandomGenerator_t rng;
   int particles = P.getTotalNum();
   int pmin      = std::numeric_limits<int>::max();
   int pmax      = std::numeric_limits<int>::min();
@@ -240,7 +249,7 @@ void SpinDensity::test(int moves, ParticleSet& P)
       PosType u;
       for (int d = 0; d < DIM; ++d)
         u[d] = rng();
-      P.R[p] = P.getLattice().toCart(u);
+      P.R[p] = P.Lattice.toCart(u);
     }
     test_evaluate(P, pmin, pmax);
   }
@@ -273,4 +282,31 @@ SpinDensity::Return_t SpinDensity::test_evaluate(ParticleSet& P, int& pmin, int&
   return 0.0;
 }
 
+
+void SpinDensity::addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy)
+{
+  int nw = W.WalkerList.size();
+  for (int iw = 0; iw < nw; iw++)
+  {
+    Walker_t& w     = *W.WalkerList[iw];
+    RealType weight = w.Weight / nw;
+    int p           = 0;
+    int offset      = my_index_;
+    for (int s = 0; s < nspecies; ++s, offset += npoints)
+      for (int ps = 0; ps < species_size[s]; ++ps, ++p)
+      {
+        PosType u = cell.toUnit(w.R[p] - corner);
+        //bool inside = true;
+        //for(int d=0;d<DIM;++d)
+        //  inside &= u[d]>0.0 && u[d]<1.0;
+        //if(inside)
+        //{
+        int point = offset;
+        for (int d = 0; d < DIM; ++d)
+          point += gdims[d] * ((int)(grid[d] * (u[d] - std::floor(u[d])))); //periodic only
+        W.Collectables[point] += weight;
+        //}
+      }
+  }
+}
 } // namespace qmcplusplus

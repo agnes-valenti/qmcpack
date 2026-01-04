@@ -63,9 +63,9 @@ struct UserFunctor : public OptimizableFunctorBase
 
 
   ///default constructor
-  UserFunctor(const std::string& my_name) : OptimizableFunctorBase(my_name) { reset(); }
+  UserFunctor() { reset(); }
 
-  constexpr static bool isOMPoffload() { return false; }
+  // void setCusp(real_type cusp)
 
   void setCusp(real_type cusp) override
   {
@@ -74,6 +74,16 @@ struct UserFunctor : public OptimizableFunctorBase
     reset();
   }
 
+
+ void setEtaVar(real_type etavar) override
+  { 
+    APP_ABORT("UserFunctor::setEtaVar needs to be implemented")
+  }
+
+  void setNewCutoff(real_type cutoff) override
+  { 
+    APP_ABORT("UserFunctor::setNewCutoff needs to be implemented")
+  }
 
   OptimizableFunctorBase* makeClone() const override { return new UserFunctor(*this); }
 
@@ -85,6 +95,23 @@ struct UserFunctor : public OptimizableFunctorBase
   inline real_type evaluate(real_type r) const { return A * r / (B * r + 1) - A / B; }
 
 
+  inline real_type evaluate(real_type r, real_type x, real_type y, int numpart, int tauvalue) const
+  {
+    std::cout<<"AV in UserFunctors.h:evaluate, needs to be implemented"<<std::endl;
+    std::flush(std::cout);
+    abort();
+    return 0;
+  }
+ /*
+  inline real_type evaluate(real_type r, real_type xsquared, real_type ysquared, int numpart) const
+  {
+    std::cout<<"AV in UserFunctor::evaluate, need to define function!!"<<std::endl;
+    real_type u = 1.0 / (1.0 + B * r);
+    real_type v = A * r;
+    return u * v;
+  }
+  */
+  
   // const inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2) const
 
   inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2) const
@@ -118,6 +145,23 @@ struct UserFunctor : public OptimizableFunctorBase
       if (idx != iat)
         sum += evaluate(_distArray[idx]);
     return sum;
+  }
+
+
+    inline real_type evaluateV2(const int iat,
+                          const int iStart,
+                          const int iEnd,
+                          const int numpar,
+                          const T* restrict distArray,
+                          const T* restrict displArrayX,
+                          const T* restrict displArrayY,
+                          T* restrict distArrayCompressed,
+                          T* restrict displArrayCompressedXsquared,
+                          T* restrict displArrayCompressedYsquared, int tauvalue) const
+  {
+   std::cout<<"AV in PadeFunctor::evaluateV2, need to implement!"<<std::endl;
+   std::flush(std::cout);
+   abort();
   }
 
   /** evaluate sum of the pair potentials FIXME
@@ -167,6 +211,28 @@ struct UserFunctor : public OptimizableFunctorBase
       valArray[iat] = gradArray[iat] = laplArray[iat] = T(0);
   }
 
+  inline void evaluateVGL2(const int iat,
+                          const int iStart,
+                          const int iEnd,
+                          const int numpar,
+                          const T* distArray,
+                          const T* displArrayX,
+                          const T* displArrayY,
+                          T* restrict valArray,
+                          T* restrict _gradArray_x,
+                          T* restrict _gradArray_y,
+                          T* restrict _laplArray_x,
+                          T* restrict _laplArray_y,
+                          T* restrict distArrayCompressed,
+                          T* restrict displArrayCompressedX,
+                          T* restrict displArrayCompressedY,
+                          int* restrict distIndices, int tauvalue) const
+  {
+   std::cout<<"AV in PadeFunctor::evaluateVGL2, need to implement!"<<std::endl;
+   std::flush(std::cout);
+   abort();
+  }
+
   static void mw_evaluateVGL(const int iat,
                              const int num_groups,
                              const UserFunctor* const functors[],
@@ -183,6 +249,10 @@ struct UserFunctor : public OptimizableFunctorBase
   }
 
   inline real_type f(real_type r) override { return evaluate(r); }
+  inline real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
 
   inline real_type df(real_type r) override
   {
@@ -190,6 +260,11 @@ struct UserFunctor : public OptimizableFunctorBase
     real_type res = evaluate(r, dudr, d2udr2);
     return dudr;
   }
+  /** implement the virtual function of OptimizableFunctorBase */
+  inline real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort();
+  return 0; }
 
   static void mw_updateVGL(const int iat,
                            const std::vector<bool>& isAccepted,
@@ -208,7 +283,13 @@ struct UserFunctor : public OptimizableFunctorBase
     throw std::runtime_error("UserFunctor mw_updateVGL not implemented!");
   }
 
-  // inline bool evaluateDerivatives(real_type r, std::vector<TinyVector<real_type, 3>>& derivs)
+  inline bool evaluateDerivatives(real_type r, real_type x, real_type y, int& paramsu, int& nv, std::vector<TinyVector<real_type, 3>>& derivs,
+    int tauvalue) override
+  {
+    std::cout<<"AV in UserFunctor::evaluateDerivatives, needs to be implemented"<<std::endl;
+    abort();
+    return false;
+  }
 
   inline bool evaluateDerivatives(real_type r, std::vector<TinyVector<real_type, 3>>& derivs) override
   {
@@ -236,8 +317,10 @@ struct UserFunctor : public OptimizableFunctorBase
   }
 
 
+  // inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs)
+
   /// compute derivatives with respect to variational parameters
-  inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs) override
+  inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs)
   {
     int i = 0;
 
@@ -304,17 +387,21 @@ struct UserFunctor : public OptimizableFunctorBase
   }
 
 
-  void checkInVariablesExclusive(opt_variables_type& active) override
+  void checkInVariables(opt_variables_type& active) override
   {
     active.insertFrom(myVars);
+    //myVars.print(std::cout);
   }
 
   void checkOutVariables(const opt_variables_type& active) override
   {
     myVars.getIndex(active);
+    //myVars.print(std::cout);
   }
 
-  void resetParametersExclusive(const opt_variables_type& active) override
+  //void resetParameters(const opt_variables_type& active)
+
+  void resetParameters(const opt_variables_type& active) override
   {
     if (myVars.size())
     {

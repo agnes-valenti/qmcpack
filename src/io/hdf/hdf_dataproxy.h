@@ -18,13 +18,11 @@
 
 #include "hdf_wrapper_functions.h"
 #include "hdf_dataspace.h"
-#include "container_traits.h"
 
 namespace qmcplusplus
 {
 
 /** generic h5data_proxy<T> for scalar basic datatypes defined in hdf_dataspace.h
- * Note if the dataset to be written has const specifier, T should not carry const.
  */
 template<typename T>
 struct h5data_proxy : public h5_space_type<T, 0>
@@ -33,37 +31,20 @@ struct h5data_proxy : public h5_space_type<T, 0>
   using FileSpace = h5_space_type<T, 0>;
   using FileSpace::dims;
   using FileSpace::get_address;
+  data_type& ref_;
 
-  inline h5data_proxy(const data_type& a) {}
+  inline h5data_proxy(data_type& a) : ref_(a) { }
 
-  inline bool read(data_type& ref, hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT)
+  inline bool read(hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT)
   {
-    return h5d_read(grp, aname, get_address(&ref), xfer_plist);
+    return h5d_read(grp, aname, get_address(&ref_), xfer_plist);
   }
 
-  inline bool check_existence(hid_t grp, const std::string& aname) { return h5d_check_existence(grp, aname); }
-
-  inline bool check_type(hid_t grp, const std::string& aname) { return h5d_check_type<data_type>(grp, aname); }
-
-  inline bool write(const data_type& ref, hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT) const
+  inline bool write(hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT)
   {
-    return h5d_write(grp, aname.c_str(), FileSpace::rank, dims, get_address(&ref), xfer_plist);
+    return h5d_write(grp, aname.c_str(), FileSpace::rank, dims, get_address(&ref_), xfer_plist);
   }
 
-  inline bool append(const data_type& ref,
-                     hid_t grp,
-                     const std::string& aname,
-                     hsize_t& current_leading_index,
-                     hid_t xfer_plist = H5P_DEFAULT) const
-  {
-    constexpr hsize_t rank = FileSpace::rank + 1;
-    std::array<hsize_t, rank> my_dims;
-    // this is the dimension we are appending.
-    my_dims[0] = 1;
-    std::copy(dims.begin(), dims.end(), my_dims.begin() + 1);
-    return h5d_append(grp, aname.c_str(), current_leading_index, rank, my_dims.data(), get_address(&ref), 1,
-                      xfer_plist);
-  }
 };
 
 /** specialization for bool, convert to int
@@ -75,22 +56,24 @@ struct h5data_proxy<bool> : public h5_space_type<int, 0>
   using FileSpace = h5_space_type<int, 0>;
   using FileSpace::dims;
   using FileSpace::get_address;
+  data_type& ref_;
 
-  inline h5data_proxy(const data_type& a) {}
+  inline h5data_proxy(data_type& a) : ref_(a) { }
 
-  inline bool read(data_type& ref, hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT)
+  inline bool read(hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT)
   {
-    int copy  = static_cast<int>(ref);
+    int copy = static_cast<int>(ref_);
     bool okay = h5d_read(grp, aname, get_address(&copy), xfer_plist);
-    ref       = static_cast<bool>(copy);
+    ref_ = static_cast<bool>(copy);
     return okay;
   }
 
-  inline bool write(const data_type& ref, hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT) const
+  inline bool write(hid_t grp, const std::string& aname, hid_t xfer_plist = H5P_DEFAULT)
   {
-    int copy = static_cast<int>(ref);
+    int copy = static_cast<int>(ref_);
     return h5d_write(grp, aname.c_str(), FileSpace::rank, dims, get_address(&copy), xfer_plist);
   }
+
 };
 
 } // namespace qmcplusplus

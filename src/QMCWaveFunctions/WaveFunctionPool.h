@@ -20,7 +20,6 @@
 #include "OhmmsData/OhmmsElementBase.h"
 #include "Message/MPIObjectBase.h"
 #include "QMCWaveFunctions/WaveFunctionFactory.h"
-#include "Utilities/RuntimeOptions.h"
 #include <map>
 #include <string>
 
@@ -38,16 +37,13 @@ class ParticleSet;
 class WaveFunctionPool : public MPIObjectBase
 {
 public:
-  using PoolType = std::map<std::string, const std::unique_ptr<TrialWaveFunction>>;
+  using PoolType = std::map<std::string, WaveFunctionFactory*>;
 
-  WaveFunctionPool(const RuntimeOptions& runtime_options,
-                   ParticleSetPool& pset_pool,
-                   Communicate* c,
-                   const char* aname = "wavefunction");
-  WaveFunctionPool(const WaveFunctionPool&)            = delete;
+  WaveFunctionPool(ParticleSetPool& pset_pool, Communicate* c, const char* aname = "wavefunction");
+  WaveFunctionPool(const WaveFunctionPool&) = delete;
   WaveFunctionPool& operator=(const WaveFunctionPool&) = delete;
   WaveFunctionPool(WaveFunctionPool&&)                 = default;
-  WaveFunctionPool& operator=(WaveFunctionPool&&)      = delete;
+  WaveFunctionPool& operator=(WaveFunctionPool&&) = delete;
 
   ~WaveFunctionPool();
 
@@ -57,17 +53,34 @@ public:
 
   TrialWaveFunction* getPrimary() { return primary_psi_; }
 
+  void setPrimary(TrialWaveFunction* psi) { primary_psi_ = psi; }
+
   TrialWaveFunction* getWaveFunction(const std::string& pname)
   {
-    if (auto pit(myPool.find(pname)); pit == myPool.end())
+    std::map<std::string, WaveFunctionFactory*>::iterator pit(myPool.find(pname));
+    if (pit == myPool.end())
     {
       if (myPool.empty())
         return nullptr;
       else
-        return myPool.begin()->second.get();
+        return (*(myPool.begin())).second->getTWF();
     }
     else
-      return pit->second.get();
+      return (*pit).second->getTWF();
+  }
+
+  WaveFunctionFactory* getWaveFunctionFactory(const std::string& pname)
+  {
+    std::map<std::string, WaveFunctionFactory*>::iterator pit(myPool.find(pname));
+    if (pit == myPool.end())
+    {
+      if (myPool.empty())
+        return nullptr;
+      else
+        return (*(myPool.begin())).second;
+    }
+    else
+      return (*pit).second;
   }
 
   /** return a xmlNode containing Jastrow
@@ -79,16 +92,13 @@ public:
 
   /** get the Pool object
    */
-  inline const PoolType& getPool() const { return myPool; }
+  inline PoolType& getPool() { return myPool; }
 
-  /** add a TrialWaveFunction* to myPool
+  /** add a WaveFunctionFactory* to myPool
    */
-  void addFactory(std::unique_ptr<TrialWaveFunction> psi, bool primary);
+  void addFactory(WaveFunctionFactory* psifac);
 
 private:
-  /// @brief top-level runtime options from project data information
-  const RuntimeOptions& runtime_options_;
-
   /// pointer to the primary TrialWaveFunction
   TrialWaveFunction* primary_psi_;
 

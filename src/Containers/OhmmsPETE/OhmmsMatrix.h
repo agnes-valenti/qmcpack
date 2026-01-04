@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2024 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
 //                    Miguel Morales, moralessilva2@llnl.gov, Lawrence Livermore National Laboratory
@@ -19,7 +19,7 @@
 #include <type_traits>
 #include <iostream>
 #include "PETE/PETE.h"
-#include "OhmmsVector.h"
+#include "OhmmsPETE/OhmmsVector.h"
 
 namespace qmcplusplus
 {
@@ -27,17 +27,16 @@ template<class T, typename Alloc = std::allocator<T>>
 class Matrix
 {
 public:
-  using Type_t        = T;
-  using value_type    = T;
-  using pointer       = T*;
-  using const_pointer = const T*;
-  using Container_t   = Vector<T, Alloc>;
-  using size_type     = typename Container_t::size_type;
-  using iterator      = typename Container_t::iterator;
-  using This_t        = Matrix<T, Alloc>;
-  using Alloc_t       = Alloc;
+  typedef T Type_t;
+  typedef T value_type;
+  typedef T* pointer;
+  typedef const T* const_pointer;
+  typedef Vector<T, Alloc> Container_t;
+  typedef typename Container_t::size_type size_type;
+  typedef typename Container_t::iterator iterator;
+  typedef Matrix<T, Alloc> This_t;
 
-  Matrix() : D1(0), D2(0) {} // Default Constructor initializes to zero.
+  Matrix() : D1(0), D2(0), TotSize(0) {} // Default Constructor initializes to zero.
 
   Matrix(size_type n)
   {
@@ -52,7 +51,7 @@ public:
   }
 
   /** constructor with an initialized ref */
-  inline Matrix(T* ref, size_type n, size_type m) : D1(n), D2(m), X(ref, n * m) {}
+  inline Matrix(T* ref, size_type n, size_type m) : D1(n), D2(m), TotSize(n * m), X(ref, n * m) {}
 
   /** This allows construction of a Matrix on another containers owned memory that is using a dualspace allocator.
    *  It can be any span of that memory.
@@ -60,7 +59,7 @@ public:
    *  realspace dualspace allocator "interface"
    */
   template<typename CONTAINER>
-  Matrix(const CONTAINER& other, T* ref, size_type n, size_type m) : D1(n), D2(m), X(other, ref, n * m)
+  Matrix(CONTAINER& other, T* ref, size_type n, size_type m) : D1(n), D2(m), TotSize(n * m), X(other, ref, n * m)
   {}
 
   // Copy Constructor
@@ -74,7 +73,7 @@ public:
   // Destructor
   ~Matrix() {}
 
-  inline size_type size() const { return X.size(); }
+  inline size_type size() const { return TotSize; }
   inline size_type rows() const { return D1; }
   inline size_type cols() const { return D2; }
   inline size_type size1() const { return D1; }
@@ -95,30 +94,28 @@ public:
   inline typename Container_t::iterator begin(int i) { return X.begin() + i * D2; }
   inline typename Container_t::const_iterator begin(int i) const { return X.begin() + i * D2; }
 
-  /// Resize the container. For performance consideration, previous data may or may not get kept.
-  /// Please avoid relying on previous data after resizing.
   inline void resize(size_type n, size_type m)
   {
     static_assert(std::is_same<value_type, typename Alloc::value_type>::value,
                   "Matrix and Alloc data types must agree!");
-    D1 = n;
-    D2 = m;
+    D1      = n;
+    D2      = m;
+    TotSize = n * m;
     X.resize(n * m);
   }
 
   // free the matrix storage
-  inline void free()
-  {
-    D1 = D2 = 0;
-    X.free();
-  }
+  inline void free() { X.free(); }
 
   // Attach to pre-allocated memory
+  inline void attachReference(T* ref) { X.attachReference(ref, TotSize); }
+
   inline void attachReference(T* ref, size_type n, size_type m)
   {
-    D1 = n;
-    D2 = m;
-    X.attachReference(ref, n * m);
+    D1      = n;
+    D2      = m;
+    TotSize = n * m;
+    X.attachReference(ref, TotSize);
   }
 
   /** Attach to pre-allocated memory and propagate the allocator of the owning container.
@@ -127,13 +124,11 @@ public:
   template<typename CONTAINER>
   inline void attachReference(const CONTAINER& other, T* ref, size_type n, size_type m)
   {
-    D1 = n;
-    D2 = m;
-    X.attachReference(other, ref, n * m);
+    D1      = n;
+    D2      = m;
+    TotSize = n * m;
+    X.attachReference(other, ref, TotSize);
   }
-
-  /// return true if this container is attached to another container
-  inline bool isAttached() const { return X.isAttached(); }
 
   template<typename Allocator = Alloc, typename = IsHostSafe<Allocator>>
   inline void add(size_type n) // you can add rows: adding columns are forbidden
@@ -157,45 +152,23 @@ public:
   template<class T_FROM, typename ALLOC_FROM>
   void assignUpperLeft(const Matrix<T_FROM, ALLOC_FROM>& from)
   {
-    auto& this_ref       = *this;
-    const size_type cols = std::min(this_ref.cols(), from.cols());
-    const size_type rows = std::min(this_ref.rows(), from.rows());
+    auto& this_ref    = *this;
+    const size_t cols = std::min(this_ref.cols(), from.cols());
+    const size_t rows = std::min(this_ref.rows(), from.rows());
     for (int i = 0; i < rows; ++i)
       for (int j = 0; j < cols; ++j)
         this_ref(i, j) = from(i, j);
   }
 
   // Assignment Operators
-  /// From another Matrix with matching type.
   inline This_t& operator=(const This_t& rhs)
   {
     resize(rhs.D1, rhs.D2);
-    // I don't understand why it would be desirable to have this compile
-    // but just do the resize and not the assigment, just seems like a surprising foot gun.
     if (qmc_allocator_traits<Alloc>::is_host_accessible)
       assign(*this, rhs);
     return *this;
   }
 
-  /** From a Matrix with a narrower value_type
-   *  so this is a widening assignment and there is no loss of precision.
-   *  Giving it the same semantics as the matching type matrix is desirable.
-   */
-  template<typename OtherT,
-           typename = std::enable_if_t<sizeof(This_t::value_type) >= sizeof(typename Matrix<OtherT>::value_type), void>>
-  This_t& operator=(const Matrix<OtherT>& rhs)
-  {
-    static_assert(qmc_allocator_traits<Alloc_t>::is_host_accessible &&
-                  qmc_allocator_traits<typename Matrix<OtherT>::Alloc_t>::is_host_accessible);
-    resize(rhs.size1(), rhs.size2());
-    assign(*this, rhs);
-    return *this;
-  }
-
-  /** From any type except the above two cases that assign can resolve.
-   *  Historically this allowed narrowing assigments from one Matrix type to another.
-   *  I am not sure this was intentional.
-   */
   template<class RHS, typename Allocator = Alloc, typename = IsHostSafe<Allocator>>
   This_t& operator=(const RHS& rhs)
   {
@@ -231,17 +204,17 @@ public:
   // returns a pointer of i-th row
   inline const_pointer first_address() const { return X.data(); }
 
-  inline pointer last_address() { return X.data() + X.size(); }
+  inline pointer last_address() { return X.data() + TotSize; }
 
   // returns a pointer of i-th row
-  inline const Type_t* last_address() const { return X.data() + X.size(); }
+  inline const Type_t* last_address() const { return X.data() + TotSize; }
 
 
   // returns a const pointer of i-th row
-  inline typename Container_t::const_iterator operator[](size_type i) const { return X.begin() + i * D2; }
+  inline const Type_t* operator[](size_type i) const { return X.data() + i * D2; }
 
   /// returns a pointer of i-th row, g++ iterator problem
-  inline typename Container_t::iterator operator[](size_type i) { return X.begin() + i * D2; }
+  inline Type_t* operator[](size_type i) { return X.data() + i * D2; }
 
   template<typename Allocator = Alloc, typename = IsHostSafe<Allocator>>
   inline Type_t& operator()(size_type i)
@@ -393,18 +366,19 @@ public:
 
   // Abstract Dual Space Transfers
   template<typename Allocator = Alloc, typename = IsDualSpace<Allocator>>
-  void updateTo(size_type size = 0, std::ptrdiff_t offset = 0)
+  void updateTo()
   {
-    X.updateTo(size, offset);
+    X.updateTo();
   }
   template<typename Allocator = Alloc, typename = IsDualSpace<Allocator>>
-  void updateFrom(size_type size = 0, std::ptrdiff_t offset = 0)
+  void updateFrom()
   {
-    X.updateFrom(size, offset);
+    X.updateFrom();
   }
 
 protected:
   size_type D1, D2;
+  size_type TotSize;
   Container_t X;
 };
 
@@ -435,8 +409,8 @@ bool operator!=(const Matrix<T, Alloc>& lhs, const Matrix<T, Alloc>& rhs)
 template<class T, typename Alloc>
 std::ostream& operator<<(std::ostream& out, const Matrix<T, Alloc>& rhs)
 {
-  using size_type = typename Matrix<T, Alloc>::size_type;
-  size_type ii    = 0;
+  typedef typename Matrix<T, Alloc>::size_type size_type;
+  size_type ii = 0;
   for (size_type i = 0; i < rhs.rows(); i++)
   {
     for (size_type j = 0; j < rhs.cols(); j++)
@@ -450,7 +424,7 @@ std::ostream& operator<<(std::ostream& out, const Matrix<T, Alloc>& rhs)
 template<class T, typename Alloc>
 std::istream& operator>>(std::istream& is, Matrix<T, Alloc>& rhs)
 {
-  using size_type = typename Matrix<T, Alloc>::size_type;
+  typedef typename Matrix<T, Alloc>::size_type size_type;
   for (size_type i = 0; i < rhs.size(); i++)
   {
     is >> rhs(i++);
@@ -464,7 +438,7 @@ std::istream& operator>>(std::istream& is, Matrix<T, Alloc>& rhs)
 template<class T, typename Alloc>
 struct CreateLeaf<Matrix<T, Alloc>>
 {
-  using Leaf_t = Reference<Matrix<T, Alloc>>;
+  typedef Reference<Matrix<T, Alloc>> Leaf_t;
   inline static Leaf_t make(const Matrix<T, Alloc>& a) { return Leaf_t(a); }
 };
 
@@ -476,7 +450,7 @@ struct CreateLeaf<Matrix<T, Alloc>>
 class SizeLeaf2
 {
 public:
-  using size_type = int;
+  typedef int size_type;
 
   SizeLeaf2(size_type s, size_type p) : size_m(s), size_n(p) {}
   SizeLeaf2(const SizeLeaf2& model) : size_m(model.size_m), size_n(model.size_n) {}
@@ -490,7 +464,7 @@ private:
 template<class T>
 struct LeafFunctor<Scalar<T>, SizeLeaf2>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
   inline static bool apply(const Scalar<T>&, const SizeLeaf2&)
   {
     // Scalars always conform.
@@ -501,7 +475,7 @@ struct LeafFunctor<Scalar<T>, SizeLeaf2>
 template<class T, typename Alloc>
 struct LeafFunctor<Matrix<T, Alloc>, SizeLeaf2>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
   inline static bool apply(const Matrix<T, Alloc>& v, const SizeLeaf2& s) { return s(v.rows(), v.cols()); }
 };
 
@@ -512,7 +486,7 @@ struct LeafFunctor<Matrix<T, Alloc>, SizeLeaf2>
 //  template<class T, typename Alloc>
 //  struct LeafFunctor<Matrix<T,Alloc>,EvalLeaf1>
 //  {
-//    using Type_t = T;
+//    typedef T Type_t;
 //    inline static
 //    Type_t apply(const Matrix<T,Alloc>& mat, const EvalLeaf1 &f)
 //    {
@@ -526,7 +500,7 @@ struct LeafFunctor<Matrix<T, Alloc>, SizeLeaf2>
 template<class T, typename Alloc>
 struct LeafFunctor<Matrix<T, Alloc>, EvalLeaf2>
 {
-  using Type_t = T;
+  typedef T Type_t;
   inline static Type_t apply(const Matrix<T, Alloc>& mat, const EvalLeaf2& f) { return mat(f.val1(), f.val2()); }
 };
 
@@ -541,11 +515,12 @@ inline void evaluate(Matrix<T, Alloc>& lhs, const Op& op, const Expression<RHS>&
   {
     // We get here if the vectors on the RHS are the same size as those on
     // the LHS.
+    int ii = 0;
     for (int i = 0; i < lhs.rows(); ++i)
     {
       for (int j = 0; j < lhs.cols(); ++j)
       {
-        op(lhs(i, j), forEach(rhs, EvalLeaf2(i, j), OpCombine()));
+        op(lhs(ii++), forEach(rhs, EvalLeaf2(i, j), OpCombine()));
       }
     }
   }

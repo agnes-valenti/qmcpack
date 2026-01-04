@@ -2387,11 +2387,7 @@ def test_execute():
     assert(os.path.exists(outfile))
     assert(os.path.exists(errfile))
     assert(open(outfile,'r').read().strip()=='run')
-    err_contents = open(errfile,'r').read().strip()
-    # Handle spurious error message from OpenMPI
-    #   see also: https://github.com/QMCPACK/qmcpack/pull/4339#discussion_r1033813856
-    err_contents = err_contents.replace('Invalid MIT-MAGIC-COOKIE-1 key','').strip()
-    assert(err_contents=='')
+    assert(open(errfile,'r').read().strip()=='')
 
     restore_nexus()
 

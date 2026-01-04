@@ -71,6 +71,6 @@ extern "C" {
 
 }
 
-using xcomplex = std::complex<double>;
+typedef std::complex<double> xcomplex;
 
 #endif

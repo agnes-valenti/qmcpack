@@ -66,14 +66,13 @@ void AFQMCDistributedPropagatorDistCV::step(int nsteps_, WlkSet& wset, RealType 
   if (transposed_G_)
     G_ext = iextensions<2u>{nwalk, Gsize};
 
-  using std::get;
-  if (get<0>(MFfactor.sizes()) != nsteps || get<1>(MFfactor.sizes()) != nwalk)
+  if (MFfactor.size(0) != nsteps || MFfactor.size(1) != nwalk)
     MFfactor = CMatrix({long(nsteps), long(nwalk)});
-  if (get<0>(hybrid_weight.sizes()) != nsteps || get<1>(hybrid_weight.sizes()) != nwalk)
+  if (hybrid_weight.size(0) != nsteps || hybrid_weight.size(1) != nwalk)
     hybrid_weight = CMatrix({long(nsteps), long(nwalk)});
-  if (get<0>(new_overlaps.sizes()) != nwalk)
+  if (new_overlaps.size(0) != nwalk)
     new_overlaps = CVector(iextensions<1u>{nwalk});
-  if (get<0>(new_energies.sizes()) != nwalk || get<1>(new_energies.sizes()) != 3)
+  if (new_energies.size(0) != nwalk || new_energies.size(1) != 3)
     new_energies = CMatrix({long(nwalk), 3});
 
   //  Temporary memory usage summary:
@@ -91,7 +90,7 @@ void AFQMCDistributedPropagatorDistCV::step(int nsteps_, WlkSet& wset, RealType 
   StaticMatrix vrecv_buff(vhs_ext, buffer_manager.get_generator().template get_allocator<ComplexType>());
   SPCMatrix_ref vrecv(sp_pointer(make_device_ptr(vrecv_buff.origin())), vhs_ext);
 
-  { // using scope to control lifetime of StaticArrays, avoiding unnecessary buffer space
+  { // using scope to control lifetime of StaticArrays, avoiding unnecesary buffer space
 
     Static3Tensor globalMFfactor({nnodes, nsteps, nwalk},
                                  buffer_manager.get_generator().template get_allocator<ComplexType>());
@@ -147,6 +146,7 @@ void AFQMCDistributedPropagatorDistCV::step(int nsteps_, WlkSet& wset, RealType 
 
     // are we back propagating?
     int bp_step = wset.getBPPos(), bp_max = wset.NumBackProp();
+    bool realloc(false);
     int xx(0);
     if (bp_step >= 0 && bp_step < bp_max)
     {
@@ -154,7 +154,8 @@ void AFQMCDistributedPropagatorDistCV::step(int nsteps_, WlkSet& wset, RealType 
       size_t m_(globalnCV * nwalk * nsteps * 2);
       if (bpX.num_elements() < m_)
       {
-        bpX     = mpi3SPCVector(iextensions<1u>(m_), shared_allocator<SPComplexType>{TG.TG_local()});
+        realloc = true;
+        bpX     = mpi3SPCVector(iextensions<1u>{m_}, shared_allocator<SPComplexType>{TG.TG_local()});
         if (TG.TG_local().root())
           fill_n(bpX.origin(), bpX.num_elements(), SPComplexType(0.0));
       }
@@ -259,7 +260,7 @@ void AFQMCDistributedPropagatorDistCV::step(int nsteps_, WlkSet& wset, RealType 
       AFQMCTimers[vHS_comm_overhead_timer].get().stop();
     }
 
-    // after the wait, vrecv ( and by extension vHS3D ) has the final vHS for the local walkers
+    // after the wait, vrecv ( and by extention vHS3D ) has the final vHS for the local walkers
     AFQMCTimers[vHS_comm_overhead_timer].get().start();
     MPI_Wait(&req_vrecv, &st);
     MPI_Wait(&req_vsend, &st);
@@ -436,14 +437,13 @@ void AFQMCDistributedPropagatorDistCV::step_collective(int nsteps_, WlkSet& wset
   if (transposed_G_)
     G_ext = iextensions<2u>{nwalk, Gsize};
 
-  using std::get;
-  if (get<0>(MFfactor.sizes()) != nsteps || get<1>(MFfactor.sizes()) != nwalk)
+  if (MFfactor.size(0) != nsteps || MFfactor.size(1) != nwalk)
     MFfactor = CMatrix({long(nsteps), long(nwalk)});
-  if (get<0>(hybrid_weight.sizes()) != nsteps || get<1>(hybrid_weight.sizes()) != nwalk)
+  if (hybrid_weight.size(0) != nsteps || hybrid_weight.size(1) != nwalk)
     hybrid_weight = CMatrix({long(nsteps), long(nwalk)});
-  if (get<0>(new_overlaps.sizes()) != nwalk)
+  if (new_overlaps.size(0) != nwalk)
     new_overlaps = CVector(iextensions<1u>{nwalk});
-  if (get<0>(new_energies.sizes()) != nwalk || get<1>(new_energies.sizes()) != 3)
+  if (new_energies.size(0) != nwalk || new_energies.size(1) != 3)
     new_energies = CMatrix({long(nwalk), 3});
 
   //  Temporary memory usage summary:
@@ -505,6 +505,7 @@ void AFQMCDistributedPropagatorDistCV::step_collective(int nsteps_, WlkSet& wset
 
     // are we back propagating?
     int bp_step = wset.getBPPos(), bp_max = wset.NumBackProp();
+    bool realloc(false);
     int xx(0);
     if (bp_step >= 0 && bp_step < bp_max)
     {
@@ -512,7 +513,8 @@ void AFQMCDistributedPropagatorDistCV::step_collective(int nsteps_, WlkSet& wset
       size_t m_(globalnCV * nwalk * nsteps);
       if (bpX.num_elements() < m_)
       {
-        bpX     = mpi3SPCVector(iextensions<1u>(m_), shared_allocator<SPComplexType>{TG.TG_local()});
+        realloc = true;
+        bpX     = mpi3SPCVector(iextensions<1u>{m_}, shared_allocator<SPComplexType>{TG.TG_local()});
         if (TG.TG_local().root())
           fill_n(bpX.origin(), bpX.num_elements(), SPComplexType(0.0));
       }
@@ -629,7 +631,7 @@ void AFQMCDistributedPropagatorDistCV::step_collective(int nsteps_, WlkSet& wset
       AFQMCTimers[vHS_comm_overhead_timer].get().stop();
     }
 
-    // after the wait, vrecv ( and by extension vHS3D ) has the final vHS for the local walkers
+    // after the wait, vrecv ( and by extention vHS3D ) has the final vHS for the local walkers
     AFQMCTimers[vHS_comm_overhead_timer].get().start();
 
     // store fields in walker
@@ -833,19 +835,15 @@ void AFQMCDistributedPropagatorDistCV::BackPropagate(int nbpsteps,
   TG.local_barrier();
 
   auto&& Fields(*wset.getFields());
-
-  using std::get;
-  assert(get<0>(Fields.sizes()) >= nbpsteps);
-  assert(get<1>(Fields.sizes()) == globalnCV);
-  assert(get<2>(Fields.sizes()) == nwalk);
+  assert(Fields.size(0) >= nbpsteps);
+  assert(Fields.size(1) == globalnCV);
+  assert(Fields.size(2) == nwalk);
 
   int nrow(NMO * ((walker_type == NONCOLLINEAR) ? 2 : 1));
   int ncol(NAEA + ((walker_type == CLOSED) ? 0 : NAEB));
-
-  using std::get;
-  assert(get<0>(Refs.sizes()) == nwalk);
-  int nrefs = get<1>(Refs.sizes());
-  assert(get<2>(Refs.sizes()) == nrow * ncol);
+  assert(Refs.size(0) == nwalk);
+  int nrefs = Refs.size(1);
+  assert(Refs.size(2) == nrow * ncol);
 
   int cv0, cvN;
   std::tie(cv0, cvN) = FairDivideBoundary(TG.getLocalTGRank(), localnCV, TG.getNCoresPerTG());
@@ -858,8 +856,8 @@ void AFQMCDistributedPropagatorDistCV::BackPropagate(int nbpsteps,
   if (walker_type == COLLINEAR)
     nx = 2;
 
-  assert(get<0>(detR.sizes()) == nwalk);
-  assert(get<1>(detR.sizes()) == nrefs * nx);
+  assert(detR.size(0) == nwalk);
+  assert(detR.size(1) == nrefs * nx);
   std::fill_n(detR.origin(), detR.num_elements(), SPComplexType(1.0, 0.0));
 
   // from now on, individual work on each walker/step

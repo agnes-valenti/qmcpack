@@ -23,11 +23,11 @@
 #include "Particle/ParticleSetPool.h"
 #include "OhmmsData/AttributeSet.h"
 #include "Particle/DistanceTable.h"
-#include "ParticleBase/RandomSeqGeneratorGlobal.h"
+#include "ParticleBase/RandomSeqGenerator.h"
 
 namespace qmcplusplus
 {
-using RealType = QMCTraits::RealType;
+typedef QMCTraits::RealType RealType;
 
 InitMolecularSystem::InitMolecularSystem(ParticleSetPool& pset, const char* aname)
     : OhmmsElementBase(aname), ptclPool(pset)
@@ -61,8 +61,10 @@ bool InitMolecularSystem::put(xmlNodePtr cur)
   else
     initMolecule(ions, els);
 
+#if !defined(QMC_CUDA)
   makeUniformRandom(els->spins);
   els->spins *= 2 * M_PI;
+#endif
 
   app_log() << "</init>" << std::endl;
   app_log().flush();
@@ -73,7 +75,7 @@ bool InitMolecularSystem::put(xmlNodePtr cur)
 void InitMolecularSystem::initAtom(ParticleSet* ions, ParticleSet* els)
 {
   //3N-dimensional Gaussian
-  ParticleSet::ParticlePos chi(els->getTotalNum());
+  ParticleSet::ParticlePos_t chi(els->getTotalNum());
   makeGaussRandom(chi);
   RealType q = std::sqrt(static_cast<RealType>(els->getTotalNum())) * 0.5;
   int nel(els->getTotalNum()), items(0);
@@ -99,7 +101,7 @@ void InitMolecularSystem::initMolecule(ParticleSet* ions, ParticleSet* els)
 
   const int d_ii_ID = ions->addTable(*ions);
   ions->update();
-  const ParticleSet::ParticleIndex& grID(ions->GroupID);
+  const ParticleSet::ParticleIndex_t& grID(ions->GroupID);
   SpeciesSet& Species(ions->getSpeciesSet());
   int Centers = ions->getTotalNum();
   std::vector<int> Qtot(Centers), Qcore(Centers), Qval(Centers, 0);
@@ -110,7 +112,7 @@ void InitMolecularSystem::initMolecule(ParticleSet* ions, ParticleSet* els)
     Qtot[iat] = static_cast<int>(Species(icharge, grID[iat]));
   //cutoff radius (Bohr) this a random choice
   RealType cutoff = 4.0;
-  ParticleSet::ParticlePos chi(els->getTotalNum());
+  ParticleSet::ParticlePos_t chi(els->getTotalNum());
   //makeGaussRandom(chi);
   makeSphereRandom(chi);
   // the upper limit of the electron index with spin up
@@ -122,7 +124,7 @@ void InitMolecularSystem::initMolecule(ParticleSet* ions, ParticleSet* els)
   int nup_tot = 0, ndown_tot = numUp;
   std::vector<LoneElectron> loneQ;
   RealType rmin = cutoff;
-  ParticleSet::SingleParticlePos cm;
+  ParticleSet::SingleParticlePos_t cm;
 
   const auto& dist = ions->getDistTableAA(d_ii_ID).getDistances();
   // Step 1. Distribute even Q[iat] of atomic center iat. If Q[iat] is odd, put Q[iat]-1 and save the lone electron.
@@ -188,13 +190,30 @@ void InitMolecularSystem::initMolecule(ParticleSet* ions, ParticleSet* els)
     throw std::runtime_error("initMolecule unexpected random number consumption. Please report a bug!");
 
   //put all the electrons in a unit box
-  if (els->getLattice().SuperCellEnum != SUPERCELL_OPEN)
+  if (els->Lattice.SuperCellEnum != SUPERCELL_OPEN)
   {
     els->R.setUnit(PosUnit::Cartesian);
     els->applyBC(els->R);
     els->update(false);
   }
 }
+
+//AV written, evtl check/change!!!!--------------------------------------------------------------
+///helper function to determine the lower bound of a domain (need to move up)
+template<typename T>
+inline TinyVector<T, 2> lower_bound(const TinyVector<T, 2>& a, const TinyVector<T, 2>& b)
+{
+  return TinyVector<T, 2>(std::min(a[0], b[0]), std::min(a[1], b[1]));
+}
+
+///helper function to determine the upper bound of a domain (need to move up)
+template<typename T>
+inline TinyVector<T, 2> upper_bound(const TinyVector<T, 2>& a, const TinyVector<T, 2>& b)
+{
+  return TinyVector<T, 2>(std::max(a[0], b[0]), std::max(a[1], b[1]));
+}
+
+//------------------------------------------------------------------------------------------------
 
 ///helper function to determine the lower bound of a domain (need to move up)
 template<typename T>
@@ -215,7 +234,7 @@ void InitMolecularSystem::initWithVolume(ParticleSet* ions, ParticleSet* els)
   TinyVector<RealType, OHMMS_DIM> start(1.0);
   TinyVector<RealType, OHMMS_DIM> end(0.0);
 
-  ParticleSet::ParticlePos Ru(ions->getTotalNum());
+  ParticleSet::ParticlePos_t Ru(ions->getTotalNum());
   Ru.setUnit(PosUnit::Lattice);
   ions->applyBC(ions->R, Ru);
 
@@ -226,12 +245,12 @@ void InitMolecularSystem::initWithVolume(ParticleSet* ions, ParticleSet* els)
   }
 
   TinyVector<RealType, OHMMS_DIM> shift;
-  Tensor<RealType, OHMMS_DIM> newbox(ions->getLattice().R);
+  Tensor<RealType, OHMMS_DIM> newbox(ions->Lattice.R);
 
   RealType buffer = 2.0; //buffer 2 bohr
   for (int idim = 0; idim < OHMMS_DIM; ++idim)
   {
-    //if(ions->getLattice().BoxBConds[idim])
+    //if(ions->Lattice.BoxBConds[idim])
     //{
     //  start[idim]=0.0;
     //  end[idim]=1.0;
@@ -239,21 +258,21 @@ void InitMolecularSystem::initWithVolume(ParticleSet* ions, ParticleSet* els)
     //}
     //else
     {
-      RealType buffer_r = buffer * ions->getLattice().OneOverLength[idim];
+      RealType buffer_r = buffer * ions->Lattice.OneOverLength[idim];
       start[idim]       = std::max((RealType)0.0, (start[idim] - buffer_r));
       end[idim]         = std::min((RealType)1.0, (end[idim] + buffer_r));
-      shift[idim]       = start[idim] * ions->getLattice().Length[idim];
+      shift[idim]       = start[idim] * ions->Lattice.Length[idim];
       if (std::abs(end[idim] = start[idim]) < buffer)
       { //handle singular case
         start[idim] = std::max(0.0, start[idim] - buffer_r / 2.0);
         end[idim]   = std::min(1.0, end[idim] + buffer_r / 2.0);
       }
 
-      newbox(idim, idim) = (end[idim] - start[idim]) * ions->getLattice().Length[idim];
+      newbox(idim, idim) = (end[idim] - start[idim]) * ions->Lattice.Length[idim];
     }
   }
 
-  Lattice slattice(ions->getLattice());
+  ParticleSet::ParticleLayout_t slattice(ions->Lattice);
   slattice.set(newbox);
 
   app_log() << "  InitMolecularSystem::initWithVolume " << std::endl;

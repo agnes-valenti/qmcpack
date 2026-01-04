@@ -48,8 +48,11 @@ HamiltonianOperations loadHamOps(hdf_archive& dump,
   int hops_type = -1;
   if (TGwfn.Global().root())
   {
-    dump.push("HamiltonianOperations", false);
-
+    if (!dump.push("HamiltonianOperations", false))
+    {
+      app_error() << " Error in loadHamOps: Group HamiltonianOperations not found. \n";
+      APP_ABORT("");
+    }
     if (dump.is_group(std::string("THCOps")))
       hops_type = 1;
     else if (dump.is_group(std::string("KP3IndexFactorization")))

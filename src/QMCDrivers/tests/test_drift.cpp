@@ -21,8 +21,7 @@ namespace qmcplusplus
 {
 TEST_CASE("drift pbyp and node correction real", "[drivers][drift]")
 {
-  const SimulationCell simulation_cell;
-  MCWalkerConfiguration elec(simulation_cell);
+  MCWalkerConfiguration elec;
 
   elec.setName("elec");
   std::vector<int> agroup(1);
@@ -32,7 +31,7 @@ TEST_CASE("drift pbyp and node correction real", "[drivers][drift]")
   ParticleSet::RealType tau  = 0.5;
   ParticleSet::RealType mass = 0.85;
   std::vector<ParticleSet::RealType> massinv(1, 1. / mass);
-  ParticleSet::ParticlePos drift(1);
+  ParticleSet::ParticlePos_t drift(1);
 
   // check from -xtot/2 to xtot/2 in step size of dx i.e. np.arange(-xtot/2,xtot/2,dx)
   double xtot  = 10.;
@@ -48,7 +47,7 @@ TEST_CASE("drift pbyp and node correction real", "[drivers][drift]")
     double dval = drift[0][0];
 
     double scale_factor = (-1. + std::sqrt(1. + 2. * gradx * gradx * tau / mass)) / (gradx * gradx * tau / mass);
-    CHECK(dval == Approx(scale_factor * gradx * tau / mass));
+    REQUIRE(dval == Approx(scale_factor * gradx * tau / mass));
 
     //app_log() << gradx << " " << dval << std::endl;
     gradx += dx;
@@ -59,8 +58,7 @@ TEST_CASE("drift pbyp and node correction real", "[drivers][drift]")
 #ifdef QMC_COMPLEX
 TEST_CASE("drift pbyp and node correction complex", "[drivers][drift]")
 { // basically copy and pasted from real test, except "myi"
-  const SimulationCell simulation_cell;
-  MCWalkerConfiguration elec(simulation_cell);
+  MCWalkerConfiguration elec;
 
   elec.setName("elec");
   std::vector<int> agroup(1);
@@ -70,7 +68,7 @@ TEST_CASE("drift pbyp and node correction complex", "[drivers][drift]")
   ParticleSet::RealType tau  = 0.5;
   ParticleSet::RealType mass = 0.85;
   std::vector<ParticleSet::RealType> massinv(1, 1. / mass);
-  ParticleSet::ParticlePos drift(1);
+  ParticleSet::ParticlePos_t drift(1);
 
   // check from -xtot/2 to xtot/2 in step size of dx i.e. np.arange(-xtot/2,xtot/2,dx)
   double xtot  = 10.;
@@ -87,7 +85,7 @@ TEST_CASE("drift pbyp and node correction complex", "[drivers][drift]")
     double dval = drift[0][0];
 
     double scale_factor = (-1. + std::sqrt(1. + 2. * gradx * gradx * tau / mass)) / (gradx * gradx * tau / mass);
-    CHECK(dval == Approx(scale_factor * gradx * tau / mass));
+    REQUIRE(dval == Approx(scale_factor * gradx * tau / mass));
 
     gradx += dx;
   }
@@ -96,8 +94,7 @@ TEST_CASE("drift pbyp and node correction complex", "[drivers][drift]")
 
 TEST_CASE("get scaled drift real", "[drivers][drift]")
 {
-  const SimulationCell simulation_cell;
-  MCWalkerConfiguration elec(simulation_cell);
+  MCWalkerConfiguration elec;
 
   elec.setName("elec");
   std::vector<int> agroup(1);
@@ -123,7 +120,7 @@ TEST_CASE("get scaled drift real", "[drivers][drift]")
     double dval = drift[0];
 
     double scale_factor = (-1. + std::sqrt(1. + 2. * gradx * gradx * tau / mass)) / (gradx * gradx * tau / mass);
-    CHECK(dval == Approx(scale_factor * gradx * tau / mass));
+    REQUIRE(dval == Approx(scale_factor * gradx * tau / mass));
 
     gradx += dx;
   }
@@ -132,8 +129,7 @@ TEST_CASE("get scaled drift real", "[drivers][drift]")
 #ifdef QMC_COMPLEX
 TEST_CASE("get scaled drift complex", "[drivers][drift]")
 {
-  const SimulationCell simulation_cell;
-  MCWalkerConfiguration elec(simulation_cell);
+  MCWalkerConfiguration elec;
 
   elec.setName("elec");
   std::vector<int> agroup(1);
@@ -162,7 +158,7 @@ TEST_CASE("get scaled drift complex", "[drivers][drift]")
     double dval = drift[0];
 
     double scale_factor = (-1. + std::sqrt(1. + 2. * gradx * gradx * tau / mass)) / (gradx * gradx * tau / mass);
-    CHECK(dval == Approx(scale_factor * gradx * tau / mass));
+    REQUIRE(dval == Approx(scale_factor * gradx * tau / mass));
 
     gradx += dx;
   }

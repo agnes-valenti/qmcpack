@@ -32,14 +32,14 @@ class CuspCorrectionAtomicBasis;
  */
 class SoaCuspCorrection
 {
-  using ValueType   = QMCTraits::ValueType;
-  using RealType    = QMCTraits::RealType;
-  using VGLVector   = VectorSoaContainer<ValueType, 5>;
-  using ValueMatrix = SPOSet::ValueMatrix;
-  using GradMatrix  = SPOSet::GradMatrix;
-  using GradVector  = SPOSet::GradVector;
-  using ValueVector = SPOSet::ValueVector;
-  using PosType     = ParticleSet::PosType;
+  typedef QMCTraits::ValueType ValueType;
+  typedef QMCTraits::RealType RealType;
+  typedef VectorSoaContainer<ValueType, 5> VGLVector_t;
+  typedef SPOSet::ValueMatrix_t ValueMatrix_t;
+  typedef SPOSet::GradMatrix_t GradMatrix_t;
+  typedef SPOSet::GradVector_t GradVector_t;
+  typedef SPOSet::ValueVector_t ValueVector_t;
+  typedef ParticleSet::PosType PosType;
 
   ///number of centers, e.g., ions
   size_t NumCenters;
@@ -47,14 +47,13 @@ class SoaCuspCorrection
   size_t NumTargets;
   ///number of quantum particles
   const int myTableIndex;
-  /** Maximal number of supported MOs
-   * this is not the AO basis because cusp correction is applied on the MO directly.
-   */
-  const size_t MaxOrbSize;
+  ///size of the basis set
+  int BasisSetSize;
 
   ///COMPLEX WON'T WORK
-  using COT = CuspCorrectionAtomicBasis<RealType>;
+  typedef CuspCorrectionAtomicBasis<RealType> COT;
 
+  int unused = 1;
   /** container of the unique pointers to the Atomic Orbitals
    *
    * size of LOBasisSet = number of centers (atoms)
@@ -68,12 +67,16 @@ public:
   /** constructor
    * @param ions ionic system
    * @param els electronic system
-   * @param norbs the number of orbitals this cusp correction may serve
    */
-  SoaCuspCorrection(ParticleSet& ions, ParticleSet& els, size_t norbs);
+  SoaCuspCorrection(ParticleSet& ions, ParticleSet& els);
 
   /** copy constructor */
   SoaCuspCorrection(const SoaCuspCorrection& a);
+
+
+  /** set BasisSetSize and allocate mVGL container
+   */
+  void setBasisSetSize(int nbs);
 
   /** compute VGL
    * @param P quantum particleset
@@ -81,17 +84,22 @@ public:
    * @param vgl Matrix(5,BasisSetSize)
    * @param trialMove if true, use getTempDists()/getTempDispls()
    */
-  void evaluateVGL(const ParticleSet& P, int iat, VGLVector& vgl);
+  void evaluateVGL(const ParticleSet& P, int iat, VGLVector_t& vgl);
 
-  void evaluate_vgl(const ParticleSet& P, int iat, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi);
+  void evaluate_vgl(const ParticleSet& P, int iat, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi);
 
-  void evaluate_vgl(const ParticleSet& P, int iat, int idx, ValueMatrix& psi, GradMatrix& dpsi, ValueMatrix& d2psi);
+  void evaluate_vgl(const ParticleSet& P,
+                    int iat,
+                    int idx,
+                    ValueMatrix_t& psi,
+                    GradMatrix_t& dpsi,
+                    ValueMatrix_t& d2psi);
 
   /** compute values for the iat-paricle move
    *
    * Always uses getTempDists() and getTempDispls()
    */
-  void evaluateV(const ParticleSet& P, int iat, ValueVector& psi);
+  void evaluateV(const ParticleSet& P, int iat, ValueType* restrict vals);
 
   /** add a new set of Centered Atomic Orbitals
    * @param icenter the index of the center
@@ -99,13 +107,13 @@ public:
    */
   void add(int icenter, std::unique_ptr<COT> aos);
 
-  void addVGL(const ParticleSet& P, int iat, VGLVector& vgl) { evaluateVGL(P, iat, vgl); }
-  void addV(const ParticleSet& P, int iat, ValueVector& psi) { evaluateV(P, iat, psi); }
-  void add_vgl(const ParticleSet& P, int iat, int idx, ValueMatrix& vals, GradMatrix& dpsi, ValueMatrix& d2psi)
+  void addVGL(const ParticleSet& P, int iat, VGLVector_t& vgl) { evaluateVGL(P, iat, vgl); }
+  void addV(const ParticleSet& P, int iat, ValueType* restrict vals) { evaluateV(P, iat, vals); }
+  void add_vgl(const ParticleSet& P, int iat, int idx, ValueMatrix_t& vals, GradMatrix_t& dpsi, ValueMatrix_t& d2psi)
   {
     evaluate_vgl(P, iat, idx, vals, dpsi, d2psi);
   }
-  void add_vector_vgl(const ParticleSet& P, int iat, ValueVector& vals, GradVector& dpsi, ValueVector& d2psi)
+  void add_vector_vgl(const ParticleSet& P, int iat, ValueVector_t& vals, GradVector_t& dpsi, ValueVector_t& d2psi)
   {
     evaluate_vgl(P, iat, vals, dpsi, d2psi);
   }

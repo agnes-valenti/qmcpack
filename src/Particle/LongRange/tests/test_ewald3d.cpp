@@ -24,31 +24,30 @@ using mRealType = EwaldHandler3D::mRealType;
  */
 TEST_CASE("ewald3d", "[lrhandler]")
 {
-  Lattice lattice;
-  lattice.BoxBConds     = true;
-  lattice.LR_dim_cutoff = 30.;
-  lattice.R.diagonal(5.0);
-  lattice.reset();
-  CHECK(lattice.Volume == Approx(125));
-  lattice.SetLRCutoffs(lattice.Rv);
-  //lattice.printCutoffs(app_log());
-  CHECK(lattice.LR_rc == Approx(2.5));
-  CHECK(lattice.LR_kc == Approx(12));
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
+  Lattice.BoxBConds     = true;
+  Lattice.LR_dim_cutoff = 30.;
+  Lattice.R.diagonal(5.0);
+  Lattice.reset();
+  REQUIRE(Lattice.Volume == Approx(125));
+  Lattice.SetLRCutoffs(Lattice.Rv);
+  //Lattice.printCutoffs(app_log());
+  REQUIRE(Lattice.LR_rc == Approx(2.5));
+  REQUIRE(Lattice.LR_kc == Approx(12));
 
-  const SimulationCell simulation_cell(lattice);
-  ParticleSet ref(simulation_cell);       // handler needs ref.getSimulationCell().getKLists()
+  ParticleSet ref;       // handler needs ref.SK.KLists
+  ref.Lattice = Lattice; // !!!! crucial for access to Volume
   ref.createSK();
-  EwaldHandler3D handler(ref, lattice.LR_kc);
+  EwaldHandler3D handler(ref, Lattice.LR_kc);
 
   // make sure initBreakup changes the default sigma
-  CHECK(handler.Sigma == Approx(lattice.LR_kc));
+  REQUIRE(handler.Sigma == Approx(Lattice.LR_kc));
   handler.initBreakup(ref);
-  CHECK(handler.Sigma == Approx(std::sqrt(lattice.LR_kc / (2.0 * lattice.LR_rc))));
+  REQUIRE(handler.Sigma == Approx(std::sqrt(Lattice.LR_kc / (2.0 * Lattice.LR_rc))));
 
-  std::cout << "handler.MaxKshell is " << handler.MaxKshell << std::endl;
-  CHECK(handler.MaxKshell == 78);
-  CHECK(handler.LR_rc == Approx(2.5));
-  CHECK(handler.LR_kc == Approx(12));
+  REQUIRE(handler.MaxKshell == 78);
+  REQUIRE(handler.LR_rc == Approx(2.5));
+  REQUIRE(handler.LR_kc == Approx(12));
 
   mRealType r, dr, rinv;
   mRealType vsr, vlr;
@@ -62,9 +61,9 @@ TEST_CASE("ewald3d", "[lrhandler]")
     vlr  = handler.evaluateLR(r);
     // short-range part must vanish after rcut
     if (r > 2.5)
-      CHECK(vsr == Approx(0.0));
+      REQUIRE(vsr == Approx(0.0));
     // sum must recover the Coulomb potential
-    CHECK(vsr + vlr == Approx(rinv));
+    REQUIRE(vsr + vlr == Approx(rinv));
   }
 }
 
@@ -72,31 +71,30 @@ TEST_CASE("ewald3d", "[lrhandler]")
  */
 TEST_CASE("ewald3d df", "[lrhandler]")
 {
-  Lattice lattice;
-  lattice.BoxBConds     = true;
-  lattice.LR_dim_cutoff = 30.;
-  lattice.R.diagonal(5.0);
-  lattice.reset();
-  CHECK(lattice.Volume == Approx(125));
-  lattice.SetLRCutoffs(lattice.Rv);
-  //lattice.printCutoffs(app_log());
-  CHECK(lattice.LR_rc == Approx(2.5));
-  CHECK(lattice.LR_kc == Approx(12));
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
+  Lattice.BoxBConds     = true;
+  Lattice.LR_dim_cutoff = 30.;
+  Lattice.R.diagonal(5.0);
+  Lattice.reset();
+  REQUIRE(Lattice.Volume == Approx(125));
+  Lattice.SetLRCutoffs(Lattice.Rv);
+  //Lattice.printCutoffs(app_log());
+  REQUIRE(Lattice.LR_rc == Approx(2.5));
+  REQUIRE(Lattice.LR_kc == Approx(12));
 
-  const SimulationCell simulation_cell(lattice);
-  ParticleSet ref(simulation_cell);       // handler needs ref.getSimulationCell().getKLists()
+  ParticleSet ref;       // handler needs ref.SK.KLists
+  ref.Lattice = Lattice; // !!!! crucial for access to Volume
   ref.createSK();
-  EwaldHandler3D handler(ref, lattice.LR_kc);
+  EwaldHandler3D handler(ref, Lattice.LR_kc);
 
   // make sure initBreakup changes the default sigma
-  CHECK(handler.Sigma == Approx(lattice.LR_kc));
+  REQUIRE(handler.Sigma == Approx(Lattice.LR_kc));
   handler.initBreakup(ref);
-  CHECK(handler.Sigma == Approx(std::sqrt(lattice.LR_kc / (2.0 * lattice.LR_rc))));
+  REQUIRE(handler.Sigma == Approx(std::sqrt(Lattice.LR_kc / (2.0 * Lattice.LR_rc))));
 
-  std::cout << "handler.MaxKshell is " << handler.MaxKshell << std::endl;
-  CHECK(handler.MaxKshell == 78);
-  CHECK(handler.LR_rc == Approx(2.5));
-  CHECK(handler.LR_kc == Approx(12));
+  REQUIRE(handler.MaxKshell == 78);
+  REQUIRE(handler.LR_rc == Approx(2.5));
+  REQUIRE(handler.LR_kc == Approx(12));
 
   mRealType r, dr, rinv;
   mRealType rm, rp; // minus (m), plus (p)
@@ -117,10 +115,10 @@ TEST_CASE("ewald3d df", "[lrhandler]")
     vlrp = handler.evaluateLR(rp);
     dvsr = (vsrp - vsrm) / (2 * dr);
     rinv = 1. / r;
-    CHECK(handler.srDf(r, rinv) == Approx(dvsr));
+    REQUIRE(handler.srDf(r, rinv) == Approx(dvsr));
     // test long-range piece
     dvlr = (vlrp - vlrm) / (2 * dr);
-    CHECK(handler.lrDf(r) == Approx(dvlr));
+    REQUIRE(handler.lrDf(r) == Approx(dvlr));
   }
 }
 

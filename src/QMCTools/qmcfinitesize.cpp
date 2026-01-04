@@ -44,17 +44,14 @@
 //Returns: (E(N=infty)-E(N)) for the given simulation cell.
 
 using namespace qmcplusplus;
-using RealType = QMCTraits::RealType;
-using PosType  = QMCTraits::PosType;
-using Grid_t   = SkParserBase::Grid_t;
+typedef QMCTraits::RealType RealType;
+typedef QMCTraits::PosType PosType;
+typedef SkParserBase::Grid_t Grid_t;
 
 int main(int argc, char** argv)
 {
-#ifdef HAVE_MPI
-  mpi3::environment env(argc, argv);
-  OHMMS::Controller = new Communicate(env.world());
-#endif
-  Random.init(-1);
+  OHMMS::Controller->initialize(argc, argv);
+  Random.init(0, 1, -1);
   std::cout.setf(std::ios::scientific, std::ios::floatfield);
   std::cout.setf(std::ios::right, std::ios::adjustfield);
   std::cout.precision(12);

@@ -38,8 +38,7 @@ public:
 
   std::vector<int> flex_makeNonLocalMoves(const RefVectorWithLeader<QMCHamiltonian>& ham_list,
                                           const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-                                          const RefVectorWithLeader<ParticleSet>& p_list,
-                                          NonLocalTOperator& move_op) const;
+                                          const RefVectorWithLeader<ParticleSet>& p_list) const;
 
 private:
   bool use_batch_;

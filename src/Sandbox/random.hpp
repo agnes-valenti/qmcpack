@@ -13,6 +13,7 @@
 
 inline uint32_t MakeSeed(int i, int n)
 {
+  //abort();
   const uint32_t u = 1 << 10;
   return static_cast<uint32_t>(std::time(nullptr)) % u + (i + 1) * n + i;
 }

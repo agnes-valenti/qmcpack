@@ -16,6 +16,7 @@
 
 #include "QMCHamiltonians/OperatorBase.h"
 #include "QMCWaveFunctions/SPOSet.h"
+#include "QMCWaveFunctions/WaveFunctionFactory.h"
 
 namespace qmcplusplus
 {
@@ -111,10 +112,11 @@ public:
     DIM = OHMMS_DIM
   };
 
-  using ValueVector = SPOSet::ValueVector;
-  using GradVector  = SPOSet::GradVector;
-  using Lattice_t   = Lattice;
-  using PSPool      = std::map<std::string, const std::unique_ptr<ParticleSet>>;
+  typedef SPOSet::ValueVector_t ValueVector_t;
+  typedef SPOSet::GradVector_t GradVector_t;
+  typedef ParticleSet::ParticleLayout_t Lattice_t;
+  typedef std::map<std::string, ParticleSet*> PSPool;
+
 
   ///derivative types
   enum derivative_types_enum
@@ -141,7 +143,7 @@ public:
   };
 
   ///at put() ion particleset is obtained from ParticleSetPool
-  const PSPool& psetpool;
+  PSPool& psetpool;
 
   ///electron particleset
   ParticleSet* Peln;
@@ -168,7 +170,7 @@ public:
   ///indices of orbitals within each sposet to evaluate
   const std::shared_ptr<std::vector<std::vector<int>>> sposet_indices;
 
-  ///sposets obtained by name from SPOMap
+  ///sposets obtained by name from WaveFunctionFactory
   std::vector<std::unique_ptr<SPOSet>> sposets;
 
   ///evaluate points at grid cell centers instead of edges
@@ -193,13 +195,13 @@ public:
   int batch_size;
 
   ///temporary vector to hold values of all orbitals at a single point
-  ValueVector spo_vtmp;
+  ValueVector_t spo_vtmp;
 
   ///temporary vector to hold gradients of all orbitals at a single point
-  GradVector spo_gtmp;
+  GradVector_t spo_gtmp;
 
   ///temporary vector to hold laplacians of all orbitals at a single point
-  ValueVector spo_ltmp;
+  ValueVector_t spo_ltmp;
 
   ///temporary array to hold values of a batch of orbitals at all grid points
   Array<ValueType, 2> batch_values;
@@ -214,10 +216,8 @@ public:
   std::vector<ValueType> orbital;
 
   //constructors
-  OrbitalImages(ParticleSet& P, const PSPool& PSP, Communicate* mpicomm, const SPOMap& spomap);
+  OrbitalImages(ParticleSet& P, PSPool& PSP, Communicate* mpicomm, const WaveFunctionFactory& factory);
   OrbitalImages(const OrbitalImages& other);
-
-  std::string getClassName() const override { return "OrbitalImages"; }
 
   //standard interface
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& P, TrialWaveFunction& psi) final;
@@ -230,10 +230,11 @@ public:
 
   //optional standard interface
   //void getRequiredTraces(TraceManager& tm);
+  //void setRandomGenerator(RandomGenerator_t* rng);
 
   //required for Collectables interface
   void addObservables(PropertySetType& plist, BufferType& olist) override {}
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override {}
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override {}
 
   //should be empty for Collectables interface
   void resetTargetParticleSet(ParticleSet& P) override {}
@@ -270,7 +271,7 @@ public:
 
 private:
   /// reference to the sposet_builder_factory
-  const SPOMap& spomap_;
+  const WaveFunctionFactory& wf_factory_;
 };
 
 } // namespace qmcplusplus

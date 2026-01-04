@@ -15,7 +15,7 @@
 #define QMCPLUSPLUS_PARTICLE_BCONDS_H
 
 #include <config.h>
-#include "CPU/SIMD/vmath.hpp"
+#include "CPU/SIMD/simd.hpp"
 #include "Lattice/CrystalLattice.h"
 
 namespace qmcplusplus
@@ -69,8 +69,7 @@ template<class T, unsigned D, int SC>
 struct DTD_BConds
 {
   /** constructor: doing nothing */
-  template<typename TT>
-  inline DTD_BConds(const CrystalLattice<TT, D>& lat) {}
+  inline DTD_BConds(const CrystalLattice<T, D>& lat) {}
 
   /** apply BC on displ and return |displ|^2
    * @param displ a displacement vector in the Cartesian coordinate

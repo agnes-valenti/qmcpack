@@ -12,7 +12,6 @@
 #include "hdf/hdf_multi.h"
 #include "hdf/hdf_archive.h"
 #include "OhmmsData/libxmldefs.h"
-#include "CPU/math.hpp"
 
 #include "AFQMC/Wavefunctions/Wavefunction.hpp"
 #include "AFQMC/Walkers/WalkerSet.hpp"
@@ -59,14 +58,12 @@ public:
   {
     ScopedTimer local_timer(AFQMCTimers[energy_timer]);
     size_t nwalk = wset.size();
-
-    using std::get;
-    if (get<0>(eloc.sizes()) != nwalk || get<1>(eloc.sizes()) != 3)
-      eloc.reextent({static_cast<boost::multi::size_t>(nwalk), 3});
-    if (get<0>(ovlp.sizes()) != nwalk)
-      ovlp.reextent(iextensions<1u>(nwalk));
-    if (get<0>(wprop.sizes()) != 4 || get<1>(wprop.sizes()) != nwalk)
-      wprop.reextent({4, static_cast<boost::multi::size_t>(nwalk)});
+    if (eloc.size(0) != nwalk || eloc.size(1) != 3)
+      eloc.reextent({nwalk, 3});
+    if (ovlp.size(0) != nwalk)
+      ovlp.reextent(iextensions<1u>{nwalk});
+    if (wprop.size(0) != 4 || wprop.size(1) != nwalk)
+      wprop.reextent({4, nwalk});
 
     ComplexType dum, et;
     wfn0.Energy(wset, eloc, ovlp);
@@ -81,7 +78,7 @@ public:
       std::fill_n(data.begin(), data.size(), ComplexType(0.0));
       for (int i = 0; i < nwalk; i++)
       {
-        if (qmcplusplus::isnan(std::real(wprop[0][i])))
+        if (std::isnan(real(wprop[0][i])))
           continue;
         if (importanceSampling)
         {
@@ -92,7 +89,7 @@ public:
           dum = (wprop[0][i]) * ovlp_[i] * (wprop[2][i]);
         }
         et = eloc_[i][0] + eloc_[i][1] + eloc_[i][2];
-        if ((!qmcplusplus::isfinite(real(dum))) || (!qmcplusplus::isfinite(real(et * dum))))
+        if ((!std::isfinite(real(dum))) || (!std::isfinite(real(et * dum))))
           continue;
         data[1] += dum;
         data[0] += et * dum;

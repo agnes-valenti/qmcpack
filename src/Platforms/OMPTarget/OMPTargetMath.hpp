@@ -10,32 +10,21 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/**@file OMPTargetMath.hpp
- *@brief handle math function mapping inside OpenMP offload regions.
- */
-
 #ifndef OMPTARGET_MATH_H
 #define OMPTARGET_MATH_H
 
 #include <cmath>
-#if !defined(ENABLE_OFFLOAD)
-#include "CPU/math.hpp"
-#endif
 
 namespace omptarget
 {
-#if defined(ENABLE_OFFLOAD)
-inline void sincos(double a, double* restrict s, double* restrict c) { ::sincos(a, s, c); }
-
-inline void sincos(float a, float* restrict s, float* restrict c) { ::sincosf(a, s, c); }
-#else
-using namespace qmcplusplus;
-#endif
-
-template<typename T>
-T min(T a, T b)
+inline void sincos(double a, double* restrict s, double* restrict c)
 {
-  return a < b ? a : b;
+  ::sincos(a,s,c);
 }
-} // namespace omptarget
+
+inline void sincos(float a, float* restrict s, float* restrict c)
+{
+  ::sincosf(a,s,c);
+}
+}
 #endif

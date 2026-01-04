@@ -20,7 +20,7 @@
 //#include "Particle/HDFWalkerIO.h"
 //#include "ParticleBase/ParticleUtility.h"
 //#include "ParticleBase/RandomSeqGenerator.h"
-//#include "CPU/VectorOps.h"
+//#include "ParticleBase/ParticleAttribOps.h"
 //#include "Message/Communicate.h"
 //#include "Estimators/MultipleEnergyEstimator.h"
 #include "QMCDrivers/DriftOperators.h"
@@ -33,7 +33,7 @@ using WP = WalkerProperties::Indexes;
 CSVMCUpdateAll::CSVMCUpdateAll(MCWalkerConfiguration& w,
                                std::vector<TrialWaveFunction*>& psi,
                                std::vector<QMCHamiltonian*>& h,
-                               RandomBase<FullPrecRealType>& rg)
+                               RandomGenerator_t& rg)
     : CSUpdateBase(w, psi, h, rg)
 {
   UpdatePbyP = false;
@@ -41,6 +41,8 @@ CSVMCUpdateAll::CSVMCUpdateAll(MCWalkerConfiguration& w,
 
 void CSVMCUpdateAll::advanceWalker(Walker_t& thisWalker, bool recompute)
 {
+  std::cout<<"AV CSVMCUpdateAll advanceWalker"<<std::endl;
+  std::flush(std::cout);
   using WP = WalkerProperties::Indexes;
   //create a 3N-Dimensional Gaussian with variance=1
   makeGaussRandomWithEngine(deltaR, RandomGen);
@@ -104,7 +106,7 @@ void CSVMCUpdateAll::advanceWalker(Walker_t& thisWalker, bool recompute)
       W.L = *L1[ipsi];
       W.G = *G1[ipsi];
 
-      RealType et                                     = H1[ipsi]->evaluate(W);
+      RealType et                                 = H1[ipsi]->evaluate(W);
       thisWalker.Properties(ipsi, WP::LOGPSI)         = logpsi[ipsi];
       thisWalker.Properties(ipsi, WP::SIGN)           = Psi1[ipsi]->getPhase();
       thisWalker.Properties(ipsi, WP::UMBRELLAWEIGHT) = invsumratio[ipsi];
@@ -120,7 +122,7 @@ void CSVMCUpdateAll::advanceWalker(Walker_t& thisWalker, bool recompute)
 CSVMCUpdateAllWithDrift::CSVMCUpdateAllWithDrift(MCWalkerConfiguration& w,
                                                  std::vector<TrialWaveFunction*>& psi,
                                                  std::vector<QMCHamiltonian*>& h,
-                                                 RandomBase<FullPrecRealType>& rg)
+                                                 RandomGenerator_t& rg)
     : CSUpdateBase(w, psi, h, rg)
 {
   UpdatePbyP = false;
@@ -133,7 +135,7 @@ void CSVMCUpdateAllWithDrift::advanceWalker(Walker_t& thisWalker, bool recompute
   assignDrift(Tau, MassInvP, W.G, drift);
   makeGaussRandomWithEngine(deltaR, RandomGen);
 
-  Walker_t::ParticleGradient cumGrad(W.G);
+  Walker_t::ParticleGradient_t cumGrad(W.G);
   cumGrad = 0.0;
 
   RealType tau_over_mass = std::sqrt(Tau * MassInvS[0]);
@@ -172,7 +174,7 @@ void CSVMCUpdateAllWithDrift::advanceWalker(Walker_t& thisWalker, bool recompute
   for (int ipsi = 0; ipsi < nPsi; ipsi++)
   {
     invsumratio[ipsi] = 1.0 / sumratio[ipsi];
-    cumGrad += Psi1[ipsi]->G * static_cast<Walker_t::SingleParticleValue>(invsumratio[ipsi]);
+    cumGrad += Psi1[ipsi]->G * static_cast<Walker_t::SingleParticleValue_t>(invsumratio[ipsi]);
   }
 
   for (int ipsi = 0; ipsi < nPsi; ipsi++)
@@ -202,9 +204,9 @@ void CSVMCUpdateAllWithDrift::advanceWalker(Walker_t& thisWalker, bool recompute
     thisWalker.G            = cumGrad;
     for (int ipsi = 0; ipsi < nPsi; ipsi++)
     {
-      W.L                                             = *L1[ipsi];
-      W.G                                             = *G1[ipsi];
-      RealType et                                     = H1[ipsi]->evaluate(W);
+      W.L                                         = *L1[ipsi];
+      W.G                                         = *G1[ipsi];
+      RealType et                                 = H1[ipsi]->evaluate(W);
       thisWalker.Properties(ipsi, WP::LOGPSI)         = logpsi[ipsi];
       thisWalker.Properties(ipsi, WP::SIGN)           = Psi1[ipsi]->getPhase();
       thisWalker.Properties(ipsi, WP::UMBRELLAWEIGHT) = invsumratio[ipsi];

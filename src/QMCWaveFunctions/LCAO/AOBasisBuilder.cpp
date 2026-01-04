@@ -21,8 +21,8 @@
 #include "SoaAtomicBasisSet.h"
 #include "MultiQuinticSpline1D.h"
 #include "MultiFunctorAdapter.h"
-#include "Numerics/SoaCartesianTensor.h"
-#include "Numerics/SoaSphericalTensor.h"
+#include "SoaCartesianTensor.h"
+#include "SoaSphericalTensor.h"
 
 namespace qmcplusplus
 {
@@ -153,7 +153,7 @@ bool AOBasisBuilder<COT>::putH5(hdf_archive& hin)
     if (sph != "cartesian")
       myComm->barrier_and_abort(" Error: expandYlm='Dirac' only compatible with angular='cartesian'. Aborting\n");
   }
-  app_log() << R"(<input node="atomicBasisSet" name=")" << basisName << "\" expandYlm=\"" << Morder << "\" angular=\""
+  app_log() << "<input node=\"atomicBasisSet\" name=\"" << basisName << "\" expandYlm=\"" << Morder << "\" angular=\""
             << sph << "\" elementType=\"" << CenterID << "\" normalized=\"" << Normalized << "\" type=\"" << basisType
             << "\" expM=\"" << addsignforM << "\" />" << std::endl;
 
@@ -210,7 +210,7 @@ std::unique_ptr<COT> AOBasisBuilder<COT>::createAOSet(xmlNodePtr cur)
     if (cname1 == "basisGroup")
     {
       radGroup.push_back(cur1);
-      const int l = std::stoi(getXMLAttributeValue(cur1, "l"));
+      const int l = std::stoi(XMLAttrString{cur1, "l"});
       Lmax        = std::max(Lmax, l);
       //expect that only Rnl is given
       if (expandlm == CARTESIAN_EXPAND || expandlm == DIRAC_CARTESIAN_EXPAND)
@@ -283,7 +283,9 @@ std::unique_ptr<COT> AOBasisBuilder<COT>::createAOSet(xmlNodePtr cur)
   if (expandYlm(aos.get(), all_nl, expandlm) != num)
     myComm->barrier_and_abort("expandYlm doesn't match the number of basis.");
   radFuncBuilder.finalize();
-  aos->finalize();
+  //aos->Rmax can be set small
+  //aos->setRmax(0);
+  aos->setBasisSetSize(-1);
   app_log() << "   Maximum Angular Momentum  = " << aos->Ylm.lmax() << std::endl
             << "   Number of Radial functors = " << aos->RnlID.size() << std::endl
             << "   Basis size                = " << aos->getBasisSetSize() << "\n\n";
@@ -408,7 +410,9 @@ std::unique_ptr<COT> AOBasisBuilder<COT>::createAOSetH5(hdf_archive& hin)
   if (expandYlm(aos.get(), all_nl, expandlm) != num)
     myComm->barrier_and_abort("expandYlm doesn't match the number of basis.");
   radFuncBuilder.finalize();
-  aos->finalize();
+  //aos->Rmax can be set small
+  //aos->setRmax(0);
+  aos->setBasisSetSize(-1);
   app_log() << "   Maximum Angular Momentum  = " << aos->Ylm.lmax() << std::endl
             << "   Number of Radial functors = " << aos->RnlID.size() << std::endl
             << "   Basis size                = " << aos->getBasisSetSize() << "\n\n";

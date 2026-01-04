@@ -14,12 +14,13 @@
 #ifndef QMCPLUSPLUS_DTDIMPL_AB_OMPTARGET_H
 #define QMCPLUSPLUS_DTDIMPL_AB_OMPTARGET_H
 
-#include "Lattice/ParticleBConds3DSoa.h"
+//#include "Lattice/ParticleBConds3DSoa.h"
+#include "Lattice/ParticleBConds2DSoa.h"
 #include "DistanceTable.h"
-#include "OMPTarget/OffloadAlignedAllocators.hpp"
+#include "OMPTarget/OMPallocator.hpp"
+#include "Platforms/PinnedAllocator.h"
 #include "Particle/RealSpacePositionsOMPTarget.h"
 #include "ResourceCollection.h"
-#include "OMPTarget/OMPTargetMath.hpp"
 
 namespace qmcplusplus
 {
@@ -31,7 +32,7 @@ class SoaDistanceTableABOMPTarget : public DTD_BConds<T, D, SC>, public Distance
 {
 private:
   template<typename DT>
-  using OffloadPinnedVector = Vector<DT, OffloadPinnedAllocator<DT>>;
+  using OffloadPinnedVector = Vector<DT, OMPallocator<DT, PinnedAlignedAllocator<DT>>>;
 
   ///accelerator output buffer for r and dr
   OffloadPinnedVector<RealType> r_dr_memorypool_;
@@ -50,10 +51,10 @@ private:
 
     DTABMultiWalkerMem(const DTABMultiWalkerMem&) : DTABMultiWalkerMem() {}
 
-    std::unique_ptr<Resource> makeClone() const override { return std::make_unique<DTABMultiWalkerMem>(*this); }
+    Resource* makeClone() const override { return new DTABMultiWalkerMem(*this); }
   };
 
-  ResourceHandle<DTABMultiWalkerMem> mw_mem_handle_;
+  std::unique_ptr<DTABMultiWalkerMem> mw_mem_;
 
   void resize()
   {
@@ -94,7 +95,7 @@ private:
     const size_t num_padded    = getAlignedSize<T>(dt_leader.num_sources_);
     const size_t stride_size   = num_padded * (D + 1);
     const size_t total_targets = count_targets;
-    auto& mw_r_dr              = dt_leader.mw_mem_handle_.getResource().mw_r_dr;
+    auto& mw_r_dr              = dt_leader.mw_mem_->mw_r_dr;
     mw_r_dr.resize(total_targets * stride_size);
 
     count_targets = 0;
@@ -117,13 +118,17 @@ private:
   }
 
 public:
-  SoaDistanceTableABOMPTarget(const ParticleSet& source, const ParticleSet& target)
-      : DTD_BConds<T, D, SC>(source.getLattice()),
-        DistanceTableAB(source, target, DTModes::ALL_OFF),
-        offload_timer_(createGlobalTimer(std::string("DTABOMPTarget::offload_") + name_, timer_level_fine)),
-        evaluate_timer_(createGlobalTimer(std::string("DTABOMPTarget::evaluate_") + name_, timer_level_fine)),
-        move_timer_(createGlobalTimer(std::string("DTABOMPTarget::move_") + name_, timer_level_fine)),
-        update_timer_(createGlobalTimer(std::string("DTABOMPTarget::update_") + name_, timer_level_fine))
+  SoaDistanceTableABOMPTarget(const ParticleSet& source, ParticleSet& target)
+      : DTD_BConds<T, D, SC>(source.Lattice),
+        DistanceTableAB(source, target, DTModes::NEED_TEMP_DATA_ON_HOST),
+        offload_timer_(
+            *timer_manager.createTimer(std::string("SoaDistanceTableABOMPTarget::offload_") + name_, timer_level_fine)),
+        evaluate_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableABOMPTarget::evaluate_") + name_,
+                                                   timer_level_fine)),
+        move_timer_(
+            *timer_manager.createTimer(std::string("SoaDistanceTableABOMPTarget::move_") + name_, timer_level_fine)),
+        update_timer_(
+            *timer_manager.createTimer(std::string("SoaDistanceTableABOMPTarget::update_") + name_, timer_level_fine))
 
   {
     auto* coordinates_soa = dynamic_cast<const RealSpacePositionsOMPTarget*>(&source.getCoordinates());
@@ -150,14 +155,17 @@ public:
 
   void acquireResource(ResourceCollection& collection, const RefVectorWithLeader<DistanceTable>& dt_list) const override
   {
-    auto& dt_leader          = dt_list.getCastedLeader<SoaDistanceTableABOMPTarget>();
-    dt_leader.mw_mem_handle_ = collection.lendResource<DTABMultiWalkerMem>();
+    auto res_ptr = dynamic_cast<DTABMultiWalkerMem*>(collection.lendResource().release());
+    if (!res_ptr)
+      throw std::runtime_error("SoaDistanceTableABOMPTarget::acquireResource dynamic_cast failed");
+    auto& dt_leader = dt_list.getCastedLeader<SoaDistanceTableABOMPTarget>();
+    dt_leader.mw_mem_.reset(res_ptr);
     associateResource(dt_list);
   }
 
   void releaseResource(ResourceCollection& collection, const RefVectorWithLeader<DistanceTable>& dt_list) const override
   {
-    collection.takebackResource(dt_list.getCastedLeader<SoaDistanceTableABOMPTarget>().mw_mem_handle_);
+    collection.takebackResource(std::move(dt_list.getCastedLeader<SoaDistanceTableABOMPTarget>().mw_mem_));
     for (size_t iw = 0; iw < dt_list.size(); iw++)
     {
       auto& dt = dt_list.getCastedElement<SoaDistanceTableABOMPTarget>(iw);
@@ -166,7 +174,12 @@ public:
     }
   }
 
-  const T* getMultiWalkerDataPtr() const override { return mw_mem_handle_.getResource().mw_r_dr.data(); }
+  const T* getMultiWalkerDataPtr() const override
+  {
+    if (!mw_mem_)
+      throw std::runtime_error("SoaDistanceTableABOMPTarget mw_mem_ is nullptr");
+    return mw_mem_->mw_r_dr.data();
+  }
 
   size_t getPerTargetPctlStrideSize() const override { return getAlignedSize<T>(num_sources_) * (D + 1); }
 
@@ -192,7 +205,7 @@ public:
     assert(distances_[0].data() + num_padded == displacements_[0].data());
 
     // To maximize thread usage, the loop over electrons is chunked. Each chunk is sent to an OpenMP offload thread team.
-    const int ChunkSizePerTeam = 512;
+    const int ChunkSizePerTeam = 256;
     const size_t num_teams     = (num_sources_ + ChunkSizePerTeam - 1) / ChunkSizePerTeam;
     const size_t stride_size   = getPerTargetPctlStrideSize();
 
@@ -206,7 +219,8 @@ public:
         for (int team_id = 0; team_id < num_teams; team_id++)
         {
           const int first = ChunkSizePerTeam * team_id;
-          const int last  = omptarget::min(first + ChunkSizePerTeam, num_sources_local);
+          const int last =
+              (first + ChunkSizePerTeam) > num_sources_local ? num_sources_local : first + ChunkSizePerTeam;
 
           T pos[D];
           for (int idim = 0; idim < D; idim++)
@@ -228,12 +242,14 @@ public:
   {
     assert(this == &dt_list.getLeader());
     auto& dt_leader = dt_list.getCastedLeader<SoaDistanceTableABOMPTarget>();
+    // multi walker resource must have been acquired
+    assert(dt_leader.mw_mem_);
 
     ScopedTimer local_timer(evaluate_timer_);
 
-    const size_t nw            = dt_list.size();
-    DTABMultiWalkerMem& mw_mem = dt_leader.mw_mem_handle_;
-    auto& mw_r_dr              = mw_mem.mw_r_dr;
+    const size_t nw = dt_list.size();
+    auto& mw_mem    = *dt_leader.mw_mem_;
+    auto& mw_r_dr   = mw_mem.mw_r_dr;
 
     size_t count_targets = 0;
     for (ParticleSet& p : p_list)
@@ -290,7 +306,7 @@ public:
     }
 
     // To maximize thread usage, the loop over electrons is chunked. Each chunk is sent to an OpenMP offload thread team.
-    const int ChunkSizePerTeam = 512;
+    const int ChunkSizePerTeam = 256;
     const size_t num_teams     = (num_sources_ + ChunkSizePerTeam - 1) / ChunkSizePerTeam;
 
     auto* r_dr_ptr              = mw_r_dr.data();
@@ -300,8 +316,8 @@ public:
     {
       ScopedTimer offload(dt_leader.offload_timer_);
       PRAGMA_OFFLOAD("omp target teams distribute collapse(2) num_teams(total_targets*num_teams) \
-                          map(always, to: input_ptr[:offload_input.size()]) \
-                          depend(out:r_dr_ptr[:mw_r_dr.size()])")
+                        map(always, to: input_ptr[:offload_input.size()]) \
+                        depend(out:r_dr_ptr[:mw_r_dr.size()]) nowait")
       for (int iat = 0; iat < total_targets; ++iat)
         for (int team_id = 0; team_id < num_teams; team_id++)
         {
@@ -313,7 +329,8 @@ public:
           auto* dr_iat_ptr     = r_dr_ptr + iat * num_padded * (D + 1) + num_padded;
 
           const int first = ChunkSizePerTeam * team_id;
-          const int last  = omptarget::min(first + ChunkSizePerTeam, num_sources_local);
+          const int last =
+              (first + ChunkSizePerTeam) > num_sources_local ? num_sources_local : first + ChunkSizePerTeam;
 
           T pos[D];
           for (int idim = 0; idim < D; idim++)
@@ -330,7 +347,7 @@ public:
         PRAGMA_OFFLOAD(
             "omp target update from(r_dr_ptr[:mw_r_dr.size()]) depend(inout:r_dr_ptr[:mw_r_dr.size()]) nowait")
       }
-      // wait for computing and (optional) transferring back to host.
+      // wait for computing and (optional) transfering back to host.
       // It can potentially be moved to ParticleSet to fuse multiple similar taskwait
       PRAGMA_OFFLOAD("omp taskwait")
     }
@@ -363,6 +380,28 @@ public:
     std::copy_n(temp_r_.data(), num_sources_, distances_[iat].data());
     for (int idim = 0; idim < D; ++idim)
       std::copy_n(temp_dr_.data(idim), num_sources_, displacements_[iat].data(idim));
+  }
+
+  size_t get_neighbors(int iat,
+                       RealType rcut,
+                       int* restrict jid,
+                       RealType* restrict dist,
+                       PosType* restrict displ) const override
+  {
+    constexpr T cminus(-1);
+    size_t nn = 0;
+    for (int jat = 0; jat < num_targets_; ++jat)
+    {
+      const RealType rij = distances_[jat][iat];
+      if (rij < rcut)
+      { //make the compact list
+        jid[nn]   = jat;
+        dist[nn]  = rij;
+        displ[nn] = cminus * displacements_[jat][iat];
+        nn++;
+      }
+    }
+    return nn;
   }
 
   int get_first_neighbor(IndexType iat, RealType& r, PosType& dr, bool newpos) const override
@@ -399,6 +438,21 @@ public:
     }
     assert(index >= 0 && index < num_sources_);
     return index;
+  }
+
+  size_t get_neighbors(int iat, RealType rcut, RealType* restrict dist) const
+  {
+    size_t nn = 0;
+    for (int jat = 0; jat < num_targets_; ++jat)
+    {
+      const RealType rij = distances_[jat][iat];
+      if (rij < rcut)
+      { //make the compact list
+        dist[nn] = rij;
+        nn++;
+      }
+    }
+    return nn;
   }
 
 private:

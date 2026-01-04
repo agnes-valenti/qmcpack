@@ -36,7 +36,7 @@ namespace qmcplusplus
  * The internal storage of complex spline coefficients uses double sized real arrays of ST type, aligned and padded.
  * The first nComplexBands complex splines produce 2 real orbitals.
  * The rest complex splines produce 1 real orbital.
- * All the output orbitals are real (C2R). The maximal number of output orbitals is OrbitalSetSize.
+ * All the output orbitals are real.
  */
 template<typename ST>
 class SplineC2R : public BsplineSet
@@ -49,10 +49,10 @@ public:
   using SingleSplineType = UBspline_3d_d;
   // types for evaluation results
   using TT = typename BsplineSet::ValueType;
-  using BsplineSet::GGGVector;
-  using BsplineSet::GradVector;
-  using BsplineSet::HessVector;
-  using BsplineSet::ValueVector;
+  using BsplineSet::GGGVector_t;
+  using BsplineSet::GradVector_t;
+  using BsplineSet::HessVector_t;
+  using BsplineSet::ValueVector_t;
 
   using vContainer_type  = Vector<ST, aligned_allocator<ST>>;
   using gContainer_type  = VectorSoaContainer<ST, 3>;
@@ -84,16 +84,16 @@ protected:
   ghContainer_type mygH;
 
 public:
-  SplineC2R(const std::string& my_name, bool use_offload = false) : BsplineSet(my_name), nComplexBands(0) {}
-
-  SplineC2R(const SplineC2R& in);
-  virtual std::string getClassName() const override { return "SplineC2R"; }
-  virtual std::string getKeyword() const override { return "SplineC2R"; }
-  bool isComplex() const override { return true; };
+  SplineC2R() : nComplexBands(0)
+  {
+    is_complex = true;
+    className  = "SplineC2R";
+    KeyWord    = "SplineC2R";
+  }
 
   std::unique_ptr<SPOSet> makeClone() const override { return std::make_unique<SplineC2R>(*this); }
 
-  inline void resizeStorage(size_t n) override
+  inline void resizeStorage(size_t n, size_t nvals)
   {
     init_base(n);
     size_t npad = getAlignedSize<ST>(2 * n);
@@ -120,8 +120,8 @@ public:
     gatherv(comm, SplineInst->getSplinePtr(), SplineInst->getSplinePtr()->z_stride, offset);
   }
 
-  template<typename BCT>
-  void create_spline(const Ugrid xyz_g[3], const BCT& xyz_bc)
+  template<typename GT, typename BCT>
+  void create_spline(GT& xyz_g, BCT& xyz_bc)
   {
     resize_kpoints();
     SplineInst = std::make_shared<MultiBspline<ST>>();
@@ -136,8 +136,11 @@ public:
   /** remap kPoints to pack the double copy */
   inline void resize_kpoints()
   {
+#ifndef QMC_CUDA
+    // GPU CUDA code doesn't allow a change of the ordering
     nComplexBands = this->remap_kpoints();
-    const int nk  = kPoints.size();
+#endif
+    int nk = kPoints.size();
     mKK.resize(nk);
     myKcart.resize(nk);
     for (size_t i = 0; i < nk; ++i)
@@ -153,61 +156,61 @@ public:
 
   bool write_splines(hdf_archive& h5f);
 
-  void assign_v(const PointType& r, const vContainer_type& myV, ValueVector& psi, int first, int last) const;
+  void assign_v(const PointType& r, const vContainer_type& myV, ValueVector_t& psi, int first, int last) const;
 
-  void evaluateValue(const ParticleSet& P, const int iat, ValueVector& psi) override;
+  void evaluateValue(const ParticleSet& P, const int iat, ValueVector_t& psi) override;
 
   void evaluateDetRatios(const VirtualParticleSet& VP,
-                         ValueVector& psi,
-                         const ValueVector& psiinv,
+                         ValueVector_t& psi,
+                         const ValueVector_t& psiinv,
                          std::vector<TT>& ratios) override;
 
   /** assign_vgl
    */
-  void assign_vgl(const PointType& r, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi, int first, int last)
+  void assign_vgl(const PointType& r, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi, int first, int last)
       const;
 
   /** assign_vgl_from_l can be used when myL is precomputed and myV,myG,myL in cartesian
    */
-  void assign_vgl_from_l(const PointType& r, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi);
+  void assign_vgl_from_l(const PointType& r, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi);
 
   void evaluateVGL(const ParticleSet& P,
                    const int iat,
-                   ValueVector& psi,
-                   GradVector& dpsi,
-                   ValueVector& d2psi) override;
+                   ValueVector_t& psi,
+                   GradVector_t& dpsi,
+                   ValueVector_t& d2psi) override;
 
   void assign_vgh(const PointType& r,
-                  ValueVector& psi,
-                  GradVector& dpsi,
-                  HessVector& grad_grad_psi,
+                  ValueVector_t& psi,
+                  GradVector_t& dpsi,
+                  HessVector_t& grad_grad_psi,
                   int first,
                   int last) const;
 
   void evaluateVGH(const ParticleSet& P,
                    const int iat,
-                   ValueVector& psi,
-                   GradVector& dpsi,
-                   HessVector& grad_grad_psi) override;
+                   ValueVector_t& psi,
+                   GradVector_t& dpsi,
+                   HessVector_t& grad_grad_psi) override;
 
   void assign_vghgh(const PointType& r,
-                    ValueVector& psi,
-                    GradVector& dpsi,
-                    HessVector& grad_grad_psi,
-                    GGGVector& grad_grad_grad_psi,
+                    ValueVector_t& psi,
+                    GradVector_t& dpsi,
+                    HessVector_t& grad_grad_psi,
+                    GGGVector_t& grad_grad_grad_psi,
                     int first = 0,
                     int last  = -1) const;
 
   void evaluateVGHGH(const ParticleSet& P,
                      const int iat,
-                     ValueVector& psi,
-                     GradVector& dpsi,
-                     HessVector& grad_grad_psi,
-                     GGGVector& grad_grad_grad_psi) override;
+                     ValueVector_t& psi,
+                     GradVector_t& dpsi,
+                     HessVector_t& grad_grad_psi,
+                     GGGVector_t& grad_grad_grad_psi) override;
 
   template<class BSPLINESPO>
-  friend class SplineSetReader;
-  friend struct BsplineReader;
+  friend struct SplineSetReader;
+  friend struct BsplineReaderBase;
 };
 
 extern template class SplineC2R<float>;

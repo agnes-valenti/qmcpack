@@ -19,13 +19,13 @@
 #include "MemoryUsage.h"
 #include "QMCHamiltonians/HamiltonianPool.h"
 #include "Message/Communicate.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 #include "Utilities/IteratorUtility.h"
 #include "Utilities/qmc_common.h"
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
 
 //comment this out to use only method to clone
@@ -80,6 +80,7 @@ CloneManager::CloneManager() : NumThreads(omp_get_max_threads()) { wPerRank.resi
 ///cleanup non-static data members
 CloneManager::~CloneManager()
 {
+  // delete_iter(CSMovers.begin(),CSMovers.end());
   delete_iter(Movers.begin(), Movers.end());
   delete_iter(estimatorClones.begin(), estimatorClones.end());
 
@@ -254,8 +255,8 @@ CloneManager::RealType CloneManager::acceptRatio() const
     nRejectTot += Movers[ip]->nReject;
   }
 #if defined(__GNUC__) || !defined(NDEBUG)
-  // Attempt to detect compiler vectorization errors by computing
-  // acceptance ratio in a different way to the above loop
+// Attempt to detect compiler vectorization errors by computing
+// acceptance ratio in a different way to the above loop
   IndexType nAcceptTot_debug = 0;
   IndexType nRejectTot_debug = 0;
   std::vector<int> vec(NumThreads);
@@ -269,23 +270,14 @@ CloneManager::RealType CloneManager::acceptRatio() const
   if (nAcceptTot != nAcceptTot_debug || nRejectTot != nRejectTot_debug)
   {
     app_warning() << " Potential compiler bug detected!"
-                  << " Overwriting nAcceptTot wrong value " << nAcceptTot << " with correct value " << nAcceptTot_debug
-                  << "."
-                  << " Overwriting nRejectTot wrong value " << nRejectTot << " with correct value " << nRejectTot_debug
-                  << "." << std::endl;
+                  << " Overwriting nAcceptTot wrong value " << nAcceptTot << " with correct value " << nAcceptTot_debug << "."
+                  << " Overwriting nRejectTot wrong value " << nRejectTot << " with correct value " << nRejectTot_debug << "."
+                  << std::endl;
     nAcceptTot = nAcceptTot_debug;
     nRejectTot = nRejectTot_debug;
   }
 #endif
   return static_cast<RealType>(nAcceptTot) / static_cast<RealType>(nAcceptTot + nRejectTot);
-}
-
-RefVector<WalkerLogCollector> CloneManager::getWalkerLogCollectorRefs()
-{
-  RefVector<WalkerLogCollector> refs;
-  for(int i = 0; i < wlog_collectors.size(); i++)
-    refs.push_back(*wlog_collectors[i]);
-  return refs;
 }
 
 } // namespace qmcplusplus

@@ -22,6 +22,11 @@
 #include "QMCHamiltonians/L2Potential.h"
 #include "OhmmsData/AttributeSet.h"
 #include "Numerics/OneDimNumGridFunctor.h"
+#ifdef QMC_CUDA
+#include "QMCHamiltonians/CoulombPBCAB_CUDA.h"
+#include "QMCHamiltonians/LocalECPotential_CUDA.h"
+#include "QMCHamiltonians/NonLocalECPotential_CUDA.h"
+#endif
 
 namespace qmcplusplus
 {
@@ -46,8 +51,6 @@ ECPotentialBuilder::ECPotentialBuilder(QMCHamiltonian& h,
       targetPsi(psi)
 {}
 
-ECPotentialBuilder::~ECPotentialBuilder() = default;
-
 bool ECPotentialBuilder::put(xmlNodePtr cur)
 {
   if (localPot.empty())
@@ -65,23 +68,26 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
   std::string pbc;
   std::string forces;
   std::string physicalSO;
-  std::string spin_integrator;
 
   OhmmsAttributeSet pAttrib;
   pAttrib.add(ecpFormat, "format", {"table", "xml"});
-  pAttrib.add(NLPP_algo, "algorithm", {"batched", "non-batched"});
+  pAttrib.add(NLPP_algo, "algorithm", {"", "batched", "non-batched"});
   pAttrib.add(use_DLA, "DLA", {"no", "yes"});
   pAttrib.add(pbc, "pbc", {"yes", "no"});
   pAttrib.add(forces, "forces", {"no", "yes"});
   pAttrib.add(physicalSO, "physicalSO", {"yes", "no"});
-  pAttrib.add(spin_integrator, "spin_integrator", {"exact", "simpson"});
   pAttrib.put(cur);
+
+  if (NLPP_algo.empty())
+#ifdef ENABLE_OFFLOAD
+    NLPP_algo = "batched";
+#else
+    NLPP_algo = "non-batched";
+#endif
 
   bool doForces = (forces == "yes") || (forces == "true");
   if (use_DLA == "yes")
     app_log() << "    Using determinant localization approximation (DLA)" << std::endl;
-
-  use_exact_spin = (spin_integrator == "exact") ? true : false;
   if (ecpFormat == "xml")
   {
     useXmlFormat(cur);
@@ -92,14 +98,18 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
   }
 
   ///create LocalECPotential
-  bool usePBC = !(IonConfig.getLattice().SuperCellEnum == SUPERCELL_OPEN || pbc == "no");
+  bool usePBC = !(IonConfig.Lattice.SuperCellEnum == SUPERCELL_OPEN || pbc == "no");
 
 
   if (hasLocalPot)
   {
-    if (IonConfig.getLattice().SuperCellEnum == SUPERCELL_OPEN || pbc == "no")
+    if (IonConfig.Lattice.SuperCellEnum == SUPERCELL_OPEN || pbc == "no")
     {
+#ifdef QMC_CUDA
+      std::unique_ptr<LocalECPotential_CUDA> apot = std::make_unique<LocalECPotential_CUDA>(IonConfig, targetPtcl);
+#else
       std::unique_ptr<LocalECPotential> apot = std::make_unique<LocalECPotential>(IonConfig, targetPtcl);
+#endif
       for (int i = 0; i < localPot.size(); i++)
         if (localPot[i])
           apot->add(i, std::move(localPot[i]), localZeff[i]);
@@ -109,7 +119,11 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
     {
       if (doForces)
         app_log() << "  Will compute forces in CoulombPBCAB.\n" << std::endl;
-      std::unique_ptr<CoulombPBCAB> apot = std::make_unique<CoulombPBCAB>(IonConfig, targetPtcl, doForces);
+#ifdef QMC_CUDA
+      std::unique_ptr<CoulombPBCAB_CUDA> apot = std::make_unique<CoulombPBCAB_CUDA>(IonConfig, targetPtcl, doForces);
+#else
+      std::unique_ptr<CoulombPBCAB> apot     = std::make_unique<CoulombPBCAB>(IonConfig, targetPtcl, doForces);
+#endif
       for (int i = 0; i < localPot.size(); i++)
       {
         if (localPot[i])
@@ -120,11 +134,15 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
   }
   if (hasNonLocalPot)
   {
+#ifdef QMC_CUDA
+    std::unique_ptr<NonLocalECPotential_CUDA> apot =
+        std::make_unique<NonLocalECPotential_CUDA>(IonConfig, targetPtcl, targetPsi, usePBC, doForces,
+                                                   use_DLA == "yes");
+#else
     std::unique_ptr<NonLocalECPotential> apot =
-        std::make_unique<NonLocalECPotential>(IonConfig, targetPtcl, targetPsi, use_DLA == "yes");
-
+        std::make_unique<NonLocalECPotential>(IonConfig, targetPtcl, targetPsi, doForces, use_DLA == "yes");
+#endif
     int nknot_max = 0;
-    // These are actually NonLocalECPComponents
     for (int i = 0; i < nonLocalPot.size(); i++)
     {
       if (nonLocalPot[i])
@@ -154,7 +172,7 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
     else
       APP_ABORT("physicalSO must be set to yes/no. Unknown option given\n");
 
-    std::unique_ptr<SOECPotential> apot = std::make_unique<SOECPotential>(IonConfig, targetPtcl, targetPsi, use_exact_spin);
+    std::unique_ptr<SOECPotential> apot = std::make_unique<SOECPotential>(IonConfig, targetPtcl, targetPsi);
     int nknot_max                       = 0;
     int sknot_max                       = 0;
     for (int i = 0; i < soPot.size(); i++)
@@ -163,19 +181,13 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
       {
         nknot_max = std::max(nknot_max, soPot[i]->getNknot());
         sknot_max = std::max(sknot_max, soPot[i]->getSknot());
-        if (NLPP_algo == "batched")
-          soPot[i]->initVirtualParticle(targetPtcl);
         apot->addComponent(i, std::move(soPot[i]));
       }
     }
     app_log() << "\n  Using SOECP potential \n"
               << "    Maximum grid on a sphere for SOECPotential: " << nknot_max << std::endl;
-    if (use_exact_spin)
-      app_log() << "    Using fast SOECP evaluation. Spin integration is exact" << std::endl;
-    else
-      app_log() << "    Maximum grid for Simpson's rule for spin integral: " << sknot_max << std::endl;
-    if (NLPP_algo == "batched")
-      app_log() << "    Using batched ratio computing in SOECP potential" << std::endl;
+    app_log() << "    Maximum grid for Simpson's rule for spin integral: " << sknot_max << std::endl;
+
     if (physicalSO == "yes")
       targetH.addOperator(std::move(apot), "SOECP"); //default is physical operator
     else
@@ -206,9 +218,7 @@ void ECPotentialBuilder::useXmlFormat(xmlNodePtr cur)
       std::string href("none");
       std::string ionName("none");
       std::string format("xml");
-      int nrule  = -1;
-      int llocal = -1;
-      bool disable_randomize_grid;
+      int nrule = -1;
       //RealType rc(2.0);//use 2 Bohr
       OhmmsAttributeSet hAttrib;
       hAttrib.add(href, "href");
@@ -216,8 +226,6 @@ void ECPotentialBuilder::useXmlFormat(xmlNodePtr cur)
       hAttrib.add(ionName, "symbol");
       hAttrib.add(format, "format");
       hAttrib.add(nrule, "nrule");
-      hAttrib.add(llocal, "l-local");
-      hAttrib.add(disable_randomize_grid, "disable_randomize_grid", {false, true});
       //hAttrib.add(rc,"cutoff");
       hAttrib.put(cur);
       SpeciesSet& ion_species(IonConfig.getSpeciesSet());
@@ -231,9 +239,7 @@ void ECPotentialBuilder::useXmlFormat(xmlNodePtr cur)
       {
         app_log() << std::endl << "  Adding pseudopotential for " << ionName << std::endl;
 
-        //Use simpsons rule for spin integral if not using exact spin integration
-        int srule = use_exact_spin ? 0 : 8;
-        ECPComponentBuilder ecp(ionName, myComm, nrule, llocal, srule);
+        ECPComponentBuilder ecp(ionName, myComm, nrule);
         if (format == "xml")
         {
           if (href == "none")
@@ -262,10 +268,6 @@ void ECPotentialBuilder::useXmlFormat(xmlNodePtr cur)
           }
           if (ecp.pp_nonloc)
           {
-            if (disable_randomize_grid)
-              app_warning() << "NLPP grid randomization is turned off. This setting should only be used for testing."
-                            << std::endl;
-            ecp.pp_nonloc->set_randomize_grid(!disable_randomize_grid);
             hasNonLocalPot            = true;
             nonLocalPot[speciesIndex] = std::move(ecp.pp_nonloc);
           }
@@ -351,7 +353,7 @@ void ECPotentialBuilder::useSimpleTableFormat()
     RealType rmax(0.0);
     app_log() << "  ECPotential for " << species << std::endl;
     std::unique_ptr<NonLocalECPComponent> mynnloc;
-    using CubicSplineFuncType = OneDimCubicSpline<RealType>;
+    typedef OneDimCubicSpline<RealType> CubicSplineFuncType;
     for (int ij = 0; ij < npotentials; ij++)
     {
       int angmom, npoints;

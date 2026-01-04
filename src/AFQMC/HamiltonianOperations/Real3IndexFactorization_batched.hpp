@@ -574,11 +574,11 @@ private:
   //Cholesky Tensor Lik[i][k][n]
   shmSpRMatrix Likn;
 
-  // permuted half-transformed Cholesky tensor
+  // permuted half-tranformed Cholesky tensor
   // Lank[ 2*idet + ispin ]
   std::vector<shmSpC3Tensor> Lank;
 
-  // half-transformed Cholesky tensor
+  // half-tranformed Cholesky tensor
   // only used in single determinant case, haj.size(0)==1.
   shmSpCMatrix Lakn;
 

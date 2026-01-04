@@ -20,9 +20,6 @@
 ####################################
 
 set(QMCDRIVERS
-    WalkerLogBuffer.cpp
-    WalkerLogCollector.cpp
-    WalkerLogManager.cpp
     QMCDriverFactory.cpp
     SimpleFixedNodeBranch.cpp
     SFNBranch.cpp
@@ -31,9 +28,8 @@ set(QMCDRIVERS
     QMCDriver.cpp
     QMCDriverInput.cpp
     QMCDriverNew.cpp
-    WFOpt/LinearMethod.cpp
-    WFOpt/ConjugateGradient.cpp
-    WFOpt/Eigensolver.cpp
+    WFOpt/QMCWFOptFactoryNew.cpp
+    WFOpt/QMCLinearOptimize.cpp
     WFOpt/QMCFixedSampleLinearOptimize.cpp
     WFOpt/QMCFixedSampleLinearOptimizeBatched.cpp
     WFOpt/OutputMatrix.cpp
@@ -48,6 +44,7 @@ set(QMCDRIVERS
     WaveFunctionTester.cpp
     WalkerControlBase.cpp
     CloneManager.cpp
+    ContextForSteps.cpp
     Crowd.cpp
     QMCUpdateBase.cpp
     GreenFunctionModifiers/DriftModifierBuilder.cpp
@@ -55,17 +52,17 @@ set(QMCDRIVERS
     VMC/VMCUpdatePbyP.cpp
     VMC/VMCUpdateAll.cpp
     VMC/VMCFactory.cpp
+    VMC/VMCFactoryNew.cpp
     VMC/VMCDriverInput.cpp
     VMC/SOVMCUpdatePbyP.cpp
     VMC/SOVMCUpdateAll.cpp
     DMC/DMC.cpp
     DMC/DMCUpdateAll.cpp
     DMC/DMCUpdatePbyPFast.cpp
-    DMC/DMCUpdatePbyPL2.cpp
     DMC/DMCFactory.cpp
+    DMC/DMCFactoryNew.cpp
     DMC/DMCBatched.cpp
     DMC/DMCDriverInput.cpp
-    DMC/DMCRefEnergy.cpp
     DMC/WalkerControlFactory.cpp
     DMC/WalkerReconfiguration.cpp
     DMC/WalkerControl.cpp
@@ -79,7 +76,16 @@ set(QMCDRIVERS
     CorrelatedSampling/CSVMCUpdatePbyP.cpp
     CorrelatedSampling/CSUpdateBase.cpp)
 
-set(QMCDRIVERS ${QMCDRIVERS} VMC/VMC.cpp VMC/VMCBatched.cpp WFOpt/QMCCostFunction.cpp WFOpt/QMCCostFunctionBatched.cpp)
+if(OHMMS_DIM MATCHES 3)
+  set(QMCDRIVERS ${QMCDRIVERS} DMC/DMCUpdatePbyPL2.cpp)
+endif(OHMMS_DIM MATCHES 3)
+
+if(QMC_CUDA)
+  set(QMCDRIVERS ${QMCDRIVERS} VMC/VMC_CUDA.cpp DMC/DMC_CUDA.cpp WFOpt/QMCCostFunctionCUDA.cpp)
+endif(QMC_CUDA)
+
+set(QMCDRIVERS ${QMCDRIVERS} VMC/VMC.cpp VMC/VMCBatched.cpp WFOpt/QMCCostFunction.cpp
+               WFOpt/QMCCostFunctionBatched.cpp)
 
 if(HAVE_MPI)
   set(QMCDRIVERS ${QMCDRIVERS} DMC/WalkerControlMPI.cpp DMC/WalkerReconfigurationMPI.cpp)
@@ -88,7 +94,6 @@ endif(HAVE_MPI)
 # if using the LMYEngine interface, make sure we add the necessary functions
 if(BUILD_LMYENGINE_INTERFACE)
   set(QMCDRIVERS ${QMCDRIVERS} LMYEngineInterface/LMYE_QMCCostFunction.cpp)
-  set(QMCDRIVERS ${QMCDRIVERS} LMYEngineInterface/LMYE_QMCCostFunctionBatched.cpp)
 endif(BUILD_LMYENGINE_INTERFACE)
 
 ####################################
@@ -96,17 +101,24 @@ endif(BUILD_LMYENGINE_INTERFACE)
 ####################################
 if(USE_OBJECT_TARGET)
   add_library(qmcdriver OBJECT ${QMCDRIVERS})
+  add_library(qmcdriver_unit OBJECT ${QMCDRIVERS})
 else()
   add_library(qmcdriver ${QMCDRIVERS})
+  add_library(qmcdriver_unit ${QMCDRIVERS})
 endif()
+use_fake_rng(qmcdriver_unit)
 
 target_include_directories(qmcdriver PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(qmcdriver_unit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_link_libraries(qmcdriver PUBLIC qmcham qmcestimators)
+target_link_libraries(qmcdriver_unit PUBLIC qmcham_unit qmcestimators_unit)
 
-target_link_libraries(qmcdriver PRIVATE platform_LA Boost::boost)
+target_link_libraries(qmcdriver PRIVATE platform_LA)
+target_link_libraries(qmcdriver_unit PRIVATE platform_LA)
 if(BUILD_LMYENGINE_INTERFACE)
   target_link_libraries(qmcdriver PRIVATE formic_utils)
+  target_link_libraries(qmcdriver_unit PRIVATE formic_utils)
 endif()
 
 if(BUILD_UNIT_TESTS)

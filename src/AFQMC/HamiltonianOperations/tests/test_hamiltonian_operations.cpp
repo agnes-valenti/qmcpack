@@ -83,13 +83,13 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
     std::map<std::string, AFQMCInfo> InfoMap;
     InfoMap.insert(std::pair<std::string, AFQMCInfo>("info0", AFQMCInfo{"info0", NMO, NAEA, NAEB}));
     HamiltonianFactory HamFac(InfoMap);
-    std::string hamil_xml = R"(<Hamiltonian name="ham0" info="info0">
-      <parameter name="filetype">hdf5</parameter>
-      <parameter name="filename">)" +
-        UTEST_HAMIL + R"(</parameter>
-      <parameter name="cutoff_decomposition">1e-5</parameter>
-    </Hamiltonian>
-    )";
+    std::string hamil_xml = "<Hamiltonian name=\"ham0\" info=\"info0\"> \
+    <parameter name=\"filetype\">hdf5</parameter> \
+    <parameter name=\"filename\">" +
+        UTEST_HAMIL + "</parameter> \
+    <parameter name=\"cutoff_decomposition\">1e-5</parameter> \
+  </Hamiltonian> \
+";
     const char* xml_block = hamil_xml.c_str();
     Libxml2Document doc;
     bool okay = doc.parseFromString(xml_block);
@@ -165,7 +165,7 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
 
     // Calculates Overlap, G
 // NOTE: Make small factory routine!
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
     auto SDet(SlaterDetOperations_serial<ComplexType, DeviceBufferManager>(NPOL * NMO, NAEA, DeviceBufferManager{}));
 #else
     auto SDet(SlaterDetOperations_shared<ComplexType>(NPOL * NMO, NAEA));
@@ -181,8 +181,8 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
       Ovlp *= SDet.MixedDensityMatrix(devPsiT[1], devOrbMat[1](devOrbMat.extension(1), {0, NAEB}),
                                       G.sliced(NAEA, NAEA + NAEB), 0.0, true);
     }
-    CHECK(real(Ovlp) == Approx(1.0));
-    CHECK(imag(Ovlp) == Approx(0.0));
+    REQUIRE(real(Ovlp) == Approx(1.0));
+    REQUIRE(imag(Ovlp) == Approx(0.0));
 
     boost::multi::array<ComplexType, 2, Alloc> Eloc({1, 3}, alloc_);
     {
@@ -200,7 +200,8 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
     Eloc[0][2] = (TG.Node() += ComplexType(Eloc[0][2]));
     if (std::abs(file_data.E0 + file_data.E1) > 1e-8)
     {
-      CHECK(ComplexType(Eloc[0][0]) == ComplexApprox(file_data.E0 + file_data.E1));
+      REQUIRE(real(Eloc[0][0]) == Approx(real(file_data.E0 + file_data.E1)));
+      REQUIRE(imag(Eloc[0][0]) == Approx(imag(file_data.E0 + file_data.E1)));
     }
     else
     {
@@ -208,7 +209,8 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
     }
     if (std::abs(file_data.E2) > 1e-8)
     {
-      CHECK(Eloc[0][1] + Eloc[0][2] == ComplexApprox(file_data.E2));
+      REQUIRE(real(Eloc[0][1] + Eloc[0][2]) == Approx(real(file_data.E2)));
+      REQUIRE(imag(Eloc[0][1] + Eloc[0][2]) == Approx(imag(file_data.E2)));
     }
     else
     {
@@ -233,14 +235,15 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
     }
     TG.local_barrier();
     ComplexType Xsum = 0, Xsum2 = 0;
-    for (int i = 0; i < X.size(); i++)
+    for (int i = 0; i < X.size(0); i++)
     {
       Xsum += X[i][0];
       Xsum2 += ComplexType(0.5) * X[i][0] * X[i][0];
     }
     if (std::abs(file_data.Xsum) > 1e-8)
     {
-      CHECK(Xsum == ComplexApprox(file_data.Xsum));
+      REQUIRE(real(Xsum) == Approx(real(file_data.Xsum)));
+      REQUIRE(imag(Xsum) == Approx(imag(file_data.Xsum)));
     }
     else
     {
@@ -255,20 +258,20 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
     HOps.vHS(X, vHS, sqrtdt);
     TG.local_barrier();
     ComplexType Vsum = 0;
-    using std::get;
     if (HOps.transposed_vHS())
     {
-      for (int i = 0; i < get<1>(vHS.sizes()); i++)
+      for (int i = 0; i < vHS.size(1); i++)
         Vsum += vHS[0][i];
     }
     else
     {
-      for (int i = 0; i < get<0>(vHS.sizes()); i++)
+      for (int i = 0; i < vHS.size(0); i++)
         Vsum += vHS[i][0];
     }
     if (std::abs(file_data.Vsum) > 1e-8)
     {
-      CHECK(Vsum == ComplexApprox(file_data.Vsum));
+      REQUIRE(real(Vsum) == Approx(real(file_data.Vsum)));
+      REQUIRE(imag(Vsum) == Approx(imag(file_data.Vsum)));
     }
     else
     {
@@ -348,9 +351,10 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
     {
       for (int j = 0; j < NMO; j++)
       {
-        if (auto gfock = ComplexType(GFock[1][0][i * NMO + j]); std::abs(Mat[i][j] - std::real(gfock)) > 1e-5)
+        if (std::abs(Mat[i][j] - real(GFock[1][0][i * NMO + j])) > 1e-5)
         {
-          std::cout << "DELTAA: " << i << " " << j << " " << Mat[i][j] << " " << std::real(gfock) << std::endl;
+          std::cout << "DELTAA: " << i << " " << j << " " << Mat[i][j] << " " << real(GFock[1][0][i * NMO + j])
+                    << std::endl;
         }
         //if(std::abs(real(GFock[1][0][i*NMO+j]))>1e-6)
         //std::cout << i << " " << j << " " << real(GFock[1][0][i*NMO+j]) << " " << std::endl;
@@ -365,9 +369,10 @@ void ham_ops_basic_serial(boost::mpi3::communicator& world)
       {
         //std::cout << Mat[i][j] << std::endl;
         //std::cout << Mat[i][j]-real(GFock[0][0][i*NMO+j]) << std::endl;
-        if (auto gfock = ComplexType(GFock[0][0][i * NMO + j]); std::abs(Mat[i][j] - std::real(gfock)) > 1e-5)
+        if (std::abs(Mat[i][j] - real(GFock[0][0][i * NMO + j])) > 1e-5)
         {
-          std::cout << "DELTAB: " << i << " " << j << " " << Mat[i][j] << " " << std::real(gfock) << std::endl;
+          std::cout << "DELTAB: " << i << " " << j << " " << Mat[i][j] << " " << real(GFock[0][0][i * NMO + j])
+                    << std::endl;
         }
         //if(std::abs(real(GFock[0][0][i*NMO+j]))>1e-6)
         //std::cout << i << " " << j << " " << real(GFock[0][0][i*NMO+j]) << " " << real(GFock[0][1][i*NMO+j]) << " " << real(GFock[0][2][i*NMO+j]) << std::endl;
@@ -381,7 +386,7 @@ TEST_CASE("ham_ops_basic_serial", "[hamiltonian_operations]")
   auto world = boost::mpi3::environment::get_world_instance();
   auto node  = world.split_shared(world.rank());
 
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
 
   arch::INIT(node);
   using Alloc = device::device_allocator<ComplexType>;

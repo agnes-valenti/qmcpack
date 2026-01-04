@@ -60,7 +60,6 @@ cc = generate_cusp_correction(
 
 # optimize 2-body Jastrow
 optJ2 = generate_qmcpack(
-    driver          = 'legacy',
     block           = True,
     identifier      = 'opt',
     path            = 'H2O/optJ2',
@@ -80,7 +79,6 @@ optJ2 = generate_qmcpack(
 
 # optimize 3-body Jastrow
 optJ3 = generate_qmcpack(
-    driver          = 'legacy',
     block           = True,
     identifier      = 'opt',
     path            = 'H2O/optJ3',
@@ -100,7 +98,6 @@ optJ3 = generate_qmcpack(
 
 # run VMC with QMCPACK
 qmc = generate_qmcpack(
-    driver       = 'legacy',
     block        = True,
     identifier   = 'vmc',
     path         = 'H2O/vmc',
@@ -117,7 +114,6 @@ qmc = generate_qmcpack(
 
 # run DMC with QMCPACK
 qmc = generate_qmcpack(
-    driver       = 'legacy',
     block        = True,
     identifier   = 'dmc',
     path         = 'H2O/dmc',

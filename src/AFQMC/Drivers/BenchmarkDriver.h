@@ -18,9 +18,9 @@ class BenchmarkDriver
 {
   using HamPtr  = std::shared_ptr<HamiltonianBase>;
   using WSetPtr = std::shared_ptr<WalkerHandlerBase>;
-  using WfnPtr  = WavefunctionHandler*;
-  using PropPtr = PropagatorBase*;
-  using InfoPtr = AFQMCInfo*;
+  typedef WavefunctionHandler* WfnPtr;
+  typedef PropagatorBase* PropPtr;
+  typedef AFQMCInfo* InfoPtr;
 
 public:
   BenchmarkDriver() : benchmark_list(""), maxnW(128), delnW(-1), nrepeat(5), dt(0.01)

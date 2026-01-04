@@ -16,7 +16,6 @@
 #include "Configuration.h"
 #include "Message/Communicate.h"
 #include "Utilities/RandomGenerator.h"
-#include "Utilities/RuntimeOptions.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
 #include "Particle/ParticleSet.h"
@@ -38,10 +37,7 @@ namespace qmcplusplus
 class FakeUpdate : public QMCUpdateBase
 {
 public:
-  FakeUpdate(MCWalkerConfiguration& w,
-             TrialWaveFunction& psi,
-             QMCHamiltonian& h,
-             FakeRandom<QMCTraits::FullPrecRealType>& rg)
+  FakeUpdate(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomGenerator_t& rg)
       : QMCUpdateBase(w, psi, h, rg)
   {}
 
@@ -52,24 +48,22 @@ TEST_CASE("QMCUpdate", "[drivers]")
 {
   Communicate* c = OHMMS::Controller;
 
-  const SimulationCell simulation_cell;
-  MCWalkerConfiguration elec(simulation_cell);
+  MCWalkerConfiguration elec;
   elec.setName("e");
-  elec.create({1});
+  elec.create(1);
   elec.createWalkers(1);
 
-  SpeciesSet& tspecies       = elec.getSpeciesSet();
-  int upIdx                  = tspecies.addSpecies("u");
-  int chargeIdx              = tspecies.addAttribute("charge");
-  int massIdx                = tspecies.addAttribute("mass");
-  tspecies(chargeIdx, upIdx) = -1;
-  tspecies(massIdx, upIdx)   = 1.0;
+  SpeciesSet& tspecies         = elec.getSpeciesSet();
+  int upIdx                    = tspecies.addSpecies("u");
+  int chargeIdx                = tspecies.addAttribute("charge");
+  int massIdx                  = tspecies.addAttribute("mass");
+  tspecies(chargeIdx, upIdx)   = -1;
+  tspecies(massIdx, upIdx)     = 1.0;
 
   FakeRandom rg;
 
   QMCHamiltonian h;
-  RuntimeOptions runtime_options;
-  TrialWaveFunction psi(runtime_options);
+  TrialWaveFunction psi;
   FakeUpdate update(elec, psi, h, rg);
 
   update.put(NULL);

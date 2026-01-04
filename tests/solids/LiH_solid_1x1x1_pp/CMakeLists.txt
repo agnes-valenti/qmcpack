@@ -31,18 +31,6 @@ qmc_run_and_check(
   LIH_GAMMA_SCALARS # VMC
 )
 
-qmc_run_and_check(
-  short-LiH_solid_1x1x1_pp-gamma-drift-vmcbatch_hf_noj
-  "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
-  hf_vmcbatch_LiH-gamma-drift
-  hf_vmcbatch_LiH-gamma-drift.xml
-  1
-  16
-  TRUE
-  0
-  LIH_GAMMA_SCALARS # VMC
-)
-
 list(APPEND LIH_X_SCALARS "kinetic" "7.3772282047321536 0.024")
 list(APPEND LIH_X_SCALARS "localecp" "-11.414410381100344 0.025")
 list(APPEND LIH_X_SCALARS "samples" "1600000 0.0")
@@ -72,18 +60,6 @@ qmc_run_and_check(
   LIH_X_SCALARS # VMC
 )
 
-qmc_run_and_check(
-  short-LiH_solid_1x1x1_pp-x-drift-vmcbatch_hf_noj
-  "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
-  hf_vmcbatch_LiH-x-drift
-  hf_vmcbatch_LiH-x-drift.xml
-  1
-  16
-  TRUE
-  0
-  LIH_X_SCALARS # VMC
-)
-
 # Hybridrep is not implemented in legacy CUDA but should be correctly error trapped
 qmc_run_and_check(
   short-LiH_solid_1x1x1_hybridrep_pp-x-vmc_hf_noj
@@ -92,7 +68,7 @@ qmc_run_and_check(
   hf_vmc_LiH-x_hybridrep.xml
   1
   16
-  TRUE
+  ${SUCCESS_STATUS_CUDA}
   0
   LIH_X_SCALARS # VMC
 )
@@ -133,18 +109,6 @@ qmc_run_and_check(
   LIH_ARB_SCALARS # VMC
 )
 
-qmc_run_and_check(
-  short-LiH_solid_1x1x1_pp-arb-drift-vmcbatch_hf_noj
-  "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
-  hf_vmcbatch_LiH-arb-drift
-  hf_vmcbatch_LiH-arb-drift.xml
-  1
-  16
-  ${LIH_ARB_SUCCEED}
-  0
-  LIH_ARB_SCALARS # VMC
-)
-
 # multi-slater determinant requires complex build to run. Ensure fails with real/non-complex build
 list(APPEND LIH_MD_GAMMA_SCALARS "totenergy" "-8.489858484145001 0.004")
 if(QMC_COMPLEX)
@@ -155,7 +119,7 @@ if(QMC_COMPLEX)
     md_cc_vmc_LiH-gamma.xml
     1
     16
-    TRUE
+    ${SUCCESS_STATUS_CUDA}
     1
     LIH_MD_GAMMA_SCALARS # VMC
   )
@@ -168,7 +132,7 @@ else()
     md_rc_vmc_LiH-gamma.xml
     1
     16
-    TRUE
+    ${SUCCESS_STATUS_CUDA}
     1
     LIH_MD_GAMMA_SCALARS # VMC
   )
@@ -189,7 +153,7 @@ qmc_run_and_check(
   LIH_GAMMA_DMC_SCALARS # DMC
 )
 
-list(APPEND LIH_X_DMC_SCALARS "totenergy" "-8.31413 0.005")
+list(APPEND LIH_X_DMC_SCALARS "totenergy" "-8.31413 0.004")
 qmc_run_and_check(
   short-LiH_solid_1x1x1_pp-x-dmc-hf_noj
   "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
@@ -255,24 +219,46 @@ qmc_run_and_check(
 )
 
 # Deterministic test
-if(QMC_MIXED_PRECISION)
-  list(APPEND DET_LIH_GAMMA_SCALARS "totenergy" "-8.99301725 0.00001597")
-  list(APPEND DET_LIH_GAMMA_SCALARS "kinetic" "7.42550431 0.00001588")
-  list(APPEND DET_LIH_GAMMA_SCALARS "potential" "-16.41852156 0.000005")
-  list(APPEND DET_LIH_GAMMA_SCALARS "eeenergy" "-1.39002015 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "ionion" "-3.68928007 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "localecp" "-11.33922134 0.000005")
-  list(APPEND DET_LIH_GAMMA_SCALARS "samples" "9 0.0")
-  list(APPEND DET_LIH_GAMMA_SCALARS "flux" "0.04160754 0.00002925")
+if(NOT QMC_CUDA)
+  if(QMC_MIXED_PRECISION)
+    list(APPEND DET_LIH_GAMMA_SCALARS "totenergy" "-8.99301725 0.00001597")
+    list(APPEND DET_LIH_GAMMA_SCALARS "kinetic" "7.42550431 0.00001588")
+    list(APPEND DET_LIH_GAMMA_SCALARS "potential" "-16.41852156 0.000005")
+    list(APPEND DET_LIH_GAMMA_SCALARS "eeenergy" "-1.39002015 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "ionion" "-3.68928007 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "localecp" "-11.33922134 0.000005")
+    list(APPEND DET_LIH_GAMMA_SCALARS "samples" "9 0.0")
+    list(APPEND DET_LIH_GAMMA_SCALARS "flux" "0.04160754 0.00002925")
+  else()
+    list(APPEND DET_LIH_GAMMA_SCALARS "totenergy" "-8.99302939 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "kinetic" "7.42549769 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "potential" "-16.41852708 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "eeenergy" "-1.39001949 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "ionion" "-3.68927959 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "localecp" "-11.33922800 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "samples" "9 0.0")
+    list(APPEND DET_LIH_GAMMA_SCALARS "flux" "0.04162024 0.000001")
+  endif()
 else()
-  list(APPEND DET_LIH_GAMMA_SCALARS "totenergy" "-8.99302939 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "kinetic" "7.42549769 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "potential" "-16.41852708 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "eeenergy" "-1.39001949 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "ionion" "-3.68927959 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "localecp" "-11.33922800 0.000001")
-  list(APPEND DET_LIH_GAMMA_SCALARS "samples" "9 0.0")
-  list(APPEND DET_LIH_GAMMA_SCALARS "flux" "0.04162024 0.000001")
+  if(QMC_MIXED_PRECISION)
+    list(APPEND DET_LIH_GAMMA_SCALARS "totenergy" "-8.40171773 0.00001393")
+    list(APPEND DET_LIH_GAMMA_SCALARS "kinetic" "0.28091468 0.00001482")
+    list(APPEND DET_LIH_GAMMA_SCALARS "potential" "-8.68263241 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "eeenergy" "-1.40882665 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "ionion" "-3.68927951 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "localecp" "-3.58452626 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "samples" "9 0.0")
+    list(APPEND DET_LIH_GAMMA_SCALARS "flux" "13.05705762 0.00002873")
+  else()
+    list(APPEND DET_LIH_GAMMA_SCALARS "totenergy" "-8.40171568 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "kinetic" "0.28091457 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "potential" "-8.68263024 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "eeenergy" "-1.40882677 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "ionion" "-3.68927951 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "localecp" "-3.58452396 0.000001")
+    list(APPEND DET_LIH_GAMMA_SCALARS "samples" "9 0.0")
+    list(APPEND DET_LIH_GAMMA_SCALARS "flux" "13.05706070 0.000001")
+  endif()
 endif()
 
 qmc_run_and_check(
@@ -286,34 +272,3 @@ qmc_run_and_check(
   0
   DET_LIH_GAMMA_SCALARS # VMC
 )
-
-# Minimal test of ensemble run
-# No check on results
-# Arrange for "imbalanced" ensemble and assume will crash or hang/timeout on major error
-# Should abort if number of MPI tasks is smaller than ensemble
-qmc_run_and_check(
-  deterministic-ensemble_blocks_LiH_solid_1x1x1_pp-gamma-vmc_hf_noj
-  "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
-  det_ensemble_blocks_hf_vmc_LiH-gamma
-  det_ensemble_blocks_hf_vmc_LiH-gamma.txt
-  4
-  1
-  TRUE)
-
-qmc_run_and_check(
-  deterministic-ensemble_blocks_LiH_solid_1x1x1_pp-gamma-vmc_hf_noj
-  "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
-  det_ensemble_blocks_hf_vmc_LiH-gamma
-  det_ensemble_blocks_hf_vmc_LiH-gamma.txt
-  3
-  1
-  FALSE)
-
-qmc_run_and_check(
-  deterministic-ensemble_blocks_LiH_solid_1x1x1_pp-gamma-vmc_hf_noj
-  "${qmcpack_SOURCE_DIR}/tests/solids/LiH_solid_1x1x1_pp"
-  det_ensemble_blocks_hf_vmc_LiH-gamma
-  det_ensemble_blocks_hf_vmc_LiH-gamma.txt
-  5
-  1
-  TRUE)

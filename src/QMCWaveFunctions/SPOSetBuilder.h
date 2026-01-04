@@ -47,14 +47,18 @@ namespace qmcplusplus
 class SPOSetBuilder : public QMCTraits, public MPIObjectBase
 {
 public:
-  using indices_t  = std::vector<int>;
-  using energies_t = std::vector<RealType>;
+  typedef std::map<std::string, SPOSet*> SPOPool_t;
+  typedef std::vector<int> indices_t;
+  typedef std::vector<RealType> energies_t;
 
   /// whether implementation conforms only to legacy standard
   bool legacy;
 
   /// state info of all possible states available in the basis
   std::vector<std::unique_ptr<SPOSetInfo>> states;
+
+  /// list of all sposets created by this builder
+  std::vector<std::unique_ptr<SPOSet>> sposets;
 
   SPOSetBuilder(const std::string& type_name, Communicate* comm);
   virtual ~SPOSetBuilder() {}
@@ -69,16 +73,13 @@ public:
   inline void clear_states(int index = 0) { states[index]->clear(); }
 
   /// create an sposet from xml and save the resulting SPOSet
-  std::unique_ptr<SPOSet> createSPOSet(xmlNodePtr cur);
-
-  /// create orbital rotation transformation from xml and save the resulting SPOSet
-  std::unique_ptr<SPOSet> createRotatedSPOSet(xmlNodePtr cur);
+  SPOSet* createSPOSet(xmlNodePtr cur);
 
   const std::string& getTypeName() const { return type_name_; }
 
 protected:
   /// create an sposet from xml (legacy)
-  virtual std::unique_ptr<SPOSet> createSPOSetFromXML(xmlNodePtr cur) = 0;
+  virtual std::unique_ptr<SPOSet> createSPOSetFromXML(xmlNodePtr cur, int particletype=0) = 0;
 
   /// create an sposet from a general xml request
   virtual std::unique_ptr<SPOSet> createSPOSet(xmlNodePtr cur, SPOSetInputInfo& input_info);

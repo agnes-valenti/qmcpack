@@ -31,9 +31,8 @@ int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
   mpi3::environment env(argc, argv);
-  OHMMS::Controller = new Communicate(env.world());
+  OHMMS::Controller->initialize(env);
 #endif
-
   if (argc < 2)
   {
     std::cout << "Usage: convert [-gaussian|-gamess|-orbitals|-dirac|-rmg] filename " << std::endl;
@@ -58,7 +57,7 @@ int main(int argc, char** argv)
       {
         outputManager.shutOff();
       }
-      Random.init(-1);
+      Random.init(0, 1, -1);
       std::cout.setf(std::ios::scientific, std::ios::floatfield);
       std::cout.setf(std::ios::right, std::ios::adjustfield);
       std::cout.precision(12);
@@ -215,7 +214,7 @@ int main(int argc, char** argv)
         abort();
       }
       //Failed to create a parser. Try with the extension
-      auto ext = getExtension(in_file);
+      std::string ext = getExtension(in_file);
       if (parser == 0)
       {
         if (ext == "Fchk")
@@ -252,6 +251,7 @@ int main(int argc, char** argv)
         std::string token;
         pos   = prefix.find(delimiter);
         token = prefix.substr(0, pos);
+        prefix.erase(0, pos + delimiter.length());
         prefix = token;
       }
       std::cout << "Using " << prefix << " to name output files" << std::endl;

@@ -22,9 +22,9 @@ namespace qmcplusplus
 class SpinDensity : public OperatorBase
 {
 public:
-  using Lattice_t = Lattice;
-  using dens_t    = std::vector<RealType>;
-  using pts_t     = std::vector<PosType>;
+  typedef ParticleSet::ParticleLayout_t Lattice_t;
+  typedef std::vector<RealType> dens_t;
+  typedef std::vector<PosType> pts_t;
 
   ParticleSet* Ptmp;
 
@@ -43,14 +43,13 @@ public:
   ~SpinDensity() override {}
 
   //standard interface
-  std::string getClassName() const override { return "SpinDensity"; }
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& P, TrialWaveFunction& psi) final;
   bool put(xmlNodePtr cur) override;
   Return_t evaluate(ParticleSet& P) override;
 
   //required for Collectables interface
   void addObservables(PropertySetType& plist, BufferType& olist) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
 
   //should be empty for Collectables interface
   void resetTargetParticleSet(ParticleSet& P) override {}
@@ -70,6 +69,7 @@ public:
   void report(const std::string& pad);
   void test(int moves, ParticleSet& P);
   Return_t test_evaluate(ParticleSet& P, int& pmin, int& pmax);
+  void addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy) override;
 };
 
 } // namespace qmcplusplus

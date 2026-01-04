@@ -219,8 +219,16 @@ WALKER_TYPES getWalkerTypeHDF5(std::string filename, std::string type)
     std::cerr << " Error opening wavefunction file in read_info_from_wfn. \n";
     APP_ABORT("");
   }
-  dump.push("Wavefunction", false);
-  dump.push(type, false);
+  if (!dump.push("Wavefunction", false))
+  {
+    std::cerr << " Error in getWalkerTypeHDF5: Group Wavefunction found. \n";
+    APP_ABORT("");
+  }
+  if (!dump.push(type, false))
+  {
+    std::cerr << " Error in getWalkerTypeHDF5: Group " << type << " not found. \n";
+    APP_ABORT("");
+  }
 
   std::vector<int> Idata(5);
   if (!dump.readEntry(Idata, "dims"))
@@ -279,6 +287,9 @@ void read_general_wavefunction(std::ifstream& in,
   bool Cstyle      = true;
   int wfn_type     = 0;
   int ndet_in_file = -1;
+  int NEL          = NAEA;
+  if (walker_type != CLOSED)
+    NEL += NAEB;
 
   /*
    * type:
@@ -440,8 +451,11 @@ ph_excitations<int, ComplexType> read_ph_wavefunction(std::ifstream& in,
   bool Cstyle      = true;
   int wfn_type     = 0;
   int ndet_in_file = -1;
+  int NEL          = NAEA;
   bool mixed       = false;
   std::string type;
+  if (walker_type != CLOSED)
+    NEL += NAEB;
 
   /*
    * Expected order of inputs and tags:
@@ -697,7 +711,10 @@ void read_ph_wavefunction_hdf(hdf_archive& dump,
   using Alloc = shared_allocator<ComplexType>;
   assert(walker_type != UNDEFINED_WALKER_TYPE);
   int wfn_type = 0;
+  int NEL      = NAEA;
   bool mixed   = false;
+  if (walker_type != CLOSED)
+    NEL += NAEB;
 
   /*
    * Expected order of inputs and tags:
@@ -735,22 +752,36 @@ void read_ph_wavefunction_hdf(hdf_archive& dump,
     mixed = true;
 
   if (mixed)
-  {
+  { // read reference
+    int nmo_ = (walker_type == NONCOLLINEAR ? 2 * NMO : NMO);
+    if (not comm.root())
+      nmo_ = 0; // only root reads matrices
     PsiT.reserve((wfn_type != 1) ? 1 : 2);
 
-    dump.push(std::string("PsiT_") + std::to_string(0), false);
-
+    if (!dump.push(std::string("PsiT_") + std::to_string(0), false))
+    {
+      app_error() << " Error in WavefunctionFactory: Group PsiT not found. \n";
+      APP_ABORT("");
+    }
     PsiT.emplace_back(csr_hdf5::HDF2CSR<PsiT_Matrix, Alloc>(dump, comm));
     dump.pop();
     if (wfn_type == 1)
     {
       if (wtype == CLOSED)
       {
-        dump.push(std::string("PsiT_") + std::to_string(0), false);
+        if (!dump.push(std::string("PsiT_") + std::to_string(0), false))
+        {
+          app_error() << " Error in WavefunctionFactory: Group PsiT not found. \n";
+          APP_ABORT("");
+        }
       }
       else if (wtype == COLLINEAR)
       {
-        dump.push(std::string("PsiT_") + std::to_string(1), false);
+        if (!dump.push(std::string("PsiT_") + std::to_string(1), false))
+        {
+          app_error() << " Error in WavefunctionFactory: Group PsiT not found. \n";
+          APP_ABORT("");
+        }
       }
       PsiT.emplace_back(csr_hdf5::HDF2CSR<PsiT_Matrix, Alloc>(dump, comm));
       dump.pop();

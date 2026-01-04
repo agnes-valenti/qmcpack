@@ -3,7 +3,7 @@
 
 #include <mkl_types.h>
 #define MKL_Complex16 std::complex<double>
-using xcomplex = std::complex<double>;
+typedef std::complex<double> xcomplex;
 #include<mkl.h>
 
 #define FORMIC_HAVE_MKL

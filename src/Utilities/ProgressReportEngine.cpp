@@ -19,16 +19,18 @@ namespace qmcplusplus
 {
 void ReportEngine::echo(xmlNodePtr cur, bool recursive)
 {
-  if (cur == nullptr)
+  if (cur == NULL)
     return;
-  app_debug() << R"(<input node=")" << (const char*)(cur->name) << '"';
+  app_debug() << "<input node=\"" << (const char*)(cur->name) << "\"";
   xmlAttrPtr att = cur->properties;
-  while (att != nullptr)
+  char atext[1024];
+  while (att != NULL)
   {
-    app_debug() << "  " << (const char*)(att->name) << R"(=")" << (const char*)(att->children->content) << '"';
+    sprintf(atext, "  %s=\"%s\"", (const char*)(att->name), (const char*)(att->children->content));
+    app_debug() << atext;
     att = att->next;
   }
-  app_debug() << R"(/>\n)";
+  app_debug() << "/>\n";
 }
 
 bool ReportEngine::DoOutput = false;

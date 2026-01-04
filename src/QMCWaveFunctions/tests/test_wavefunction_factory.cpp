@@ -16,7 +16,6 @@
 #include "Message/Communicate.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "QMCWaveFunctions/WaveFunctionFactory.h"
-#include "Utilities/RuntimeOptions.h"
 
 namespace qmcplusplus
 {
@@ -24,8 +23,7 @@ TEST_CASE("WaveFunctionFactory", "[wavefunction]")
 {
   Communicate* c = OHMMS::Controller;
 
-  const SimulationCell simulation_cell;
-  auto qp = std::make_unique<ParticleSet>(simulation_cell);
+  auto qp = std::make_unique<ParticleSet>();
   std::vector<int> agroup(2, 1);
   qp->setName("e");
   qp->create(agroup);
@@ -41,33 +39,33 @@ TEST_CASE("WaveFunctionFactory", "[wavefunction]")
 
   qp->update();
 
-  WaveFunctionFactory::PSetMap particle_set_map;
-  particle_set_map.emplace("e", std::move(qp));
+  WaveFunctionFactory::PtclPoolType particle_set_map;
+  particle_set_map["e"] = qp.get();
 
-  WaveFunctionFactory wff(*particle_set_map["e"], particle_set_map, c);
 
-  const char* wavefunction_xml = R"(<wavefunction>
-         <jastrow type="Two-Body" name="J2" function="bspline" print="yes" gpu="no">
-            <correlation speciesA="u" speciesB="d" size="8" cutoff="10.0">
-               <coefficients id="ud" type="Array">
-0.5954603818 0.5062051797 0.3746940461 0.2521010502 0.1440163317 0.07796688253
-0.03804420551 0.01449320872
-               </coefficients>
-            </correlation>
-         </jastrow>
-</wavefunction>)";
+  WaveFunctionFactory wff("psi0", *qp, particle_set_map, c);
+
+  const char* wavefunction_xml = "<wavefunction> \
+         <jastrow type=\"Two-Body\" name=\"J2\" function=\"bspline\" print=\"yes\" gpu=\"no\"> \
+            <correlation speciesA=\"u\" speciesB=\"d\" size=\"8\" cutoff=\"10.0\"> \
+               <coefficients id=\"ud\" type=\"Array\"> \
+0.5954603818 0.5062051797 0.3746940461 0.2521010502 0.1440163317 0.07796688253 \
+0.03804420551 0.01449320872 \
+               </coefficients> \
+            </correlation> \
+         </jastrow> \
+</wavefunction>";
   Libxml2Document doc;
   bool okay = doc.parseFromString(wavefunction_xml);
   REQUIRE(okay);
 
   xmlNodePtr root = doc.getRoot();
-  RuntimeOptions runtime_options;
-  auto twf_ptr = wff.buildTWF(root, runtime_options);
+  wff.put(root);
 
-  REQUIRE(twf_ptr != nullptr);
-  REQUIRE(twf_ptr->size() == 1);
+  REQUIRE(wff.getTWF() != nullptr);
+  REQUIRE(wff.getTWF()->size() == 1);
 
-  auto& j2_base = twf_ptr->getOrbitals()[0];
+  auto& j2_base = wff.getTWF()->getOrbitals()[0];
   REQUIRE(j2_base != nullptr);
 }
 } // namespace qmcplusplus

@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<qmcsystem>
+  <wavefunction name="psi0" target="e">
+   
+<sposet_builder type="heg">
+  <sposet name="spo-u" size="2" twist="0 0 0"/>
+  <sposet name="spo-ut" size="2" twist="0 0 0"/>
+  <!--sposet name="spo-ut" size="8" twist="0 0 0"/>
+  <sposet name="spo-dt" size="8" twist="0 0 0"/-->
+</sposet_builder>
+
+<determinantset>
+
+ <!--backflow>
+ <transformation name="eeB" type="e-e" function="Bspline" >
+  <correlation cusp="0.0" size="7" type="shortrange" init="no" speciesA="u" speciesB="u">
+        <coefficients id="uuB1" type="Array" optimize="yes"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0</coefficients>
+    </correlation>
+    <correlation cusp="0.0" size="7" type="shortrange" init="no" speciesA="ut" speciesB="u">
+        <coefficients id="uutB1" type="Array" optimize="yes"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0</coefficients>
+    </correlation>
+</transformation>
+     </backflow-->
+
+  <slaterdeterminant>
+    <determinant id="u-det" sposet="spo-u"/>
+    <determinant id="ut-det" sposet="spo-ut"/>
+    <!--determinant id="ut-det" sposet="spo-ut"/>
+    <determinant id="dt-det" sposet="spo-dt"/-->
+  </slaterdeterminant>
+</determinantset>
+
+    <jastrow name="J2" type="Two-Body" function="Bspline" print="yes">
+      <!--correlation speciesA="d" speciesB="d" size="22" cusp="0">
+        <coefficients id="dd" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 </coefficients>
+      </correlation-->
+     <correlation speciesA="u" speciesB="u" size="22" cusp="0"> 
+        <coefficients id="uu" type="Array" optimize="yes"> 1.395520779 2.056783703 1.324334065 0.869795135 0.5364429243 0.2866283487 0.1448591291 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1</coefficients>
+      </correlation>
+      <correlation speciesA="u" speciesB="ut" size="22" cusp="0"> 
+        <coefficients id="uut" type="Array" optimize="yes"> 2.990944642 2.50062229 1.595910417 1.032008462 0.6209131198 0.3259942878 0.1514569609 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1</coefficients>
+      </correlation>
+      <!--correlation speciesA="dt" speciesB="dt" size="21" cusp="0">
+        <coefficients id="dtdt" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0</coefficients>
+      </correlation-->
+      <!--correlation speciesA="u" speciesB="ut" size="22" cusp="0">
+        <coefficients id="uut" type="Array" optimize="yes"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.5 </coefficients>
+      </correlation-->
+      <!--correlation speciesA="u" speciesB="ut" size="22" cusp="0">
+        <coefficients id="uut" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.5 </coefficients>
+      </correlation-->
+      <!--correlation speciesA="ut" speciesB="dt" size="22" cusp="0">
+        <coefficients id="utdt" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.5 </coefficients>
+      </correlation-->
+      <!--correlation speciesA="d" speciesB="ut" size="21" cusp="0">
+        <coefficients id="dut" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 </coefficients>
+      </correlation-->
+      <!--correlation speciesA="d" speciesB="dt" size="21" cusp="0">
+        <coefficients id="ddt" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 </coefficients>
+      </correlation-->
+      <!--correlation speciesA="ut" speciesB="dt" size="21" cusp="0">
+        <coefficients id="utdt" type="Array"> 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 </coefficients>
+      </correlation-->
+    </jastrow>
+  </wavefunction>
+</qmcsystem>

@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -22,11 +22,13 @@
 #include "Estimators/EstimatorManagerNew.h"
 #include "Particle/Walker.h"
 #include "OhmmsPETE/OhmmsVector.h"
+#include "OhmmsData/HDFAttribIO.h"
 
 namespace qmcplusplus
 {
 class MCWalkerConifugration;
 class QMCHamiltonian;
+class CollectablesEstimator;
 
 /** Thread local estimator container/accumulator
  *
@@ -38,11 +40,13 @@ class QMCHamiltonian;
 class EstimatorManagerCrowd
 {
 public:
-  using MCPWalker = Walker<QMCTraits, PtclOnLatticeTraits>;
-  using RealType  = EstimatorManagerNew::RealType;
-  using FullPrecRealType = EstimatorManagerNew::FullPrecRealType;
+  using MCPWalker     = Walker<QMCTraits, PtclOnLatticeTraits>;
+  using RealType      = EstimatorManagerNew::RealType;
+  using EstimatorType = EstimatorManagerNew::EstimatorType;
 
   /** EstimatorManagerCrowd are always spawn of an EstimatorManagerNew
+   *
+   *  This coupling should be removed.
    */
   EstimatorManagerCrowd(EstimatorManagerNew& em);
 
@@ -64,35 +68,18 @@ public:
    *  \param[in]     walkers         walkers in crowd
    *  \param[in]     psets           walker particle sets
    *  \param[in]     wfns            walker wavefunctions
-   *  \param[in]     hams            walker Hamiltonians
-   *  \param[inout]  rng             crowd scope RandomGenerator
-   *
-   *  walkers is especially questionable since its really just hiding the full sweep hamiltonian values from
-   *  the most recent (maybe) QMCHamiltonian evaluate which are written into it by the QMCHamiltonians
-   *  previous to the accumulate.
-   *  walkers might additionally be useful because they hold another copy of the dynamic (electron) particle sets coords
-   *  that could be inconsistent with psets.
-   *
-   *  As soon as the legacy Estimators are dropped this API should be reviewed with an eye to disentangling
-   *  ParticleSet, Walker, and QMCHamiltonian.
-   */
+   *  \param[inout]  rng             crowd scope RandomGenerator_t
+   */ 
   void accumulate(const RefVector<MCPWalker>& walkers,
                   const RefVector<ParticleSet>& psets,
                   const RefVector<TrialWaveFunction>& wfns,
-                  const RefVector<QMCHamiltonian>& hams,
-                  RandomBase<FullPrecRealType>& rng);
+                  RandomGenerator_t& rng);
 
-  ScalarEstimatorBase& get_main_estimator() { return *main_estimator_; }
-  RefVector<ScalarEstimatorBase> get_scalar_estimators() { return convertUPtrToRefVector(scalar_estimators_); }
+  RefVector<EstimatorType> get_scalar_estimators() { return convertUPtrToRefVector(scalar_estimators_); }
   RefVector<qmcplusplus::OperatorEstBase> get_operator_estimators() { return convertUPtrToRefVector(operator_ests_); }
 
   RealType get_block_num_samples() const { return block_num_samples_; }
   RealType get_block_weight() const { return block_weight_; }
-
-  /** This registers the crowd lever estimators that require listeners into the QMCHamiltonianMultiWalkerResources
-   *  We really only need a QMCHamiltonian leader but resource acquisition and release works better this way.
-   */
-  void registerListeners(const RefVectorWithLeader<QMCHamiltonian>& ham_list);
 
 private:
   ///number of samples accumulated in a block
@@ -100,11 +87,10 @@ private:
   ///total weight accumulated in a block
   RealType block_weight_;
 
-  UPtr<ScalarEstimatorBase> main_estimator_;
   ///estimators of simple scalars
-  UPtrVector<ScalarEstimatorBase> scalar_estimators_;
+  std::vector<std::unique_ptr<EstimatorType>> scalar_estimators_;
 
-  UPtrVector<OperatorEstBase> operator_ests_;
+  std::vector<std::unique_ptr<OperatorEstBase>> operator_ests_;
 };
 
 } // namespace qmcplusplus

@@ -35,6 +35,8 @@ class BsplineSet : public SPOSet
 {
 protected:
   static const int D = DIM;
+  ///true if the computed values are complex
+  bool is_complex;
   ///Index of this adoptor, when multiple adoptors are used for NUMA or distributed cases
   size_t MyIndex;
   ///first index of the SPOs this Spline handles
@@ -45,21 +47,19 @@ protected:
   TinyVector<int, D> HalfG;
   ///flags to unpack sin/cos
   std::vector<bool> MakeTwoCopies;
-  /** kpoints for each unique orbitals.
-   * Note: for historic reason, this sign is opposite to what was used in DFT when orbitals were generated.
-   * Changing the sign requires updating all the evaluation code.
-   */
+  ///kpoints for each unique orbitals
   std::vector<SPOSet::PosType> kPoints;
   ///remap splines to orbitals
   aligned_vector<int> BandIndexMap;
   ///band offsets used for communication
   std::vector<int> offset;
+  ///keyword used to match hdf5
+  std::string KeyWord;
 
 public:
-  BsplineSet(const std::string& my_name) : SPOSet(my_name), MyIndex(0), first_spo(0), last_spo(0) {}
-
-  virtual bool isComplex() const         = 0;
-  virtual std::string getKeyword() const = 0;
+  BsplineSet(bool use_OMP_offload = false, bool ion_deriv = false, bool optimizable = false)
+      : SPOSet(use_OMP_offload, ion_deriv, optimizable), is_complex(false), MyIndex(0), first_spo(0), last_spo(0)
+  {}
 
   auto& getHalfG() const { return HalfG; }
 
@@ -71,9 +71,6 @@ public:
     for (int i = 0; i < n; i++)
       BandIndexMap[i] = i;
   }
-
-  /// resize vectors related to spline evaluaton results.
-  virtual void resizeStorage(size_t n) = 0;
 
   ///remap kpoints to group general kpoints & special kpoints
   int remap_kpoints()
@@ -113,28 +110,30 @@ public:
   using SPOSet::mw_evaluateVGL;
   using SPOSet::mw_evaluateVGLandDetRatioGrads;
 
-  using SPOSet::acquireResource;
   using SPOSet::createResource;
+  using SPOSet::acquireResource;
   using SPOSet::releaseResource;
 
   std::unique_ptr<SPOSet> makeClone() const override = 0;
+
+  void resetParameters(const opt_variables_type& active) override {}
 
   void setOrbitalSetSize(int norbs) override { OrbitalSetSize = norbs; }
 
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            ValueMatrix& d2logdet) override
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            ValueMatrix_t& d2logdet) override
   {
-    using value_type = ValueMatrix::value_type;
-    using grad_type  = GradMatrix::value_type;
+    typedef ValueMatrix_t::value_type value_type;
+    typedef GradMatrix_t::value_type grad_type;
     for (int iat = first, i = 0; iat < last; ++iat, ++i)
     {
-      ValueVector v(logdet[i], logdet.cols());
-      GradVector g(dlogdet[i], dlogdet.cols());
-      ValueVector l(d2logdet[i], d2logdet.cols());
+      ValueVector_t v(logdet[i], OrbitalSetSize);
+      GradVector_t g(dlogdet[i], OrbitalSetSize);
+      ValueVector_t l(d2logdet[i], OrbitalSetSize);
       evaluateVGL(P, iat, v, g, l);
     }
   }
@@ -143,21 +142,21 @@ public:
                                const RefVectorWithLeader<ParticleSet>& P_list,
                                int first,
                                int last,
-                               const RefVector<ValueMatrix>& logdet_list,
-                               const RefVector<GradMatrix>& dlogdet_list,
-                               const RefVector<ValueMatrix>& d2logdet_list) const override
+                               const RefVector<ValueMatrix_t>& logdet_list,
+                               const RefVector<GradMatrix_t>& dlogdet_list,
+                               const RefVector<ValueMatrix_t>& d2logdet_list) const override
   {
     assert(this == &spo_list.getLeader());
-    using value_type = ValueMatrix::value_type;
-    using grad_type  = GradMatrix::value_type;
+    typedef ValueMatrix_t::value_type value_type;
+    typedef GradMatrix_t::value_type grad_type;
 
     const size_t nw = spo_list.size();
-    std::vector<ValueVector> mw_psi_v;
-    std::vector<GradVector> mw_dpsi_v;
-    std::vector<ValueVector> mw_d2psi_v;
-    RefVector<ValueVector> psi_v_list;
-    RefVector<GradVector> dpsi_v_list;
-    RefVector<ValueVector> d2psi_v_list;
+    std::vector<ValueVector_t> mw_psi_v;
+    std::vector<GradVector_t> mw_dpsi_v;
+    std::vector<ValueVector_t> mw_d2psi_v;
+    RefVector<ValueVector_t> psi_v_list;
+    RefVector<GradVector_t> dpsi_v_list;
+    RefVector<ValueVector_t> d2psi_v_list;
     mw_psi_v.reserve(nw);
     mw_dpsi_v.reserve(nw);
     mw_d2psi_v.reserve(nw);
@@ -176,9 +175,9 @@ public:
 
       for (int iw = 0; iw < nw; iw++)
       {
-        mw_psi_v.emplace_back(logdet_list[iw].get()[i], logdet_list[iw].get().cols());
-        mw_dpsi_v.emplace_back(dlogdet_list[iw].get()[i], dlogdet_list[iw].get().cols());
-        mw_d2psi_v.emplace_back(d2logdet_list[iw].get()[i], d2logdet_list[iw].get().cols());
+        mw_psi_v.emplace_back(logdet_list[iw].get()[i], OrbitalSetSize);
+        mw_dpsi_v.emplace_back(dlogdet_list[iw].get()[i], OrbitalSetSize);
+        mw_d2psi_v.emplace_back(d2logdet_list[iw].get()[i], OrbitalSetSize);
         psi_v_list.push_back(mw_psi_v.back());
         dpsi_v_list.push_back(mw_dpsi_v.back());
         d2psi_v_list.push_back(mw_d2psi_v.back());
@@ -191,15 +190,15 @@ public:
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            HessMatrix& grad_grad_logdet) override
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            HessMatrix_t& grad_grad_logdet) override
   {
     for (int iat = first, i = 0; iat < last; ++iat, ++i)
     {
-      ValueVector v(logdet[i], logdet.cols());
-      GradVector g(dlogdet[i], dlogdet.cols());
-      HessVector h(grad_grad_logdet[i], grad_grad_logdet.cols());
+      ValueVector_t v(logdet[i], OrbitalSetSize);
+      GradVector_t g(dlogdet[i], OrbitalSetSize);
+      HessVector_t h(grad_grad_logdet[i], OrbitalSetSize);
       evaluateVGH(P, iat, v, g, h);
     }
   }
@@ -207,17 +206,17 @@ public:
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            HessMatrix& grad_grad_logdet,
-                            GGGMatrix& grad_grad_grad_logdet) override
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            HessMatrix_t& grad_grad_logdet,
+                            GGGMatrix_t& grad_grad_grad_logdet) override
   {
     for (int iat = first, i = 0; iat < last; ++iat, ++i)
     {
-      ValueVector v(logdet[i], logdet.cols());
-      GradVector g(dlogdet[i], dlogdet.cols());
-      HessVector h(grad_grad_logdet[i], grad_grad_logdet.cols());
-      GGGVector gh(grad_grad_grad_logdet[i], grad_grad_grad_logdet.cols());
+      ValueVector_t v(logdet[i], OrbitalSetSize);
+      GradVector_t g(dlogdet[i], OrbitalSetSize);
+      HessVector_t h(grad_grad_logdet[i], OrbitalSetSize);
+      GGGVector_t gh(grad_grad_grad_logdet[i], OrbitalSetSize);
       evaluateVGHGH(P, iat, v, g, h, gh);
     }
   }
@@ -227,7 +226,7 @@ public:
                           int last,
                           const ParticleSet& source,
                           int iat_src,
-                          GradMatrix& gradphi) override
+                          GradMatrix_t& gradphi) override
   {
     //Do nothing, since Einsplines don't explicitly depend on ion positions.
   }
@@ -237,16 +236,16 @@ public:
                           int last,
                           const ParticleSet& source,
                           int iat_src,
-                          GradMatrix& grad_phi,
-                          HessMatrix& grad_grad_phi,
-                          GradMatrix& grad_lapl_phi) override
+                          GradMatrix_t& grad_phi,
+                          HessMatrix_t& grad_grad_phi,
+                          GradMatrix_t& grad_lapl_phi) override
   {
     //Do nothing, since Einsplines don't explicitly depend on ion positions.
   }
 
   template<class BSPLINESPO>
-  friend class SplineSetReader;
-  friend struct BsplineReader;
+  friend struct SplineSetReader;
+  friend struct BsplineReaderBase;
 };
 
 } // namespace qmcplusplus

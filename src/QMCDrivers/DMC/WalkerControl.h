@@ -25,8 +25,6 @@
 #include "Message/CommOperators.h"
 #include "Utilities/RandomGenerator.h"
 
-#include <filesystem>
-
 namespace qmcplusplus
 {
 namespace testing
@@ -41,19 +39,19 @@ class WalkerControl : public MPIObjectBase
 {
 public:
   ///typedef of Walker_t
-  using Walker_t = MCWalkerConfiguration::Walker_t;
+  typedef MCWalkerConfiguration::Walker_t Walker_t;
   /// distinct type for "new" walker, currently same as Walker_t
   using MCPWalker = MCPopulation::MCPWalker;
   ///typedef of FullPrecRealType
   using FullPrecRealType = QMCTraits::FullPrecRealType;
   ///typedef of IndexType
-  using IndexType = QMCTraits::IndexType;
+  typedef QMCTraits::IndexType IndexType;
 
   /** default constructor
    *
    * Set the SwapMode to zero so that instantiation can be done
    */
-  WalkerControl(Communicate* c, RandomBase<FullPrecRealType>& rng, bool use_fixed_pop = false);
+  WalkerControl(Communicate* c, RandomGenerator_t& rng, bool use_fixed_pop = false);
 
   /** empty destructor to clean up the derived classes */
   ~WalkerControl();
@@ -68,14 +66,11 @@ public:
    */
   inline void setTrialEnergy(FullPrecRealType et) { trial_energy_ = et; }
 
-  /** unified: perform branch and swap (balance) walkers as required
-   *  **This has many side effects**
-   *  pop passed in may return with different numbers of walkers
-   *  pop walkers will have states altered:
-   *  walker weights set to 1.0
-   *  walker multiplicities set to 1.0
+  /** unified: perform branch and swap walkers as required 
+   *
+   *  \return global population
    */
-  void branch(int iter, MCPopulation& pop, bool do_not_branch);
+  int branch(int iter, MCPopulation& pop, bool do_not_branch);
 
   bool put(xmlNodePtr cur);
 
@@ -89,30 +84,24 @@ public:
     ensemble_property_ = ensemble_property;
   }
   IndexType get_num_contexts() const { return num_ranks_; }
-  const std::vector<int>& getNumPerRank() { return num_per_rank_; }
 
 private:
-  // Can't really unit test without this.
-  void setNumPerRank(const std::vector<int>& num_per_rank) { num_per_rank_ = num_per_rank; }
-
   /// kill dead walkers in the population
   static void killDeadWalkersOnRank(MCPopulation& pop);
 
   static std::vector<IndexType> syncFutureWalkersPerRank(Communicate* comm, IndexType n_walkers);
 
-  /** update the curData state buffer.
-   *  weighted sum over walker properties then all reduce.  see discussion #curData
-   */
+  /// compute curData
   void computeCurData(const UPtrVector<MCPWalker>& walkers, std::vector<FullPrecRealType>& curData);
 
   /** creates the distribution plan
    *
    *  populates the minus and plus vectors they contain 1 copy of a partition index 
    *  for each adjustment in population to the context.
-   *  \param[in] #num_per_rank
+   *  \param[in] num_per_rank as if all walkers were copied out to multiplicity
    *  \param[out] fair_offset running population count at each partition boundary
-   *  \param[out] minus list of partition indexes one occurrence for each walker removed
-   *  \param[out] plus list of partition indexes one occurrence for each walker added
+   *  \param[out] minus list of partition indexes one occurance for each walker removed
+   *  \param[out] plus list of partition indexes one occurance for each walker added
    */
   static void determineNewWalkerPopulation(const std::vector<int>& num_per_rank,
                                            std::vector<int>& fair_offset,
@@ -124,12 +113,9 @@ private:
    *
    * The algorithm ensures that the load per node can differ only by one walker.
    * Each MPI rank can only send or receive or be silent.
-
+   * The communication is one-dimensional and very local.
    * If multiple copies of a walker need to be sent to the target rank, only send one.
    * The number of copies is communicated ahead via blocking send/recv.
-
-   * The communication is one-dimensional and depending on your node layout and network topology
-   * could be very local.
    * Then the walkers are transferred via blocking or non-blocking send/recv.
    * The blocking send/recv may become serialized and worsen load imbalance.
    * Non blocking send/recv algorithm avoids serialization completely.
@@ -137,8 +123,9 @@ private:
   void swapWalkersSimple(MCPopulation& pop);
 #endif
 
-  /** An enum to access/document curData's elements, this is just a subset of curData's indexes
-   * curData[LE_MAX:LE_MAX+num_ranks-1] are sums of walker multiplicty by rank
+  /** An enum to access curData for reduction
+   *
+   * curData is larger than this //LE_MAX + n_node * T
    */
   enum
   {
@@ -154,7 +141,7 @@ private:
   };
 
   ///random number generator
-  RandomBase<FullPrecRealType>& rng_;
+  RandomGenerator_t& rng_;
   ///if true, use fixed population
   bool use_fixed_pop_;
   ///minimum number of walkers
@@ -165,15 +152,12 @@ private:
   IndexType max_copy_;
   ///trial energy energy
   FullPrecRealType trial_energy_;
-  /** Copied from curData[LE_MAX+rank_num] during branching
-   *  I think the point is to prove that this number doesn't need to be stashed at the end of the curData buffer.
-   *  \todo figure out if curData[LE_MAX...LE_MAX+num_ranks] can be eliminated
-   */
+  ///number of walkers on each MPI rank after branching before load balancing
   std::vector<int> num_per_rank_;
   ///offset of the particle index for a fair distribution
   std::vector<int> fair_offset_;
   ///filename for dmc.dat
-  std::filesystem::path dmcFname;
+  std::string dmcFname;
   ///file to save energy histogram
   std::unique_ptr<std::ofstream> dmcStream;
   ///context id
@@ -182,15 +166,7 @@ private:
   const IndexType num_ranks_;
   ///0 is default
   IndexType SwapMode;
-  /** large amount of state data MPI_AllReduce'd once per step. Size is LE_MAX + number of ranks.
-   *  partial enum to access elements is above is in WalkerControl's namespace
-   *  Some elements are integral types converted to and from fp
-   *  \todo The desired operation isn't actually an all reduce for what is potentially the largest number of elements.
-   *        From LE_MAX:LEMAX_+num_ranks-1 is an "integer" allgather for dynamic populations
-   *        and a floating point all gather for fixed population.
-   *        Coercing many values to float and packing all these values into one buffer is a bad smell
-   *        considering the collective pattern is actually different anyway.
-   */
+  ///any temporary data includes many ridiculous conversions of integral types to and from fp
   std::vector<FullPrecRealType> curData;
   ///Use non-blocking isend/irecv
   bool use_nonblocking_;

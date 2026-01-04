@@ -125,7 +125,6 @@ linopt2.samples = 16384
 
 # QMC Optimization
 opt = generate_qmcpack(
-    driver          = 'legacy',
     identifier      = 'opt',
     path            = '.',
     job             = opt_job,
@@ -158,7 +157,6 @@ pp.H.set(
 
 # QMC VMC/DMC With Optimized Jastrow Parameters
 qmc = generate_qmcpack(
-    driver          = 'legacy',
     identifier      = 'dmc',
     path            = '.',
     job             = dmc_job,

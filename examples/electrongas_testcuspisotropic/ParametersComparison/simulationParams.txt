@@ -1,0 +1,143 @@
+Isotropic, Eta=1
+----------------
+rsn[1] (1e11 cm^-2), RPA_anisotropic_parameters_checked (ln 70-71): 
+                ExVPscreened/N SI: -6.9999*10^(-22) -> for N=58 (see below), this would correspond to ExVPscreened: -253.40165
+                EkinVP/N SI: 4.1963*10^(-23) -> for N=58 (see below), this would correspond to EkinVP: 15.190921
+                EncorVP/N SI: -1.35202*10^-21 -> for N=58 (see below), this would correspond to -488.784671477
+
+fill_ellipse.py:
+   Nkx=Nky=71:  
+                ExVPscreened/N: -7.014626231514933e-22+0j)
+                EkinVP/N: 4.206366640092799e-23+0j
+
+         with dens instead of n1:
+                ExVPscreened/N SI: -7.006344495156862e-22, ExVPscreened [meV] (N=7706): -33698.463706007504
+                Eintges/N SI: 6.5578208796917035e-21, Eintges [meV](N=7706): 315411.96562279726
+                EkinVP/N SI: 4.201400442552277e-23, Ekin [meV](N=7706): 2020.7504844447703
+
+
+   Nkx=Nky=7:
+                ExVPscreened/N: -7.455516937809683e-22+0j
+                EkinVP/N: 4.485406601252485e-23+0
+
+         with dens instead of n1:
+                ExVPscreened/N SI: -7.268957764304634e-22, ExVPscreened [meV](N=58): -263.14174421648283
+                Eintges/N SI: 6.709059628307361e-21, Eintges [meV](N=58): 2428.7301011908858+0j => EHartree (N=58): 2691.8718454073687  (background -> v*n (linear) term (appears in Fock contribution in HF) not substracted, this term goes to zero in the TD limit for E/(L^2))
+                EkinVP/N SI: 4.373168408335239e-23, Ekin [meV](N=58): 15.831198915101135
+
+
+VMC:
+  Nk=7, Nu=29, Nd=29 (N=58):
+        0th iteration, no cusp:
+                EkinVP: 15.831198915
+                Eintges: 2422.784265 +-..
+                Eintges-Ebackground (?? check!!! - evtl with Casino):  -269.089+-..
+                Eges-Ebackground (??): -253.25 +- ...
+                emax~2.4-2.9e+3
+
+        99th iteration, no cusp:
+               EkinVP: 48.059939+-...
+               Eintges: 2227.013984+-...
+               Eintges-Ebackground (?? check!!! - evtl with Casino):  -464.857861+-..
+               Eges-Ebackground (??): -416.797922 +- ...
+               emax~2.28e+3
+
+        0th iteration, cusp:
+               EkinVP: 29.999221 +- ...
+               Eintges: 2325.045994
+               Eintges-Ebackground (?? check!!! - evtl with Casino):  -366.825+-..
+               Eges-Ebackground (??): -336.8265855 +- ...
+               emax~2.3-2.4e+3
+
+        99th iteration, cusp:
+               EkinVP: 48.77379 +- ...
+               Eintges: 2226.658653
+               Eintges-Ebackground (?? check!!! - evtl with Casino):  -465.213192+-..
+               Eges-Ebackground (??): -416.4394019 +- ...
+
+-> RPA energy about 2*E_VMC (lower). Expected, for large RS in particular (see Fig. 5.12 in Quantum Theory of the Electron Liquid)
+
+Anisotropic, Eta=5.79 (ellipse with etatilde =1/5.79, not HF-optimized value)
+----------------
+conversion_factor: E/N SI -> E/N meV : SI*6.2415091e+21
+
+
+rsn[1] (1e11 cm^-2), RPA_anisotropic_parameters_checked (ln 70-71): 
+                ExVPscreened/N SI: -6.64712*10^(-22) -> for N=66 (see below), this would correspond to ExVPscreened: -273.8211958, /N: -4.1488
+                EkinVP/N SI: 4.1963*10^(-23) -> for N=66 (see below), this would correspond to EkinVP: 17.286221, /N: 0.26191
+                EncorVP/N SI: -1.30006*10^-21 -> for N=66 (see below), this would correspond to EncorVP: -535.5461972, /N: -8.114336331
+
+fill_ellipse_fullint.py:
+   Nkx=Nky=71:  
+
+         with dens instead of n1:
+                ExVPscreened/N SI: -6.65012234513891e-22, ExVPscreened [meV] (N=7700): -31960.235481138385
+                Eintges/N SI: 6.58779155927e-21, Eintges [meV](N=7700): 316606.7609099623
+                EkinVP/N SI: 4.1981345535e-23, Ekin [meV](N=7700): 2017.6075258367407
+
+   Nkx=Nky=7:
+         (Eta=1/5.79)
+         with dens instead of n1:
+                ExVPscreened/N SI: -7.077517599206839e-22, ExVPscreened [meV](N=54): -256.21146609541506
+                Eintges/N SI: 6.728203644817133e-21, Eintges [meV](N=54): 2435.6603793119493
+                EHartree/N SI: 7.435955404737816ee-21, EHartree (N=54):  2691.871845407364 (background -> v*n (linear) term (appears in Fock contribution in HF) not substracted, this term goes to zero in the TD limit for E/(L^2))
+                EkinVP/N SI: 4.3731684083352436e-23, Ekin [meV](N=54): 15.83119891510114
+
+fill_ellipse_fullint_squarekgrid.py:
+    Nkx=Nky=11:
+         (Eta=5.79)
+         with dens instead of n1:
+                ExVPscreened/N SI: -6.927646636012618e-22, ExVPscreened [meV](N=66): -285.37720015963816
+                Eintges/N SI: 6.637075444982196e-21, Eintges [meV](N=66): 2734.074220661294
+                EHartree/N SI: 7.329840108583456e-21, EHartree (N=66): 3019.4514208209325  (background -> v*n (linear) term (appears in Fock contribution in HF) not substracted, this term goes to zero in the TD limit for E/(L^2))
+                EkinVP/N SI: 4.345650187661005e-23, Ekin [meV](N=66): 17.90145410969898
+
+VMC, valley-polarized:
+  Nk=11, Nu=33, Nd=33 (N=66), kmax=0.06960088759930398161:
+        0th iteration, no cusp, etavar=1, only a2 (8-2-1=5 params):
+                EkinVP: 1.7901454110e+01, /N: 0.2712340909
+                Eintges: 2732.75 +-.., /N: 41.40530
+                Eintges-Ebackground (?? check!!! - evtl with Casino): -286.70142 -+-.. , /N: -4.34396
+                Eges-Ebackground (??): -269.69142 +- ... , /N: -4.086233636
+
+        99th iteration:
+               EkinVP:  58.1+-
+               Eintges:  2511.89+-
+               Eintges-Ebackground:  -507.5614 +-..
+               Eges-Ebackground: -449.4614 +- ... /N: -6.810021527
+
+        0th iteration, no cusp, etavar=2 (-> etatilde=2^2=4), only a2 (8-2-1=5 params):
+                EkinVP: 1.7901454110e+01, /N: 
+                Eintges: 2.7351821909e+03 +-.., /N: 
+                Eintges-Ebackground (?? check!!! - evtl with Casino):  -+-.. , /N: 
+                Eges-Ebackground (??): -269.69142 +- ... , /N: 
+
+
+        99th iteration:
+               EkinVP:  44.5 +-
+               Eintges:  2519.69 +-
+               Eintges-Ebackground:  -499.76 +-..
+               Eges-Ebackground: -455.26 +- ... /N: -6.810021527
+
+
+        99th iteration etavar=2, corrected code (large cutoff) - only a2 with etavar=2 or only b2 with etavar=1/2 (50 it):
+               EkinVP:  3.385e+01 +-
+               Eintges:  2520 +-
+               Eintges-Ebackground:  -499.451 +-..
+               Eges-Ebackground: -465.601 +- ... /N: -7.0545606
+        
+       
+ spin-polarized: 
+      0th iteration, no cusp, etavar=2 (-> etatilde=2^2=4), only a2 (8-2-1=5 params):
+                EkinVP: 1.7901454110e+01, /N: 
+                Eintges: 2.732e+03 +-.., /N: 
+                Eintges-Ebackground (?? check!!! - evtl with Casino): -287  -+-.. , /N: 
+                Eges-Ebackground (??): -269.55 +- ... , /N: 
+
+
+        99th iteration:
+               EkinVP:   57.55 +-
+               Eintges:  2515.675  +-
+               Eintges-Ebackground:  -503.7764 +-..
+               Eges-Ebackground:  -446.2264 +- ... /N: -6.761
+

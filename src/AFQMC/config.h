@@ -25,8 +25,7 @@
 #include "AFQMC/Memory/SharedMemory/shm_ptr_with_raw_ptr_dispatch.hpp"
 #include "multi/array.hpp"
 #include "multi/array_ref.hpp"
-
-#include "AFQMC/Memory/multi_memory/fallback.hpp"
+#include "multi/memory/fallback.hpp"
 
 #include "Utilities/TimerManager.h"
 
@@ -59,7 +58,7 @@ enum AFQMCTimerIDs
   T7_t,
   T8_t
 };
-extern const TimerNameList_t<AFQMCTimerIDs> AFQMCTimerNames;
+extern TimerNameList_t<AFQMCTimerIDs> AFQMCTimerNames;
 
 namespace afqmc
 {
@@ -117,7 +116,7 @@ using shared_allocator = shm::allocator_shm_ptr_with_raw_ptr_dispatch<T>;
 template<class T>
 using shm_pointer = typename shared_allocator<T>::pointer;
 
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
 template<class T>
 using device_allocator = device::device_allocator<T>;
 template<class T>
@@ -232,7 +231,7 @@ using VType_shm_csr_matrix =
 template<typename T>
 using PsiT_Matrix_t = ma::sparse::csr_matrix<T, int, int, shared_allocator<T>, ma::sparse::is_root>;
 using PsiT_Matrix   = PsiT_Matrix_t<ComplexType>;
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
 using devcsr_Matrix = ma::sparse::csr_matrix<ComplexType, int, int, device_allocator<ComplexType>>;
 #else
 using devcsr_Matrix = ma::sparse::csr_matrix<ComplexType, int, int, shared_allocator<ComplexType>, ma::sparse::is_root>;
@@ -243,7 +242,7 @@ using devcsr_Matrix = ma::sparse::csr_matrix<ComplexType, int, int, shared_alloc
 //#endif
 
 
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
 using P1Type = ma::sparse::csr_matrix<ComplexType, int, int, localTG_allocator<ComplexType>>;
 #else
 using P1Type        = ma::sparse::csr_matrix<ComplexType, int, int, localTG_allocator<ComplexType>, ma::sparse::is_root>;

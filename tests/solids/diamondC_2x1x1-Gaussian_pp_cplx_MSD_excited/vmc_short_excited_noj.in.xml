@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="vmc_short_excited_noj" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="vmc_short_excited_noj" series="0"/>
   <include href="C_diamond2x1x1-twist.structure.xml"/>
   <include href="C_diamond2x1x1-twist-Excited.wfnoj.xml"/>
   <hamiltonian name="h0" type="generic" target="e">

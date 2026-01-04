@@ -65,7 +65,7 @@ public:
   }
 };
 
-class kSpaceJastrow : public WaveFunctionComponent, public OptimizableObject
+class kSpaceJastrow : public WaveFunctionComponent
 {
 public:
   typedef enum
@@ -76,7 +76,7 @@ public:
   } SymmetryType;
 
 private:
-  using ComplexType = std::complex<RealType>;
+  typedef std::complex<RealType> ComplexType;
   ////////////////
   // Basic data //
   ////////////////
@@ -155,24 +155,20 @@ public:
 
   void setCoefficients(std::vector<RealType>& oneBodyCoefs, std::vector<RealType>& twoBodyCoefs);
 
-  std::string getClassName() const override { return "kSpaceJastrow"; }
   //implement virtual functions for optimizations
-  bool isOptimizable() const override { return true; }
+  void checkInVariables(opt_variables_type& active) override;
   void checkOutVariables(const opt_variables_type& active) override;
+  void resetParameters(const opt_variables_type& active) override;
+  void reportStatus(std::ostream& os) override;
 
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override { opt_obj_refs.push_back(*this); }
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
-  void checkInVariablesExclusive(opt_variables_type& active) final;
-  void resetParametersExclusive(const opt_variables_type& active) final;
-
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
-
-  PsiValue ratio(ParticleSet& P, int iat) override;
+  PsiValueType ratio(ParticleSet& P, int iat) override;
 
   GradType evalGrad(ParticleSet& P, int iat) override;
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
   void restore(int iat) override;
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override;
@@ -180,7 +176,7 @@ public:
   // Allocate per-walker data in the PooledData buffer
   void registerData(ParticleSet& P, WFBufferType& buf) override;
   // Walker move has been accepted -- update the buffer
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
   // Pull data from the walker buffer at the beginning of a block of
   // single-particle moves
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
@@ -199,10 +195,8 @@ public:
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& active,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override;
-
-  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) override;
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override;
 
   /** evaluate the ratio
   */

@@ -52,7 +52,6 @@ conv = generate_pw2qmcpack(
     )
 
 qmc = generate_qmcpack(
-    driver       = 'legacy',
     identifier   = 'vmc',
     path         = 'diamond/vmc',
     job          = job(cores=16,threads=4,app='qmcpack'),

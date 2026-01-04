@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -16,9 +16,9 @@
 #include "QMCDrivers/Crowd.h"
 #include "type_traits/template_types.hpp"
 #include "Estimators/EstimatorManagerNew.h"
-#include <MinimalWaveFunctionPool.h>
-#include <MinimalParticlePool.h>
-#include <MinimalHamiltonianPool.h>
+#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
+#include "Particle/tests/MinimalParticlePool.h"
+#include "QMCHamiltonians/tests/MinimalHamiltonianPool.h"
 
 #include "QMCDrivers/tests/SetupPools.h"
 
@@ -40,13 +40,12 @@ public:
   UPtrVector<QMCHamiltonian> hams;
   std::vector<TinyVector<double, 3>> tpos;
   DriverWalkerResourceCollection driverwalker_resource_collection_;
+  const MultiWalkerDispatchers dispatchers_;
 
 public:
-  CrowdWithWalkers(SetupPools& pools) : em(*pools.hamiltonian_pool->getPrimary(), pools.comm)
+  CrowdWithWalkers(SetupPools& pools) : em(pools.comm), dispatchers_(true)
   {
-    crowd_ptr =
-        std::make_unique<Crowd>(em, driverwalker_resource_collection_, *pools.particle_pool->getParticleSet("e"),
-                                *pools.wavefunction_pool->getPrimary(), *pools.hamiltonian_pool->getPrimary());
+    crowd_ptr    = std::make_unique<Crowd>(em, driverwalker_resource_collection_, dispatchers_);
     Crowd& crowd = *crowd_ptr;
     // To match the minimal particle set
     int num_particles = 2;
@@ -79,15 +78,13 @@ public:
 TEST_CASE("Crowd integration", "[drivers]")
 {
   Communicate* comm = OHMMS::Controller;
-  using namespace testing;
-  SetupPools pools;
 
-  EstimatorManagerNew em(*pools.hamiltonian_pool->getPrimary(), comm);
+  EstimatorManagerNew em(comm);
 
+  const MultiWalkerDispatchers dispatchers(true);
   DriverWalkerResourceCollection driverwalker_resource_collection_;
 
-  Crowd crowd(em, driverwalker_resource_collection_, *pools.particle_pool->getParticleSet("e"),
-              *pools.wavefunction_pool->getPrimary(), *pools.hamiltonian_pool->getPrimary());
+  Crowd crowd(em, driverwalker_resource_collection_, dispatchers);
 }
 
 TEST_CASE("Crowd redistribute walkers")

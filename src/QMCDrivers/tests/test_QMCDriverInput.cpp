@@ -13,7 +13,6 @@
 #include "catch.hpp"
 
 #include "QMCDrivers/QMCDriverInput.h"
-#include "EstimatorInputDelegates.h"
 #include "QMCDrivers/tests/ValidQMCInputSections.h"
 #include "OhmmsData/Libxml2Doc.h"
 

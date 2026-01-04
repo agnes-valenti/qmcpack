@@ -27,13 +27,12 @@ class TrialWaveFunction;
 
 struct ECPotentialBuilder : public MPIObjectBase, public QMCTraits
 {
-  using RadialPotentialType = LocalECPotential::RadialPotentialType;
-  using GridType            = LocalECPotential::GridType;
+  typedef LocalECPotential::RadialPotentialType RadialPotentialType;
+  typedef LocalECPotential::GridType GridType;
   bool hasLocalPot;
   bool hasNonLocalPot;
   bool hasSOPot;
   bool hasL2Pot;
-  bool use_exact_spin;
 
   QMCHamiltonian& targetH;
   ParticleSet& IonConfig;
@@ -47,7 +46,6 @@ struct ECPotentialBuilder : public MPIObjectBase, public QMCTraits
   std::vector<std::unique_ptr<L2RadialPotential>> L2Pot;
 
   ECPotentialBuilder(QMCHamiltonian& h, ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi, Communicate* c);
-  ~ECPotentialBuilder();
 
   bool put(xmlNodePtr cur);
 

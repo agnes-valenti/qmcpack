@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2025 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Jaron T. Krogel, krogeljt@ornl.gov, Oak Ridge National Laboratory
 //
@@ -22,35 +22,43 @@ namespace qmcplusplus
 MomentumDistribution::MomentumDistribution(MomentumDistributionInput&& mdi,
                                            size_t np,
                                            const PosType& twist_in,
-                                           const Lattice& lattice_in,
+                                           const LatticeType& lattice,
                                            DataLocality dl)
-    : OperatorEstBase(dl, mdi.get_name(), mdi.get_type()),
+    : OperatorEstBase(dl),
       input_(std::move(mdi)),
       twist(twist_in),
-      lattice(lattice_in),
-      norm_nofK(1.0 / RealType(mdi.get_samples()))
+      Lattice(lattice),
+      M(input_.get<int>("samples")),
+      norm_nofK(1.0 / RealType(M))
 {
   psi_ratios.resize(np);
+
+  my_name_ = input_.get<std::string>("name");
+
+  //maximum k-value in the k-grid in cartesian coordinates
+  auto kmax = input_.get<RealType>("kmax");
+  //maximum k-values in the k-grid along the reciprocal cell axis
+  auto kmax0 = input_.get<RealType>("kmax0");
+  auto kmax1 = input_.get<RealType>("kmax1");
+  auto kmax2 = input_.get<RealType>("kmax2");
 
   //dims of a grid for generating k points (obtained below)
   int kgrid = 0;
   // minimal length as 2 x WS radius.
-  RealType min_Length = lattice.WignerSeitzRadius_G * 4.0 * M_PI;
+  RealType min_Length = Lattice.WignerSeitzRadius_G * 4.0 * M_PI;
   PosType vec_length;
   //length of reciprocal lattice vector
   for (int i = 0; i < OHMMS_DIM; i++)
-    vec_length[i] = 2.0 * M_PI * std::sqrt(dot(lattice.Gv[i], lattice.Gv[i]));
-  RealType kmax      = input_.get_kmax();
-  auto realCast      = [](auto& real) { return static_cast<RealType>(real); };
-  PosType kmaxs      = {realCast(input_.get_kmax0()), realCast(input_.get_kmax1()), realCast(input_.get_kmax2())};
+    vec_length[i] = 2.0 * M_PI * std::sqrt(dot(Lattice.Gv[i], Lattice.Gv[i]));
+  PosType kmaxs      = {kmax0, kmax1, kmax2};
   RealType sum_kmaxs = kmaxs[0] + kmaxs[1] + kmaxs[2];
   RealType sphere_kmax;
-  bool sphere      = input_.get_kmax() > 0.0 ? true : false;
+  bool sphere      = kmax > 0.0 ? true : false;
   bool directional = sum_kmaxs > 0.0 ? true : false;
   if (!sphere && !directional)
   {
     // default: kmax = 2 x k_F of polarized non-interacting electron system
-    kmax   = 2.0 * std::pow(6.0 * M_PI * M_PI * np / lattice.Volume, 1.0 / 3);
+    kmax   = 2.0 * std::pow(6.0 * M_PI * M_PI * np / Lattice.Volume, 1.0 / 3);
     sphere = true;
   }
   sphere_kmax = kmax;
@@ -77,11 +85,11 @@ MomentumDistribution::MomentumDistribution(MomentumDistributionInput&& mdi,
       for (int k = -kgrid; k < (kgrid + 1); k++)
       {
         PosType ikpt, kpt;
-        ikpt[0] = i + twist[0];
-        ikpt[1] = j + twist[1];
-        ikpt[2] = k + twist[2];
+        ikpt[0] = i - twist[0];
+        ikpt[1] = j - twist[1];
+        ikpt[2] = k - twist[2];
         //convert to Cartesian: note that 2Pi is multiplied
-        kpt               = lattice.k_cart(ikpt);
+        kpt               = Lattice.k_cart(ikpt);
         bool not_recorded = true;
         // This collects the k-points within the parallelepiped (if enabled)
         if (directional && ikpt[0] * ikpt[0] <= kgrid_squared[0] && ikpt[1] * ikpt[1] <= kgrid_squared[1] &&
@@ -122,8 +130,8 @@ MomentumDistribution::MomentumDistribution(MomentumDistributionInput&& mdi,
       sums[1] += kcount1[i];
       sums[2] += kcount2[i];
     }
-    app_log() << "    Using all k-space points within cut-offs " << input_.get_kmax0() << ", " << input_.get_kmax1()
-              << ", " << input_.get_kmax2() << " for Momentum Distribution." << std::endl;
+    app_log() << "    Using all k-space points within cut-offs " << kmax0 << ", " << kmax1 << ", " << kmax2
+              << " for Momentum Distribution." << std::endl;
     app_log() << "    Total number of k-points for Momentum Distribution: " << kPoints.size() << std::endl;
     app_log() << "      Number of grid points in kmax0 direction: " << sums[0] << std::endl;
     app_log() << "      Number of grid points in kmax1 direction: " << sums[1] << std::endl;
@@ -142,48 +150,46 @@ MomentumDistribution::MomentumDistribution(MomentumDistributionInput&& mdi,
       sums[2] += kcount2[i];
     }
     app_log() << "    Using all k-space points with (kx^2+ky^2+kz^2)^0.5 < " << sphere_kmax << ", and" << std::endl;
-    app_log() << "    within the cut-offs " << input_.get_kmax0() << ", " << input_.get_kmax1() << ", "
-              << input_.get_kmax2() << " for Momentum Distribution." << std::endl;
+    app_log() << "    within the cut-offs " << kmax0 << ", " << kmax1 << ", " << kmax2 << " for Momentum Distribution."
+              << std::endl;
     app_log() << "    Total number of k-points for Momentum Distribution is " << kPoints.size() << std::endl;
     app_log() << "    The number of k-points within the cut-off region: " << sums[0] * sums[1] * sums[2] << std::endl;
     app_log() << "      Number of grid points in kmax0 direction: " << sums[0] << std::endl;
     app_log() << "      Number of grid points in kmax1 direction: " << sums[1] << std::endl;
     app_log() << "      Number of grid points in kmax2 direction: " << sums[2] << std::endl;
   }
-  app_log() << "    Number of samples: " << input_.get_samples() << std::endl;
+  app_log() << "    Number of samples: " << M << std::endl;
   app_log() << "    My twist is: " << twist[0] << "  " << twist[1] << "  " << twist[2] << "\n\n";
 
   // resize arrays
   nofK.resize(kPoints.size());
   kdotp.resize(kPoints.size());
-  auto samples = input_.get_samples();
-  vPos.resize(samples);
+  vPos.resize(M);
   phases.resize(kPoints.size());
-  phases_vPos.resize(samples);
-  for (int im = 0; im < samples; im++)
+  phases_vPos.resize(M);
+  for (int im = 0; im < M; im++)
     phases_vPos[im].resize(kPoints.size());
-  psi_ratios_all.resize(samples, psi_ratios.size());
+  psi_ratios_all.resize(M, psi_ratios.size());
 
   // allocate data storage
   size_t data_size = nofK.size();
   data_.resize(data_size, 0.0);
 }
 
-MomentumDistribution::MomentumDistribution(const MomentumDistribution& md, DataLocality dl) : MomentumDistribution(md)
-{
+MomentumDistribution::MomentumDistribution(const MomentumDistribution& md, DataLocality dl): MomentumDistribution(md) {
   data_locality_ = dl;
 }
-
+ 
 std::unique_ptr<OperatorEstBase> MomentumDistribution::spawnCrowdClone() const
 {
-  std::size_t data_size    = data_.size();
+  std::size_t data_size = data_.size();
   auto spawn_data_locality = data_locality_;
 
   if (data_locality_ == DataLocality::rank)
   {
     // This is just a stub until a memory saving optimization is deemed necessary
     spawn_data_locality = DataLocality::queue;
-    data_size           = 0;
+    data_size = 0;
     throw std::runtime_error("There is no memory savings implementation for MomentumDistribution");
   }
 
@@ -233,8 +239,7 @@ void MomentumDistribution::startBlock(int steps)
 void MomentumDistribution::accumulate(const RefVector<MCPWalker>& walkers,
                                       const RefVector<ParticleSet>& psets,
                                       const RefVector<TrialWaveFunction>& wfns,
-                                      const RefVector<QMCHamiltonian>& hams,
-                                      RandomBase<FullPrecRealType>& rng)
+                                      RandomGenerator_t& rng)
 {
   for (int iw = 0; iw < walkers.size(); ++iw)
   {
@@ -250,15 +255,14 @@ void MomentumDistribution::accumulate(const RefVector<MCPWalker>& walkers,
     //  (required by all estimators, otherwise inf results)
     walkers_weight_ += weight;
 
-    auto samples = input_.get_samples();
     // compute phase factors
-    for (int s = 0; s < samples; ++s)
+    for (int s = 0; s < M; ++s)
     {
       PosType newpos;
       for (int i = 0; i < OHMMS_DIM; ++i)
         newpos[i] = rng();
       //make it cartesian
-      vPos[s] = lattice.toCart(newpos);
+      vPos[s] = Lattice.toCart(newpos);
       pset.makeVirtualMoves(vPos[s]);
       psi.evaluateRatiosAlltoOne(pset, psi_ratios);
       for (int i = 0; i < np; ++i)
@@ -276,7 +280,7 @@ void MomentumDistribution::accumulate(const RefVector<MCPWalker>& walkers,
       for (int ik = 0; ik < nk; ++ik)
         kdotp[ik] = dot(kPoints[ik], pset.R[i]);
       eval_e2iphi(nk, kdotp.data(), phases.data(0), phases.data(1));
-      for (int s = 0; s < samples; ++s)
+      for (int s = 0; s < M; ++s)
       {
         const ComplexType one_ratio(psi_ratios_all[s][i]);
         const RealType ratio_c                 = one_ratio.real();
@@ -296,6 +300,7 @@ void MomentumDistribution::accumulate(const RefVector<MCPWalker>& walkers,
     // accumulate data
     for (int ik = 0; ik < nofK.size(); ++ik)
       data_[ik] += weight * nofK[ik] * norm_nofK;
+
   }
 }
 
@@ -313,19 +318,19 @@ void MomentumDistribution::collect(const RefVector<OperatorEstBase>& type_erased
 }
 
 
-void MomentumDistribution::registerOperatorEstimator(hdf_archive& file)
+void MomentumDistribution::registerOperatorEstimator(hid_t gid)
 {
-  using namespace std::string_literals;
   //descriptor for the data, 1-D data
   std::vector<int> ng(1);
   //add nofk
   ng[0] = nofK.size();
-  h5desc_.push_back({{"nofk"s}});
+  h5desc_.emplace_back(std::make_unique<ObservableHelper>("nofk"));
   auto& h5o = h5desc_.back();
   //h5o.set_dimensions(ng, my_index_);
-  h5o.set_dimensions(ng, 0); // JTK: doesn't seem right
-  h5o.addProperty(const_cast<std::vector<PosType>&>(kPoints), "kpoints", file);
-  h5o.addProperty(const_cast<std::vector<int>&>(kWeights), "kweights", file);
+  h5o->set_dimensions(ng, 0); // JTK: doesn't seem right
+  h5o->open(gid);
+  h5o->addProperty(const_cast<std::vector<PosType>&>(kPoints), "kpoints");
+  h5o->addProperty(const_cast<std::vector<int>&>(kWeights), "kweights");
 }
 
 

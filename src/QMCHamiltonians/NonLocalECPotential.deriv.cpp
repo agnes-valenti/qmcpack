@@ -21,18 +21,13 @@ namespace qmcplusplus
 {
 NonLocalECPotential::Return_t NonLocalECPotential::evaluateValueAndDerivatives(ParticleSet& P,
                                                                                const opt_variables_type& optvars,
-                                                                               const Vector<ValueType>& dlogpsi,
-                                                                               Vector<ValueType>& dhpsioverpsi)
+                                                                               const std::vector<ValueType>& dlogpsi,
+                                                                               std::vector<ValueType>& dhpsioverpsi)
 {
   value_ = 0.0;
   for (int ipp = 0; ipp < PPset.size(); ipp++)
     if (PPset[ipp])
-      PPset[ipp]->rotateQuadratureGrid(generateRandomRotationMatrix(*myRNG));
-
-  /* evaluating TWF ratio values requires calling prepareGroup
-   * In evaluate() we first loop over species and call prepareGroup before looping over all the electrons of a species
-   * Here it is not necessary because TWF::evaluateLog has been called and precomputed data is up-to-date
-   */
+      PPset[ipp]->randomize_grid(*myRNG);
   const auto& myTable = P.getDistTableAB(myTableIndex);
   for (int jel = 0; jel < P.getTotalNum(); jel++)
   {
@@ -41,7 +36,7 @@ NonLocalECPotential::Return_t NonLocalECPotential::evaluateValueAndDerivatives(P
     for (int iat = 0; iat < NumIons; iat++)
       if (PP[iat] != nullptr && dist[iat] < PP[iat]->getRmax())
         value_ += PP[iat]->evaluateValueAndDerivatives(P, iat, Psi, jel, dist[iat], -displ[iat], optvars, dlogpsi,
-                                                       dhpsioverpsi);
+                                                      dhpsioverpsi);
   }
   return value_;
 }
@@ -65,46 +60,37 @@ NonLocalECPComponent::RealType NonLocalECPComponent::evaluateValueAndDerivatives
                                                                                  RealType r,
                                                                                  const PosType& dr,
                                                                                  const opt_variables_type& optvars,
-                                                                                 const Vector<ValueType>& dlogpsi,
-                                                                                 Vector<ValueType>& dhpsioverpsi)
+                                                                                 const std::vector<ValueType>& dlogpsi,
+                                                                                 std::vector<ValueType>& dhpsioverpsi)
 {
-  const size_t num_vars = optvars.size_of_active();
-  dratio.resize(nknot, num_vars);
+  dratio.resize(optvars.num_active_vars, nknot);
   dlogpsi_vp.resize(dlogpsi.size());
 
-  deltaV.resize(nknot);
+  ValueType pairpot;
+  ParticleSet::ParticlePos_t deltarV(nknot);
 
   //displacements wrt W.R[iel]
   for (int j = 0; j < nknot; j++)
-    deltaV[j] = r * rrotsgrid_m[j] - dr;
+    deltarV[j] = r * rrotsgrid_m[j] - dr;
 
-  if (VP)
+  for (int j = 0; j < nknot; j++)
   {
-    // Compute ratios with VP
-    VP->makeMoves(W, iel, deltaV, true, iat);
-    psi.evaluateDerivRatios(*VP, optvars, psiratio, dratio);
-  }
-  else
-  {
-    for (int j = 0; j < nknot; j++)
-    {
-      PosType pos_now = W.R[iel];
-      W.makeMove(iel, deltaV[j]);
-      psiratio[j] = psi.calcRatio(W, iel);
-      psi.acceptMove(W, iel);
-      W.acceptMove(iel);
+    PosType pos_now = W.R[iel];
+    W.makeMove(iel, deltarV[j]);
+    psiratio[j] = psi.calcRatio(W, iel);
+    psi.acceptMove(W, iel);
+    W.acceptMove(iel);
 
-      //use existing methods
-      std::fill(dlogpsi_vp.begin(), dlogpsi_vp.end(), 0.0);
-      psi.evaluateDerivativesWF(W, optvars, dlogpsi_vp);
-      for (int v = 0; v < dlogpsi_vp.size(); ++v)
-        dratio(j, v) = dlogpsi_vp[v] - dlogpsi[v];
+    //use existing methods
+    std::fill(dlogpsi_vp.begin(), dlogpsi_vp.end(), 0.0);
+    psi.evaluateDerivativesWF(W, optvars, dlogpsi_vp);
+    for (int v = 0; v < dlogpsi_vp.size(); ++v)
+      dratio(v, j) = dlogpsi_vp[v];
 
-      W.makeMove(iel, -deltaV[j]);
-      psi.calcRatio(W, iel);
-      psi.acceptMove(W, iel);
-      W.acceptMove(iel);
-    }
+    W.makeMove(iel, -deltarV[j]);
+    psi.calcRatio(W, iel);
+    psi.acceptMove(W, iel);
+    W.acceptMove(iel);
   }
 
   for (int j = 0; j < nknot; ++j)
@@ -113,7 +99,6 @@ NonLocalECPComponent::RealType NonLocalECPComponent::evaluateValueAndDerivatives
   for (int ip = 0; ip < nchannel; ip++)
     vrad[ip] = nlpp_m[ip]->splint(r) * wgt_angpp_m[ip];
 
-  RealType pairpot(0);
   const RealType rinv = RealType(1) / r;
   // Compute spherical harmonics on grid
   for (int j = 0, jl = 0; j < nknot; j++)
@@ -124,21 +109,37 @@ NonLocalECPComponent::RealType NonLocalECPComponent::evaluateValueAndDerivatives
     RealType lpolprev = 0.0;
     for (int l = 0; l < lmax; l++)
     {
-      lpol[l + 1] = (Lfactor1[l] * zz * lpol[l] - l * lpolprev) * Lfactor2[l];
-      lpolprev    = lpol[l];
+      lpol[l + 1] = Lfactor1[l] * zz * lpol[l] - l * lpolprev;
+      lpol[l + 1] *= Lfactor2[l];
+      lpolprev = lpol[l];
     }
-
-    RealType lsum = 0.0;
-    for (int l = 0; l < nchannel; l++)
-      lsum += vrad[l] * lpol[angpp_m[l]];
-
-    wvec[j] = lsum * psiratio[j];
-    pairpot += std::real(wvec[j]);
+    for (int l = 0; l < nchannel; l++, jl++)
+      Amat[jl] = lpol[angpp_m[l]];
+  }
+  if (nchannel == 1)
+  {
+    pairpot = vrad[0] * BLAS::dot(nknot, &Amat[0], &psiratio[0]);
+    for (int v = 0; v < dhpsioverpsi.size(); ++v)
+    {
+      for (int j = 0; j < nknot; ++j)
+        dratio(v, j) = psiratio[j] * (dratio(v, j) - dlogpsi[v]);
+      dhpsioverpsi[v] += vrad[0] * BLAS::dot(nknot, &Amat[0], dratio[v]);
+    }
+  }
+  else
+  {
+    BLAS::gemv(nknot, nchannel, &Amat[0], &psiratio[0], &wvec[0]);
+    pairpot = BLAS::dot(nchannel, &vrad[0], &wvec[0]);
+    for (int v = 0; v < dhpsioverpsi.size(); ++v)
+    {
+      for (int j = 0; j < nknot; ++j)
+        dratio(v, j) = psiratio[j] * (dratio(v, j) - dlogpsi[v]);
+      BLAS::gemv(nknot, nchannel, &Amat[0], dratio[v], &wvec[0]);
+      dhpsioverpsi[v] += BLAS::dot(nchannel, &vrad[0], &wvec[0]);
+    }
   }
 
-  BLAS::gemv('N', num_vars, nknot, 1.0, dratio.data(), num_vars, wvec.data(), 1, 1.0, dhpsioverpsi.data(), 1);
-
-  return pairpot;
+  return std::real(pairpot);
 }
 
 } // namespace qmcplusplus

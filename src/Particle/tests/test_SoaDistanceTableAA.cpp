@@ -15,15 +15,15 @@
 #include <vector>
 #include <iostream>
 #include "ParticleSet.h"
-#include "Lattice/ParticleBConds3DSoa.h"
+//#include "Lattice/ParticleBConds3DSoa.h"
+#include "Lattice/ParticleBConds2DSoa.h"
 #include "SoaDistanceTableAA.h"
 
 namespace qmcplusplus
 {
 TEST_CASE("SoaDistanceTableAA compute_size", "[distance_table]")
 {
-  const SimulationCell simulation_cell;
-  ParticleSet elec(simulation_cell);
+  ParticleSet elec;
 
   elec.setName("e");
   elec.create({6, 4});

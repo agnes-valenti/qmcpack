@@ -1,0 +1,176 @@
+Parallelization
+---------------
+
+- QMCMain.cpp: omp_set_num_threads(1) (ln 98 in version 21.04.22) for testing, remove line to enable parallelization!
+
+3D TO 2D
+--------
+
+- Particle/InitMolecularSystem.cpp: Added lower_bound, upper_bound functions for 2D (overloaded parameters of 3D functions)
+
+- QMCHamiltonians/NLPPJob.h: Ln 26, TinyVector<RealType, 3> to TinyVector<RealType,2>
+  Achtung, didn't change anything else. May lead to errors/ mistakes
+
+- Particle/LRBreakupParameters.h: Set template parameter of class from 3 to 2, but class still needs to be implemented for 2D! Abort if class is entered until implemented (implement breakup distance calculation for D=2!! For now, warning when function SetLRCutoffs is entered and then program aborted)
+  Update: implemented for 2D square lattice (breakup distance: half of lattice vector length)
+
+- FastParticleOperators.h: Re-wrote struct ApplyBConds for 2D, check!
+
+- ParticleBConds2DSoa.h: New, adapted from ParticleBConds3DSoa.h
+  changed include in SoaDistanceTableAAOMPTarget.h, test_SoaDistanceTableAA.cpp,  SoaDistanceTableABOMPTarget.h,  SoaDistanceTableAB.h,  SoaDistanceTableAA.h
+  test,check implemented structs, functions!!
+
+- LatticeAnalyzer.h: Ln 246 find_reduced_basis
+                     Ln 208 found_shorter_base
+                     functions changed 3D to 2D
+
+- TwoDEwaldHandler.h
+  TwoDEwaldHandler.cpp: RealType to mRealType everywhere
+                        added const for kContainer in FillFk (cpp)
+                        added evaluate_vlr_k (in cpp, h)
+- Particle/CMakeLists.txt: put EwaldHandler, EwaldHandler3D in if condition (if OHMMS_DIM==3). TwoDEwaldHandler loaded by default
+
+- EwaldHandler.cpp: corrected Typo in evaluate_vlr_k (brace after endif) (EwaldHandler however not used here)
+
+- LRCoulombSingleton.cpp: In LRCoulombSingleton::getHandler:
+                          Removed 3D part (calling EwaldHandler3D)
+                          
+                          In LRCoulombSingleton::getDerivHandler: replaced #D with 2D in creation of deriv handler, but 2D derivative has yet to be implemented!(Use e.g. Casino Manual, Section 19.4 Ewald, eqs. (150), (151)) Thus, abort if dim!=3 (until implemented)
+
+- ParticleIOUtility.cpp: In expandSuperCell, Ln 119: changed PosUnit::CartesianUnit to PosUnit::Cartesian (CartesianUnit probably deprecated)
+
+- JastrowBuilder.cpp: In JastrowBuilder::buildCounting 
+                      added #if OHMMS_DIM == 3 since CountingJastrowBuilder is only included for D=3 (QMCWavefunctions/CMakeLists.txt)
+
+- BsplineFunctor.h: In mw_evaluateVGL, mw_updateVGL
+                    replaced staticassert with if ohmms_dimm==3 (only coded for D=3). Look here later for explicit x,y derivative of Jastrow factor!
+
+- DiracDeterminantBase.h: Ln 127 In virtual void evaluateDerivatives 
+                          replaced 3 with 2 in function arguments
+
+- MultiSlaterDeterminantWithBackflow.h: Ln 80 replaced Array<GradType, 3> dGa_up, dGa_dn with Array<GradType, 2> ..
+
+- EwaldRef.h: Replaced 3D Ewald summation with 2D Ewald summation (formulas from Casino manual, eqs. (147) and (149)). To do: check/test!!
+
+- QMCHamiltonians/MomentumEstimator.cpp: Ln 303, pi to M_PI
+
+- Comment: instead of Ewald, model periodic Coulomb (MPC) could be used/implemented for efficiency and smaller error. See Casino Manual (papers/Trilayer_Graphene/realspace), Section 19.4.4
+
+- Particle/LongRange/KContainer.cpp: Ln 208 changed loop over dim from 3 to 2
+
+- Tried: QMCHamiltonians/CMakeLists.txt: included also 3D codes, because it led to errors in linking libraries. However, including 3D codes lead to more compiling errrors, so took the 3D codes out of the CMakeLists again. Instead, removed tests from QMCHamiltonians (see next point)
+
+- QMCHamiltonians/tests/CMakeLists.txt: 
+  Estimators/tests/CMakeLists.txt:      removed (by putting if OHMMS_DIM==3) in CMakeLists
+
+- Particle/VirtualParticleSet.h: Ln 27 removed forward declaration of NonLocalECPComponent (probably not necessary to remove decalaration)
+
+- QMCDrivers/CMakeLists.txt: Removed DMC/DMCUpdatePbyPL2.cpp (put in if D=3 instead, evtl put before DMC.cpp etc. if it needs to be put in again)
+
+- QMCHamiltonian.cpp
+  QMCHamiltonian.h: remove non local moves parts + L2Potential parts (everything associated to pointers NonLocalECPotential* nlpp_ptr, L2Potential* l2_ptr), included abort statements + messages
+  QMCCostFunctionBase.cpp
+  QMCCostFunctionCuda.cpp: removed non local moves parts, included abort statements + messages
+
+- HamiltonianFactory.cpp: remove parts associated to EnergyDensityEstimator, DensityMatrices1B (associated to in no remove_tracemanager) (maybe in CMakeLists only included for D=3?)
+
+- WaveFunctionFactory.cpp: In addFermionTerm
+                           Removed part requiring PWOrbitalBuilder, added abort + message - PwOrbitalBuilder in QMCWaveFunctions/CMakeLists.txt only included for D=3
+
+- PosTransformer.h: 3 to 2
+
+- QMCUpdateBase::put: commented H.setNonLocalMoves(cur) - is it needed later?? Check what it actually does!!
+
+- Coulomb: Modify CoulombPBCAA.cpp evalSR, evalLR, evaluate (161)
+
+
+
+RESCALING PARAMETERS FOR AlAs
+------------------------------
+
+- BareKineticEnergy.cpp: rescaled mass parameter M (and consequently OneOverM) by mstar (in constructor) for AlAs parameters 
+  Later change: rescaled back to 1, energy in units of (1/mstar) -> Coulomb prefactor rescaled (see next point). 
+
+- CoulombPBCAA: added rescaling e_squared_ in CoulombPBCAA::evaluate (for AlAs parameters, e_squared_ added as member variable and assigned in constructor) - what about area?? Fourier transform and non Fourier transform. In HF, divided by area via dens in Hartree term, and UF=UF/Area in Fock term?
+  Later change: e_squared=e_squared*mstar, rescaling for more reasonable energy units. No additional minus sign (negative contribution of Coulomb interaction because of constant shift via myConst)
+
+
+
+ANISOTROPIC MASSES
+------------------
+Eta in HEGGrid.h, J2OrbitalSoA.cpp, DiffTwoBodyJastrowOrbital.h
+
+----- Slater Det part -------
+
+- HEGGrid.h: in constructor, set eta, mx, my
+             in createGrid, set member variable of class kptxy[0]=1/sqrt(mx)*kx (same for y component and mk2xy)
+
+- ElectronGasComplexOrbitalBuilder.h: in evaluateVGL, use kxy (etc.) instead of k (set in constructor call to kptxy (etc.) from HEGGrid.h
+
+- ElectronGasComplexOrbitalBuilder.cpp: In buildComponent, make slater det components with EGOSet where kptxy (etc.) are given as constructor arguments
+
+(Slater part, optimize: see path from QMCCostFunction.cpp::correlatedSampling-> evaluateDerivatives. Change later for optimizable Slater Det)
+
+
+----- Jastrow part ------
+
+- J2OrbitalSoA.h: added member variables Tauvalues (not needed), Masses, OneOverSqrtM
+
+- J2OrbitalSoA.cpp: in init, set Tauvalues, Masses, OneOverSqrtM (use Eta)
+                   in recompute and acceptMove, changed calc of dUat, d2Uat to anisotropic using Masses, OneOverSqrtM
+
+- DiffTwoBodyJastrowOrbital.h: added Tauvalues, Masses, OneOverSqrtM
+                               in constructor, set Tauvalues, Masses, OneOverSqrtM (use Eta)
+                               in evaluateDerivativesWF, changed calc of gradLogPsi (corresponding to grad (d/dalpha LogPsi)) and lapLogPsi (lap(d/dalpha LogPsi)) to anisotropic using Masses, OneOverSqrtM
+
+
+THOMAS-FERMI SCREENING
+----------------------
+Change screening parameter q_tf_ in CoulombPBCAA.cpp constructor.
+
+- CoulombPBCAA.cpp
+  CoulombPBCAA.h     added member variable q_tf_ (TF screening wave vector) and set to 0.01 in constructor
+
+
+- CoulombPBCAA.cpp: in evaluate, replace value=evalLR+evalSR_myConst with new function evalSRTF
+                    added function evalSRTF(ParticleSet& P), used Struve-Neumann expression for TF Screening 2D in real space ("Variable-Phase Method and Levindsons's Theorem In Two Dimensions: Application to a Screened Coulomb Potential", Portnoi and Galbraith; "Influence of Ultrafast Carrier Dynamics on
+Semiconductor Absorption Spectra", H. Oerdane, Section 6.2.2)
+
+                    included <cmath> and new function "Numerics/Struve.h"
+
+- CoulombPBCAA.h: added declaration of function evalSRTF
+
+
+- Numerics/Struve.h: added Struve.h (from http://jean-pierre.moreau.pagesperso-orange.fr/c_function2.html)
+
+
+Tau degree of freedom
+---------------------
+
+- ElectronGasComplexOrbitalBuilder.cp: In buildComponent: depending on input (xml file, where different particle types are specified - combinations of spin up/down tau up down have names 'u', 'd' (spin up/down, tau=-1) and 'ut''dt' (spin up/down, tau=1) - grids (from HEGGrid) are created for each particle class, and a Slater Determinant constructed. Not necessary anymore to specify number of spins/types in source code, only xml file.
+
+
+Construct k grid (number of kpoints) / Area
+-------------------------------------------
+
+- HEGGrid.h. So far: k grid loaded in constructor. However, problematic: rounding of k-values in saved .txt. Instead: construct directly in HEGGrid.h. Careful to match parameters with HF:
+   1) kgridmax (value set in constructor): Number of kpoints (in one dimension, total number kgridmax^2)
+   2) Kmax: cutoff k-vector. Set to 0.05
+
+Cusp correction
+---------------
+
+- CvalueForCusp in CoulombPBCAA.cpp/h
+- CvalueForCusp in RadialJastrowBuilder.cpp - careful, change m, e^2, d etc. also here!!!!
+
+
+Anisotropic Jastrow factor
+--------------------------
+
+-etaVar in BsplineFunctor.h, J2Orbital.cpp (change later st only in one file, or in xml!)
+
+
+Symmetry of Jastrow components
+------------------------------
+J2OrbitalSoA.cpp:addFunc  (F[ij]..) flag: AVFLAG
+u/d->ut/dt sym: include int tauvalue as additional parameter in functions evaluateV2, evaluateVGL2, evaluateDerivatives. Swap a2, b2 params if ut/dt.

@@ -41,8 +41,8 @@ class LRHandlerTemp : public LRHandlerBase
 {
 public:
   //Typedef for the lattice-type.
-  using ParticleLayout   = Lattice;
-  using BreakupBasisType = BreakupBasis;
+  typedef ParticleSet::ParticleLayout_t ParticleLayout_t;
+  typedef BreakupBasis BreakupBasisType;
 
   bool FirstTime;
   mRealType rs;
@@ -51,13 +51,13 @@ public:
 
 
   //Constructor
-  LRHandlerTemp(ParticleSet& ref, mRealType kc_in = -1.0) : LRHandlerBase(kc_in), FirstTime(true), Basis(ref.getLRBox())
+  LRHandlerTemp(ParticleSet& ref, mRealType kc_in = -1.0) : LRHandlerBase(kc_in), FirstTime(true), Basis(ref.LRBox)
   {
     LRHandlerBase::ClassName = "LRHandlerTemp";
     myFunc.reset(ref);
   }
 
-  //LRHandlerTemp(ParticleSet& ref, mRealType rs, mRealType kc=-1.0): LRHandlerBase(kc), Basis(ref.getLRBox())
+  //LRHandlerTemp(ParticleSet& ref, mRealType rs, mRealType kc=-1.0): LRHandlerBase(kc), Basis(ref.LRBox)
   //{
   //  myFunc.reset(ref,rs);
   //}
@@ -70,30 +70,28 @@ public:
    * References to ParticleSet or ParticleLayoutout_t are not copied.
    */
   LRHandlerTemp(const LRHandlerTemp& aLR, ParticleSet& ref)
-      : LRHandlerBase(aLR), FirstTime(true), Basis(aLR.Basis, ref.getLRBox())
+      : LRHandlerBase(aLR), FirstTime(true), Basis(aLR.Basis, ref.LRBox)
   {
     myFunc.reset(ref);
+    fillFk(ref.SK->getKLists());
   }
 
-  LRHandlerBase* makeClone(ParticleSet& ref) const override
-  {
-    return new LRHandlerTemp<Func, BreakupBasis>(*this, ref);
-  }
+  LRHandlerBase* makeClone(ParticleSet& ref) const override { return new LRHandlerTemp<Func, BreakupBasis>(*this, ref); }
 
   void initBreakup(ParticleSet& ref) override
   {
-    InitBreakup(ref.getLRBox(), 1);
-    fillFk(ref.getSimulationCell().getKLists());
+    InitBreakup(ref.LRBox, 1);
+    fillFk(ref.SK->getKLists());
     LR_rc = Basis.get_rc();
   }
 
   void Breakup(ParticleSet& ref, mRealType rs_ext) override
   {
-    //ref.getLRBox().Volume=ref.getTotalNum()*4.0*M_PI/3.0*rs*rs*rs;
+    //ref.LRBox.Volume=ref.getTotalNum()*4.0*M_PI/3.0*rs*rs*rs;
     rs = rs_ext;
     myFunc.reset(ref, rs);
-    InitBreakup(ref.getLRBox(), 1);
-    fillFk(ref.getSimulationCell().getKLists());
+    InitBreakup(ref.LRBox, 1);
+    fillFk(ref.SK->getKLists());
     LR_rc = Basis.get_rc();
   }
 
@@ -203,7 +201,7 @@ private:
    * basis and coefs in a usable state.
    * This method can be re-called later if lattice changes shape.
    */
-  void InitBreakup(const ParticleLayout& ref, int NumFunctions)
+  void InitBreakup(ParticleLayout_t& ref, int NumFunctions)
   {
     //First we send the new Lattice to the Basis, in case it has been updated.
     Basis.set_Lattice(ref);
@@ -267,16 +265,16 @@ private:
 
   void fillFk(const KContainer& KList)
   {
-    Fk.resize(KList.getKptsCartWorking().size());
-    const std::vector<int>& kshell(KList.getKShell());
+    Fk.resize(KList.kpts_cart.size());
+    const std::vector<int>& kshell(KList.kshell);
     if (MaxKshell >= kshell.size())
       MaxKshell = kshell.size() - 1;
     Fk_symm.resize(MaxKshell);
     for (int ks = 0, ki = 0; ks < Fk_symm.size(); ks++)
     {
-      mRealType uk = evalFk(std::sqrt(KList.getKSQWorking()[ki]));
+      mRealType uk = evalFk(std::sqrt(KList.ksq[ki]));
       Fk_symm[ks]  = uk;
-      while (ki < kshell[ks + 1] && ki < Fk.size())
+      while (ki < KList.kshell[ks + 1] && ki < Fk.size())
         Fk[ki++] = uk;
     }
     //for(int ki=0; ki<KList.kpts_cart.size(); ki++){

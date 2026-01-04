@@ -18,7 +18,6 @@
 #include "OhmmsPETE/OhmmsMatrix.h"
 #include "CPU/SIMD/aligned_allocator.hpp"
 #include "Numerics/DeterminantOperators.h"
-#include "Concurrency/OpenMP.h"
 
 namespace qmcplusplus
 {
@@ -153,7 +152,7 @@ struct DiracDet
   ///internal storage to perform inversion correctly
   Matrix<INVT> psiM; //matrix to be inverted
   ///random number generator for testing
-  RandomGenerator myRandom;
+  RandomGenerator<T> myRandom;
 
   //temporary workspace for inversion
   aligned_vector<int> pivot;
@@ -170,7 +169,7 @@ struct DiracDet
     psiMsave.resize(nels, nels);
   }
 
-  void initialize(RandomGenerator RNG)
+  void initialize(RandomGenerator<T> RNG)
   {
     int nels = psiM.rows();
     //get lwork and resize workspace
@@ -179,7 +178,7 @@ struct DiracDet
 
     myRandom = RNG;
     constexpr T shift(0.5);
-    std::generate(psiMsave.begin(), psiMsave.end(), RNG);
+    RNG.generate_uniform(psiMsave.data(), nels * nels);
     psiMsave -= shift;
 
     transpose(psiMsave.data(), psiM.data(), nels, nels);
@@ -247,7 +246,7 @@ struct DiracDet
           InvertWithLog(psiM.data(), nels, nels, work.data(), pivot.data(), newlog);
 
           ratio_full = std::exp(std::real(newlog - log_value));
-          log_value  = newlog;
+          log_value   = newlog;
           double err = r / ratio_full - 1;
           ratio_error += err;
 #pragma omp master

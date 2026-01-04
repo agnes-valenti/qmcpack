@@ -13,14 +13,14 @@
 
 #include "OrbitalImages.h"
 #include "OhmmsData/AttributeSet.h"
+#include "QMCWaveFunctions/WaveFunctionFactory.h"
 #include "Utilities/unit_conversion.h"
 
-#include <array>
 
 namespace qmcplusplus
 {
-OrbitalImages::OrbitalImages(ParticleSet& P, const PSPool& PSP, Communicate* mpicomm, const SPOMap& spomap)
-    : psetpool(PSP), sposet_indices(std::make_shared<std::vector<std::vector<int>>>()), spomap_(spomap)
+OrbitalImages::OrbitalImages(ParticleSet& P, PSPool& PSP, Communicate* mpicomm, const WaveFunctionFactory& factory)
+    : psetpool(PSP), wf_factory_(factory)
 {
   //keep the electron particle to get the cell later, if necessary
   Peln = &P;
@@ -54,7 +54,7 @@ OrbitalImages::OrbitalImages(const OrbitalImages& other)
       batch_gradients(other.batch_gradients),
       batch_laplacians(other.batch_laplacians),
       orbital(other.orbital),
-      spomap_(other.spomap_)
+      wf_factory_(other.wf_factory_)
 {
   for (auto& element : other.sposets)
     sposets.push_back(element->makeClone());
@@ -110,7 +110,7 @@ bool OrbitalImages::put(xmlNodePtr cur)
     std::string ename((const char*)element->name);
     if (ename == "parameter")
     {
-      const std::string name(getXMLAttributeValue(element, "name"));
+      const XMLAttrString name(element, "name");
       if (name == "sposets")
         putContent(sposet_names, element);
       else if (name == "batch_size")
@@ -161,7 +161,7 @@ bool OrbitalImages::put(xmlNodePtr cur)
     std::string ename((const char*)element->name);
     if (ename == "parameter")
     {
-      const std::string name(getXMLAttributeValue(element, "name"));
+      const XMLAttrString name(element, "name");
       for (int i = 0; i < sposet_names.size(); ++i)
         if (name == sposet_names[i])
           putContent((*sposet_indices)[i], element);
@@ -197,12 +197,11 @@ bool OrbitalImages::put(xmlNodePtr cur)
   }
 
   //get the ion particleset
-  if (auto pit = psetpool.find(ion_psname); pit == psetpool.end())
+  if (psetpool.find(ion_psname) == psetpool.end())
   {
     APP_ABORT("OrbitalImages::put  ParticleSet " + ion_psname + " does not exist");
   }
-  else
-    Pion = pit->second.get();
+  Pion = psetpool[ion_psname];
 
   app_log() << "  getting sposets" << std::endl;
 
@@ -211,13 +210,11 @@ bool OrbitalImages::put(xmlNodePtr cur)
     APP_ABORT("OrbitalImages::put  must have at least one sposet");
   for (int i = 0; i < sposet_names.size(); ++i)
   {
-    auto spo_it = spomap_.find(sposet_names[i]);
-    if (spo_it == spomap_.end())
-      throw std::runtime_error("OrbitalImages::put  sposet " + sposet_names[i] + " does not exist.");
-
-    sposets.push_back(spo_it->second->makeClone());
-    auto& sposet      = sposets.back();
-    auto& sposet_inds = (*sposet_indices)[i];
+    SPOSet* sposet = wf_factory_.getSPOSet(sposet_names[i]);
+    if (sposet == 0)
+      APP_ABORT("OrbitalImages::put  sposet " + sposet_names[i] + " does not exist");
+    sposets.push_back(sposet->makeClone());
+    std::vector<int>& sposet_inds = (*sposet_indices)[i];
     if (sposet_inds.size() == 0)
       for (int n = 0; n < sposet->size(); ++n)
         sposet_inds.push_back(n);
@@ -245,7 +242,7 @@ bool OrbitalImages::put(xmlNodePtr cur)
       APP_ABORT("OrbitalImages::put  must provide corner or center");
   }
   else
-    cell = Peln->getLattice();
+    cell = Peln->Lattice;
 
   //calculate the cell corner in the case that the cell center is provided
   if (have_center)
@@ -462,62 +459,57 @@ void OrbitalImages::write_orbital_xsf(const std::string& sponame,
   using Units::convert;
 
   //generate file name
-  std::array<char, 100> filename;
-  int file_len{0};
+  char filename[100];
   if (derivative_type == value_d)
   {
     if (value_type == real_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d.xsf", sponame.c_str(), index);
     else if (value_type == imag_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_imag.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_imag.xsf", sponame.c_str(), index);
     else if (value_type == abs_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_abs.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_abs.xsf", sponame.c_str(), index);
     else if (value_type == abs2_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_abs2.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_abs2.xsf", sponame.c_str(), index);
   }
   else if (derivative_type == gradient_d)
   {
     if (value_type == real_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_grad%1d.xsf", sponame.c_str(), index,
-                               dimension);
+      sprintf(filename, "%s_orbital_%04d_grad%1d.xsf", sponame.c_str(), index, dimension);
     else if (value_type == imag_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_grad%1d_imag.xsf", sponame.c_str(),
-                               index, dimension);
+      sprintf(filename, "%s_orbital_%04d_grad%1d_imag.xsf", sponame.c_str(), index, dimension);
     else if (value_type == abs_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_grad%1d_abs.xsf", sponame.c_str(),
-                               index, dimension);
+      sprintf(filename, "%s_orbital_%04d_grad%1d_abs.xsf", sponame.c_str(), index, dimension);
     else if (value_type == abs2_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_grad%1d_abs2.xsf", sponame.c_str(),
-                               index, dimension);
+      sprintf(filename, "%s_orbital_%04d_grad%1d_abs2.xsf", sponame.c_str(), index, dimension);
   }
   else if (derivative_type == laplacian_d)
   {
     if (value_type == real_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_lap.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_lap.xsf", sponame.c_str(), index);
     else if (value_type == imag_val)
-      file_len =
-          std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_lap_imag.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_lap_imag.xsf", sponame.c_str(), index);
     else if (value_type == abs_val)
-      file_len = std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_lap_abs.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_lap_abs.xsf", sponame.c_str(), index);
     else if (value_type == abs2_val)
-      file_len =
-          std::snprintf(filename.data(), filename.size(), "%s_orbital_%04d_lap_abs2.xsf", sponame.c_str(), index);
+      sprintf(filename, "%s_orbital_%04d_lap_abs2.xsf", sponame.c_str(), index);
   }
-  if (file_len < 0)
-    throw std::runtime_error("Error generating filename");
-  std::string output_name(filename.data(), file_len);
-  app_log() << "      writing file: " << output_name << std::endl;
+
+  app_log() << "      writing file: " << std::string(filename) << std::endl;
 
   //get the cell containing the ion positions
   //  assume the evaluation cell if any boundaries are open
-  ParticleSet& Pc       = *Pion;
-  const Lattice_t& Lbox = Peln->getLattice().SuperCellEnum == SUPERCELL_BULK ? Peln->getLattice() : cell;
+  ParticleSet& Pc = *Pion;
+  Lattice_t* Lbox;
+  if (Peln->Lattice.SuperCellEnum == SUPERCELL_BULK)
+    Lbox = &Peln->Lattice; //periodic
+  else
+    Lbox = &cell; //at least partially open
 
   //open the file
   std::ofstream file;
-  file.open(output_name, std::ios::out | std::ios::trunc);
+  file.open(filename, std::ios::out | std::ios::trunc);
   if (!file.is_open())
-    APP_ABORT("OrbitalImages::write_orbital\n  failed to open file for output: " + output_name);
+    APP_ABORT("OrbitalImages::write_orbital\n  failed to open file for output: " + std::string(filename));
 
   //set the precision & number of columns
   file.precision(6);
@@ -534,7 +526,7 @@ void OrbitalImages::write_orbital_xsf(const std::string& sponame,
   {
     file << " ";
     for (int d = 0; d < DIM; ++d)
-      file << "  " << convert(Lbox.Rv[i][d], B, A);
+      file << "  " << convert(Lbox->Rv[i][d], B, A);
     file << std::endl;
   }
   file << " PRIMCOORD" << std::endl;
@@ -568,14 +560,14 @@ void OrbitalImages::write_orbital_xsf(const std::string& sponame,
   if (value_type == real_val) // real part
     for (int p = 0; p < npoints; ++p)
     {
-      file << "  " << std::real(orb[p]);
+      file << "  " << real(orb[p]);
       if ((p + 1) % columns == 0)
         file << std::endl << "   ";
     }
   else if (value_type == imag_val) // imag part
     for (int p = 0; p < npoints; ++p)
     {
-      file << "  " << std::imag(orb[p]);
+      file << "  " << imag(orb[p]);
       if ((p + 1) % columns == 0)
         file << std::endl << "   ";
     }

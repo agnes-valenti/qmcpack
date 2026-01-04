@@ -1,5 +1,4 @@
 
-import sys
 import testing
 from testing import divert_nexus,restore_nexus,clear_all_sims
 from testing import execute,text_eq
@@ -29,7 +28,7 @@ def test_sim():
 
 
     # initial simulation state
-    command = sys.executable+' {} show {}'.format(exe,simp_path)
+    command = '{} show {}'.format(exe,simp_path)
 
     out,err,rc = execute(command)
 
@@ -48,10 +47,10 @@ def test_sim():
 
 
     # final simulation state
-    command = sys.executable+' {} complete {}'.format(exe,simp_path)
+    command = '{} complete {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
-    command = sys.executable+' {} show {}'.format(exe,simp_path)
+    command = '{} show {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
     out_ref = '''
@@ -69,13 +68,13 @@ def test_sim():
 
 
     # intermediate simulation state 1
-    command = sys.executable+' {} reset {}'.format(exe,simp_path)
+    command = '{} reset {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
-    command = sys.executable+' {} set setup sent_files submitted {}'.format(exe,simp_path)
+    command = '{} set setup sent_files submitted {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
-    command = sys.executable+' {} show {}'.format(exe,simp_path)
+    command = '{} show {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
     out_ref = '''
@@ -91,13 +90,13 @@ def test_sim():
 
 
     # intermediate simulation state 2
-    command = sys.executable+' {} complete {}'.format(exe,simp_path)
+    command = '{} complete {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
-    command = sys.executable+' {} unset got_output analyzed {}'.format(exe,simp_path)
+    command = '{} unset got_output analyzed {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
-    command = sys.executable+' {} show {}'.format(exe,simp_path)
+    command = '{} show {}'.format(exe,simp_path)
     out,err,rc = execute(command)
 
     out_ref = '''

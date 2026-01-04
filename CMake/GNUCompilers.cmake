@@ -1,58 +1,18 @@
 # Check compiler version
-if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
-  message(FATAL_ERROR "Requires GCC 9.0 or higher ")
+if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0)
+  message(FATAL_ERROR "Requires gcc 7.0 or higher ")
 endif()
 
 # Enable OpenMP
 if(QMC_OMP)
+  set(ENABLE_OPENMP 1)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-
   if(ENABLE_OFFLOAD)
-    message(WARNING "QMCPACK OpenMP offload is not ready for GCC compiler.")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12.0)
-      message(WARNING "GCC OpenMP offload feature requires 12.0 or higher.")
-    endif()
-
-    if(QMC_CUDA2HIP)
-      set(OFFLOAD_TARGET_DEFAULT "amdgcn-amdhsa")
-    else()
-      set(OFFLOAD_TARGET_DEFAULT "nvptx-none")
-    endif()
     set(OFFLOAD_TARGET
-        ${OFFLOAD_TARGET_DEFAULT}
+        "nvptx-none"
         CACHE STRING "Offload target architecture")
-    set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-foffload=${OFFLOAD_TARGET} -foffload-options=\"-lm -latomic\"")
-
-    if(NOT OFFLOAD_ARCH AND QMC_GPU_ARCHS)
-      list(LENGTH QMC_GPU_ARCHS QMC_GPU_ARCH_COUNT)
-      if(QMC_GPU_ARCH_COUNT EQUAL "1")
-        set(OFFLOAD_ARCH ${QMC_GPU_ARCHS})
-      else()
-        message(
-          FATAL_ERROR
-            "GCC does not yet support offload to multiple architectures! "
-            "Deriving OFFLOAD_ARCH from QMC_GPU_ARCHS failed. "
-            "Please keep only one entry in QMC_GPU_ARCHS or set OFFLOAD_ARCH.")
-      endif()
-    endif()
-
-    if(OFFLOAD_ARCH)
-      if(OFFLOAD_TARGET MATCHES "amdgcn-amdhsa")
-        set(OPENMP_OFFLOAD_COMPILE_OPTIONS
-            "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -foffload-options=${OFFLOAD_TARGET}=\"-march=${OFFLOAD_ARCH}\"")
-      elseif(OFFLOAD_TARGET MATCHES "nvptx-none")
-        set(OPENMP_OFFLOAD_COMPILE_OPTIONS
-            "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -foffload-options=${OFFLOAD_TARGET}=\"-misa=${OFFLOAD_ARCH}\"")
-      else()
-        message(
-          WARNING
-            "We don't know how to handle OFFLOAD_ARCH=${OFFLOAD_ARCH} for OFFLOAD_TARGET=${OFFLOAD_TARGET}. Got ignored."
-        )
-      endif()
-    endif()
-  else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -foffload=disable")
+    set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-foffload=${OFFLOAD_TARGET} -foffload=\"-lm -latomic\"")
   endif()
 endif(QMC_OMP)
 
@@ -60,7 +20,8 @@ endif(QMC_OMP)
 add_definitions(-Drestrict=__restrict__)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -finline-limit=1000 -fstrict-aliasing -funroll-all-loops")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -finline-limit=1000 -fstrict-aliasing -funroll-all-loops")
+set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -finline-limit=1000 -fstrict-aliasing -funroll-all-loops")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer")
@@ -139,9 +100,10 @@ file(
   "#include <iostream>\n#if __GLIBC__ == 2 && ( __GLIBC_MINOR__ == 22 || __GLIBC_MINOR__ == 23 )\n#error buggy glibc version\n#endif\n int main() { return 0; }\n"
 )
 try_compile(PASS_GLIBC ${CMAKE_BINARY_DIR} ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/src_glibc.cxx
-            CMAKE_FLAGS "${CMAKE_CXX_FLAGS}" OUTPUT_VARIABLE COMPILE_OUTPUT)
+            CMAKE_FLAGS "${CMAKE_CXX_FLAGS}")
 if(NOT PASS_GLIBC)
-  message(FATAL_ERROR "Test glibc compilation failed. Output:\n${COMPILE_OUTPUT}")
+  message(FATAL_ERROR "Your system and GNU compiler are using glibc 2.22 or 2.23 which contains a buggy libmvec."
+                      "This results in crashes. Workaround needed. Alternatively upgrade or use another compiler.")
 endif()
 
 # Add static flags if necessary
@@ -152,6 +114,8 @@ endif(QMC_BUILD_STATIC)
 # Coverage
 if(ENABLE_GCOV)
   set(GCOV_SUPPORTED TRUE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -O0 -fno-inline -fno-inline-small-functions -fno-default-inline")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -O0 -fno-inline -fno-inline-small-functions -fno-default-inline")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
 endif(ENABLE_GCOV)

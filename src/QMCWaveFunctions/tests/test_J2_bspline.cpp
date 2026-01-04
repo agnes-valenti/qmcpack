@@ -18,8 +18,8 @@
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
 #include "QMCWaveFunctions/Jastrow/BsplineFunctor.h"
 #include "QMCWaveFunctions/Jastrow/RadialJastrowBuilder.h"
-#include "CPU/VectorOps.h"
-#include "QMCWaveFunctions/Jastrow/TwoBodyJastrow.h"
+#include "ParticleBase/ParticleAttribOps.h"
+#include "QMCWaveFunctions/Jastrow/J2OrbitalSoA.h"
 
 #include <cstdio>
 #include <string>
@@ -32,24 +32,34 @@ using std::string;
 
 namespace qmcplusplus
 {
-using RealType = WaveFunctionComponent::RealType;
-using PsiValue = WaveFunctionComponent::PsiValue;
+using RealType     = WaveFunctionComponent::RealType;
+using PsiValueType = WaveFunctionComponent::PsiValueType;
 
 TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
 {
-  Communicate* c = OHMMS::Controller;
+  Communicate* c;
+  c = OHMMS::Controller;
 
-  const SimulationCell simulation_cell;
-  ParticleSet ions_(simulation_cell);
-  ParticleSet elec_(simulation_cell);
+  ParticleSet ions_;
+  ParticleSet elec_;
 
   ions_.setName("ion");
-  ions_.create({1});
-  ions_.R[0] = {2.0, 0.0, 0.0};
+  ions_.create(1);
+  ions_.R[0][0] = 2.0;
+  ions_.R[0][1] = 0.0;
+  ions_.R[0][2] = 0.0;
+
   elec_.setName("elec");
-  elec_.create({1, 1});
-  elec_.R[0]                   = {1.00, 0.0, 0.0};
-  elec_.R[1]                   = {0.0, 0.0, 0.0};
+  std::vector<int> ud(2);
+  ud[0] = ud[1] = 1;
+  elec_.create(ud);
+  elec_.R[0][0] = 1.00;
+  elec_.R[0][1] = 0.0;
+  elec_.R[0][2] = 0.0;
+  elec_.R[1][0] = 0.0;
+  elec_.R[1][1] = 0.0;
+  elec_.R[1][2] = 0.0;
+
   SpeciesSet& tspecies         = elec_.getSpeciesSet();
   int upIdx                    = tspecies.addSpecies("u");
   int downIdx                  = tspecies.addSpecies("d");
@@ -58,14 +68,14 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
   tspecies(chargeIdx, downIdx) = -1;
   elec_.resetGroups();
 
-  const char* particles = R"(<tmp>
-<jastrow name="J2" type="Two-Body" function="Bspline" print="yes" gpu="no">
-   <correlation rcut="10" size="10" speciesA="u" speciesB="d">
-      <coefficients id="ud" type="Array"> 0.02904699284 -0.1004179 -0.1752703883 -0.2232576505 -0.2728029201 -0.3253286875 -0.3624525145 -0.3958223107 -0.4268582166 -0.4394531176</coefficients>
-    </correlation>
-</jastrow>
-</tmp>
-)";
+  const char* particles = "<tmp> \
+<jastrow name=\"J2\" type=\"Two-Body\" function=\"Bspline\" print=\"yes\" gpu=\"no\"> \
+   <correlation rcut=\"10\" size=\"10\" speciesA=\"u\" speciesB=\"d\"> \
+      <coefficients id=\"ud\" type=\"Array\"> 0.02904699284 -0.1004179 -0.1752703883 -0.2232576505 -0.2728029201 -0.3253286875 -0.3624525145 -0.3958223107 -0.4268582166 -0.4394531176</coefficients> \
+    </correlation> \
+</jastrow> \
+</tmp> \
+";
   Libxml2Document doc;
   bool okay = doc.parseFromString(particles);
   REQUIRE(okay);
@@ -76,7 +86,7 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
 
   RadialJastrowBuilder jastrow(c, elec_);
 
-  using J2Type = TwoBodyJastrow<BsplineFunctor<RealType>>;
+  typedef J2OrbitalSoA<BsplineFunctor<RealType>> J2Type;
   auto j2_uptr = jastrow.buildComponent(jas1);
   J2Type* j2   = dynamic_cast<J2Type*>(j2_uptr.get());
   REQUIRE(j2);
@@ -85,43 +95,18 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
   elec_.update();
 
   double logpsi_real = std::real(j2->evaluateLog(elec_, elec_.G, elec_.L));
-  CHECK(logpsi_real == Approx(0.1012632641)); // note: number not validated
+  REQUIRE(logpsi_real == Approx(0.1012632641)); // note: number not validated
 
   double KE = -0.5 * (Dot(elec_.G, elec_.G) + Sum(elec_.L));
-  CHECK(KE == Approx(-0.1616624771)); // note: number not validated
-
-  UniqueOptObjRefs opt_obj_refs;
-  j2->extractOptimizableObjectRefs(opt_obj_refs);
-  REQUIRE(opt_obj_refs.size() == 1);
-
-  opt_variables_type optvars;
-  Vector<WaveFunctionComponent::ValueType> dlogpsi;
-  Vector<WaveFunctionComponent::ValueType> dhpsioverpsi;
-
-  for (OptimizableObject& obj : opt_obj_refs)
-    obj.checkInVariablesExclusive(optvars);
-  optvars.resetIndex();
-  const int NumOptimizables(optvars.size());
-  j2->checkOutVariables(optvars);
-  dlogpsi.resize(NumOptimizables);
-  dhpsioverpsi.resize(NumOptimizables);
-  j2->evaluateDerivatives(elec_, optvars, dlogpsi, dhpsioverpsi);
-
-  app_log() << std::endl << "reporting dlogpsi and dhpsioverpsi" << std::scientific << std::endl;
-  for (int iparam = 0; iparam < NumOptimizables; iparam++)
-    app_log() << "param=" << iparam << " : " << dlogpsi[iparam] << "  " << dhpsioverpsi[iparam] << std::endl;
-  app_log() << std::endl;
-
-  CHECK(std::real(dlogpsi[2]) == Approx(-0.2211666667));
-  CHECK(std::real(dhpsioverpsi[3]) == Approx(0.1331717179));
+  REQUIRE(KE == Approx(-0.1616624771)); // note: number not validated
 
 
   // now test evaluateHessian
-  WaveFunctionComponent::HessVector grad_grad_psi;
+  WaveFunctionComponent::HessVector_t grad_grad_psi;
   grad_grad_psi.resize(elec_.getTotalNum());
   grad_grad_psi = 0.0;
 
-  app_log() << "eval hess" << std::endl;
+  std::cout << "eval hess" << std::endl;
   j2->evaluateHessian(elec_, grad_grad_psi);
   std::vector<double> hess_values = {
       -0.0627236, 0, 0, 0, 0.10652, 0, 0, 0, 0.10652, -0.0627236, 0, 0, 0, 0.10652, 0, 0, 0, 0.10652,
@@ -132,7 +117,7 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
     for (int i = 0; i < OHMMS_DIM; i++)
       for (int j = 0; j < OHMMS_DIM; j++, m++)
       {
-        CHECK(std::real(grad_grad_psi[n](i, j)) == Approx(hess_values[m]));
+        REQUIRE(std::real(grad_grad_psi[n](i, j)) == Approx(hess_values[m]));
       }
 
 
@@ -175,9 +160,9 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
     RealType dv  = 0.0;
     RealType ddv = 0.0;
     RealType val = bf->evaluate(Vals[i].r, dv, ddv);
-    CHECK(Vals[i].u == Approx(val));
-    CHECK(Vals[i].du == Approx(dv));
-    CHECK(Vals[i].ddu == Approx(ddv));
+    REQUIRE(Vals[i].u == Approx(val));
+    REQUIRE(Vals[i].du == Approx(dv));
+    REQUIRE(Vals[i].ddu == Approx(ddv));
   }
 
 #ifdef PRINT_SPLINE_DATA
@@ -207,8 +192,8 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
   }
 #endif
 
-  using ValueType = QMCTraits::ValueType;
-  using PosType   = QMCTraits::PosType;
+  typedef QMCTraits::ValueType ValueType;
+  typedef QMCTraits::PosType PosType;
 
   // set virtutal particle position
   PosType newpos(0.3, 0.2, 0.5);
@@ -217,33 +202,33 @@ TEST_CASE("BSpline builder Jastrow J2", "[wavefunction]")
   std::vector<ValueType> ratios(elec_.getTotalNum());
   j2->evaluateRatiosAlltoOne(elec_, ratios);
 
-  CHECK(std::real(ratios[0]) == Approx(0.9522052017));
-  CHECK(std::real(ratios[1]) == Approx(0.9871985577));
+  REQUIRE(std::real(ratios[0]) == Approx(0.9522052017));
+  REQUIRE(std::real(ratios[1]) == Approx(0.9871985577));
 
   elec_.makeMove(0, newpos - elec_.R[0]);
-  PsiValue ratio_0 = j2->ratio(elec_, 0);
+  PsiValueType ratio_0 = j2->ratio(elec_, 0);
   elec_.rejectMove(0);
 
-  CHECK(std::real(ratio_0) == Approx(0.9522052017));
+  REQUIRE(std::real(ratio_0) == Approx(0.9522052017));
 
   VirtualParticleSet VP(elec_, 2);
   std::vector<PosType> newpos2(2);
   std::vector<ValueType> ratios2(2);
   newpos2[0] = newpos - elec_.R[1];
   newpos2[1] = PosType(0.2, 0.5, 0.3) - elec_.R[1];
-  VP.makeMoves(elec_, 1, newpos2);
+  VP.makeMoves(1, elec_.R[1], newpos2);
   j2->evaluateRatios(VP, ratios2);
 
-  CHECK(std::real(ratios2[0]) == Approx(0.9871985577));
-  CHECK(std::real(ratios2[1]) == Approx(0.9989268241));
+  REQUIRE(std::real(ratios2[0]) == Approx(0.9871985577));
+  REQUIRE(std::real(ratios2[1]) == Approx(0.9989268241));
 
   //test acceptMove
   elec_.makeMove(1, newpos - elec_.R[1]);
-  PsiValue ratio_1 = j2->ratio(elec_, 1);
+  PsiValueType ratio_1 = j2->ratio(elec_, 1);
   j2->acceptMove(elec_, 1);
   elec_.acceptMove(1);
 
-  CHECK(std::real(ratio_1) == Approx(0.9871985577));
-  CHECK(std::real(j2->get_log_value()) == Approx(0.0883791773));
+  REQUIRE(std::real(ratio_1) == Approx(0.9871985577));
+  REQUIRE(std::real(j2->get_log_value()) == Approx(0.0883791773));
 }
 } // namespace qmcplusplus

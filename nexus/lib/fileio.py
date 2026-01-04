@@ -312,16 +312,9 @@ class XsfFile(StandardFile):
     # forces are in units of Hatree/Angstrom
     # each section should be followed by a blank line
 
-    def __init__(self,filepath=None,order=None):
+    def __init__(self,filepath=None):
         self.filetype    = None
         self.periodicity = None
-        self.order       = None
-        if order is not None:
-            if order!='F' and order!='C':
-                self.error('order must by C or F\nyou provided: {}'.format(order))
-            #end if
-            self.order = order
-        #end if
         StandardFile.__init__(self,filepath)
     #end def __init__
 
@@ -342,17 +335,7 @@ class XsfFile(StandardFile):
 
 
     # test needed for axsf and bxsf
-    def read_text(self,text,order=None):
-        if order is not None:
-            if order!='F' and order!='C':
-                self.error('order must by C or F\nyou provided: {}'.format(order))
-            #end if
-            self.order = order
-        elif self.order is not None:
-            order = self.order
-        else:
-            order = 'F'
-        #end if
+    def read_text(self,text):
         lines = text.splitlines()
         i=0
         self.filetype = 'xsf'
@@ -490,7 +473,7 @@ class XsfFile(StandardFile):
                                 line = lines[i].strip().lower()
                             #end while
                             grid_data = array(dtokens,dtype=float)
-                            grid_data=reshape(grid_data,grid,order=order)
+                            grid_data=reshape(grid_data,grid,order='F')
                             data[grid_identifier] = obj(
                                 grid   = grid,
                                 corner = corner,
@@ -687,9 +670,9 @@ class XsfFile(StandardFile):
                     elif d==3:
                         c += '     {0} {1} {2}\n'.format(*dg.grid)
                     #end if
-                    c += '   {0:14.8E} {1:14.8E} {2:14.8E}\n'.format(*dg.corner)
+                    c += '   {0:12.8f} {1:12.8f} {2:12.8f}\n'.format(*dg.corner)
                     for v in dg.cell:
-                        c += '   {0:14.8E} {1:14.8E} {2:14.8E}\n'.format(*v)
+                        c += '   {0:12.8f} {1:12.8f} {2:12.8f}\n'.format(*v)
                     #end for
                     c = c[:-1]
                     n=0
@@ -697,7 +680,7 @@ class XsfFile(StandardFile):
                         if n%ncols==0:
                             c += '\n    '
                         #end if
-                        c += ' {0:14.8E}'.format(v)
+                        c += ' {0:12.8f}'.format(v)
                         n+=1
                     #end for
                     c += '\n   END_DATAGRID_{0}D_{1}\n'.format(d,dgk)
@@ -727,9 +710,9 @@ class XsfFile(StandardFile):
                     elif d==3:
                         c += '     {0} {1} {2}\n'.format(*dg.grid)
                     #end if
-                    c += '   {0:12.8e} {1:12.8e} {2:12.8e}\n'.format(*dg.corner)
+                    c += '   {0:12.8f} {1:12.8f} {2:12.8f}\n'.format(*dg.corner)
                     for v in dg.cell:
-                        c += '   {0:12.8e} {1:12.8e} {2:12.8e}\n'.format(*v)
+                        c += '   {0:12.8f} {1:12.8f} {2:12.8f}\n'.format(*v)
                     #end for
                     for bi in sorted(dg.bands.keys()):
                         c += '   BAND:  {0}'.format(bi)
@@ -738,7 +721,7 @@ class XsfFile(StandardFile):
                             if n%ncols==0:
                                 c += '\n    '
                             #end if
-                            c += ' {0:12.8e}'.format(v)
+                            c += ' {0:12.8f}'.format(v)
                             n+=1
                         #end for
                         c += '\n'
@@ -813,8 +796,15 @@ class XsfFile(StandardFile):
         s.recenter()
         elem = []
         for e in s.elem:
-            is_elem,e = is_element(e,symbol=True)
-            if is_elem:
+            ne = len(e)
+            if ne>1:
+                if ne==2 and not e[1].isalpha():
+                    e = e[0]
+                elif ne>2:
+                    e = e[0:2]
+                #end if
+            #end if
+            if is_element(e):
                 elem.append(ptable.elements[e].atomic_number)
             else:
                 elem.append(0)
@@ -1184,7 +1174,7 @@ class PoscarFile(StandardFile):
                 if not iselem:
                     self.error('{0} is not an element'.format(e))
                 #end if
-                text += e+' '
+                text += symbol+' '
             #end for
             text += '\n'
         #end if

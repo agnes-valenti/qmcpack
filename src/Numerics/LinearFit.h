@@ -16,7 +16,6 @@
 #define LINEAR_FIT_H
 
 #include <vector>
-#include <stdexcept>
 #include "OhmmsPETE/TinyVector.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
 #include "Numerics/DeterminantOperators.h"
@@ -30,7 +29,11 @@ inline void LinearFit(std::vector<T>& y, Matrix<T>& A, std::vector<T>& coefs)
   int N = A.size(0);
   int M = A.size(1);
   if (y.size() != N)
-    throw std::runtime_error("Differernt number of rows in basis functions that in data points in LinearFit.");
+  {
+    app_error() << "Differernt number of rows in basis functions that in data "
+                << "points in LinearFit.  Exitting.\n";
+    abort();
+  }
   // Construct alpha matrix
   Matrix<T> alpha(M, M);
   alpha = 0.0;

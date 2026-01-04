@@ -16,9 +16,6 @@
 #include "type_traits/template_types.hpp"
 #include "Particle/Walker.h"
 #include "Estimators/EstimatorManagerNew.h"
-#include "ParticleSetPool.h"
-#include "WaveFunctionPool.h"
-#include "HamiltonianPool.h"
 #include "QMCDrivers/SFNBranch.h"
 #include "QMCDrivers/MCPopulation.h"
 #include "QMCDrivers/tests/ValidQMCInputSections.h"
@@ -34,22 +31,30 @@ namespace testing
 class SetupSFNBranch
 {
 public:
-  SetupSFNBranch(Communicate* comm) : comm_{comm} {}
-
-  SetupSFNBranch() : comm_{OHMMS::Controller} {}
-
-  std::unique_ptr<SFNBranch> operator()(ParticleSet& pset, TrialWaveFunction& twf, QMCHamiltonian& ham)
+  SetupSFNBranch(Communicate* comm)
   {
-    pop_ = std::make_unique<MCPopulation>(1, comm_->rank(), &pset, &twf, &ham);
+    comm_ = comm;
+    emb_  = std::make_unique<EstimatorManagerNew>(comm_);
+  }
+
+  SetupSFNBranch()
+  {
+    comm_ = OHMMS::Controller;
+    emb_  = std::make_unique<EstimatorManagerNew>(comm_);
+  }
+
+  std::unique_ptr<SFNBranch> operator()(ParticleSet& pset, TrialWaveFunction& twf, WaveFunctionFactory& wf_factory, QMCHamiltonian& ham)
+  {
+    pop_ = std::make_unique<MCPopulation>(1, comm_->rank(), walker_confs_, &pset, &twf, &wf_factory, &ham);
     // MCPopulation owns it walkers it cannot just take refs so we just create and then update its walkers.
-    pop_->createWalkers(2, walker_confs_);
+    pop_->createWalkers(2);
 
     RefVector<MCPWalker> walkers = convertUPtrToRefVector(pop_->get_walkers());
 
     walkers[0].get().R[0] = 1.0;
     walkers[1].get().R[0] = 0.5;
 
-    auto sfnb = std::make_unique<SFNBranch>(tau_, 1.0, DMCRefEnergyScheme::LIMITED_HISTORY);
+    auto sfnb = std::make_unique<SFNBranch>(tau_, num_global_walkers_);
 
     createMyNode(*sfnb, valid_dmc_input_sections[valid_dmc_input_dmc_batch_index]);
 
@@ -85,6 +90,7 @@ TEST_CASE("SFNBranch::branch(MCPopulation...)", "[drivers]")
   SetupSFNBranch setup_sfnb(pools.comm);
   std::unique_ptr<SFNBranch> sfnb =
       setup_sfnb(*pools.particle_pool->getParticleSet("e"), *pools.wavefunction_pool->getPrimary(),
+                 *pools.wavefunction_pool->getWaveFunctionFactory("wavefunction"),
                  *pools.hamiltonian_pool->getPrimary());
 }
 

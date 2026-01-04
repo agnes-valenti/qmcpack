@@ -51,13 +51,13 @@ def use_delayed_update(tree, delay):
     for node in nodes:
       add_or_change_attribute(node, 'delay_rank', str(delay))
 
-def use_det_batched(tree, string):
+def use_det_batched(tree):
     nodes = tree.findall(".//wavefunction/determinantset/slaterdeterminant")
     if len(nodes) == 0:
         print('slaterdeterminant not found')
         return
     for node in nodes:
-      add_or_change_attribute(node, 'batch', string)
+      add_or_change_attribute(node, 'batch', 'yes')
 
 def change_jastrow(tree, j3_tree):
     wf_nodes = tree.findall('.//wavefunction')
@@ -82,9 +82,6 @@ def change_to_unified_drivers(tree):
     nodes = qmc.findall("./parameter[@name='walkers']")
     if nodes:
       add_or_change_attribute(nodes[0], 'name', 'walkers_per_rank')
-  proj_nodes = tree.findall(".//project")
-  for proj in proj_nodes:
-    add_or_change_parameter(proj, 'driver_version', 'batched')
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description="Adjust QMCPACK input files")
@@ -121,9 +118,7 @@ if __name__ == '__main__':
     use_delayed_update(tree, args.delay)
 
   if args.detbatched:
-    use_det_batched(tree, 'yes')
-  else:
-    use_det_batched(tree, 'no')
+    use_det_batched(tree)
 
   if args.J123:
     j3_tree = ET.parse(args.J123)

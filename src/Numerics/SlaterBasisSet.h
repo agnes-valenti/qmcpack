@@ -24,8 +24,8 @@ template<class T>
 struct SlaterCombo
 {
   static_assert(std::is_floating_point<T>::value, "T must be a float point type");
-  using real_type   = T;
-  using Component_t = GenericSTO<T>;
+  typedef T real_type;
+  typedef GenericSTO<T> Component_t;
 
   int L;
   bool Normalized;
@@ -56,6 +56,11 @@ struct SlaterCombo
     return res;
   }
 
+  inline real_type f(real_type r, real_type xsquared, real_type ysquared) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
+    
   inline real_type df(real_type r)
   {
     real_type res = 0;
@@ -92,8 +97,8 @@ struct SlaterCombo
     typename std::vector<Component_t>::iterator it(sset.begin()), it_end(sset.end());
     while (it != it_end)
     {
-      Y += (*it).evaluate(r, rinv, du, d2u);
-      dY += du;
+      Y   += (*it).evaluate(r, rinv, du, d2u);
+      dY  += du;
       d2Y += d2u;
       ++it;
     }
@@ -109,8 +114,8 @@ struct SlaterCombo
     typename std::vector<Component_t>::iterator it(sset.begin()), it_end(sset.end());
     while (it != it_end)
     {
-      Y += (*it).evaluate(r, rinv, du, d2u, d3u);
-      dY += du;
+      Y   += (*it).evaluate(r, rinv, du, d2u, d3u);
+      dY  += du;
       d2Y += d2u;
       d3Y += d3u;
       ++it;

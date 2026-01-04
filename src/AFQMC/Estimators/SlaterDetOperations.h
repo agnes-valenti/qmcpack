@@ -21,7 +21,7 @@ namespace qmcplusplus
 class SlaterDetOperations : public MPIObjectBase, public AFQMCInfo
 {
 public:
-  using HamPtr = HamiltonianBase*;
+  typedef HamiltonianBase* HamPtr;
 
   SlaterDetOperations(Communicate* c) : MPIObjectBase(c), ham(NULL) {}
 

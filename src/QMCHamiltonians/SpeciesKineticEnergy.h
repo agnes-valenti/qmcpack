@@ -12,6 +12,7 @@
 #ifndef QMCPLUSPLUS_SPECIESKINETICENERGY_H
 #define QMCPLUSPLUS_SPECIESKINETICENERGY_H
 
+#include "Particle/WalkerSetRef.h"
 #include "QMCHamiltonians/OperatorBase.h"
 
 namespace qmcplusplus
@@ -28,7 +29,6 @@ class SpeciesKineticEnergy : public OperatorBase
 public:
   SpeciesKineticEnergy(ParticleSet& P);
 
-  std::string getClassName() const override { return "SpeciesKineticEnergy"; }
   bool put(xmlNodePtr cur) override;         // read input xml node, required
   bool get(std::ostream& os) const override; // class description, required
 
@@ -44,7 +44,7 @@ public:
   void setObservables(PropertySetType& plist) override;
 
   // allow h5 output
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
 
 private:
   ParticleSet& tpset; // reference to target particle set

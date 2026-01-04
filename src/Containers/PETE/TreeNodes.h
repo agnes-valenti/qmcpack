@@ -55,7 +55,7 @@ struct Reference
   //---------------------------------------------------------------------------
   // Export the type of thing we're referencing.
 
-  using Type_t = T;
+  typedef T Type_t;
 
   //---------------------------------------------------------------------------
   // Reference can be created from a const ref.
@@ -97,16 +97,16 @@ struct Reference
 template<class T>
 struct DeReference
 {
-  using Return_t = const T&;
-  using Type_t   = T;
+  typedef const T& Return_t;
+  typedef T Type_t;
   static inline Return_t apply(const T& a) { return a; }
 };
 
 template<class T>
 struct DeReference<Reference<T>>
 {
-  using Return_t = const T&;
-  using Type_t   = T;
+  typedef const T& Return_t;
+  typedef T Type_t;
   static inline Return_t apply(const Reference<T>& a) { return a.reference(); }
 };
 

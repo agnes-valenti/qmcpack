@@ -20,7 +20,7 @@
 #if defined(ENABLE_CUDA)
 #include "AFQMC/Numerics/detail/CUDA/lapack_cuda_gpu_ptr.hpp"
 //#include "AFQMC/Numerics/detail/CUDA/lapack_cuda_catch_all.hpp"
-#elif defined(BUILD_AFQMC_HIP)
+#elif defined(ENABLE_HIP)
 #include "AFQMC/Numerics/detail/HIP/lapack_hip_gpu_ptr.hpp"
 #endif
 #endif

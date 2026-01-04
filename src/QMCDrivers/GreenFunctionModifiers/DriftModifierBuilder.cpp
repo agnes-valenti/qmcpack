@@ -28,12 +28,11 @@ DriftModifierBase* createDriftModifier(xmlNodePtr cur, const Communicate* myComm
   return DriftModifier;
 }
 
-DriftModifierBase* createDriftModifier(const std::string& drift_modifier_str, QMCTraits::RealType unr_a)
+DriftModifierBase* createDriftModifier(const QMCDriverInput& qmcdriver_input)
 {
-  std::string dm_str(lowerCase(drift_modifier_str));
-  if (dm_str != "unr")
+  if (qmcdriver_input.get_drift_modifier() != "UNR")
     throw std::runtime_error("createDriftModifier unknown drift_modifier ");
-  DriftModifierBase* DriftModifier = new DriftModifierUNR(unr_a);
+  DriftModifierBase* DriftModifier = new DriftModifierUNR(qmcdriver_input.get_drift_modifier_unr_a());
   return DriftModifier;
 }
 

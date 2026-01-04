@@ -342,7 +342,7 @@ inline void rotateHijkl(std::string& type,
       {
         // Qk[norb*NAEA,nvec]
         // Rl[nvec,norb*NAEA]
-        int n0_, n1_, sz_ = Qk.size();
+        int n0_, n1_, sz_ = Qk.size(0);
         std::tie(n0_, n1_) = FairDivideBoundary(coreid, sz_, ncores);
         if (n1_ - n0_ > 0)
           ma::transpose(Qk.sliced(n0_, n1_), Rl(Rl.extension(0), {n0_, n1_}));
@@ -406,8 +406,7 @@ inline void rotateHijkl(std::string& type,
       disp[i] = cnt;
       cnt += cnts[i];
     }
-    MPI_Allgatherv(nkbounds.data(), nkbounds.size(), MPI_INT, Qksizes.data(), cnts.data(), disp.data(), MPI_INT,
-                   comm.get());
+    MPI_Allgatherv(nkbounds.data(), nkbounds.size(), MPI_INT, Qksizes.data(), cnts.data(), disp.data(), MPI_INT, comm.get());
   }
 
   MPI_Bcast(Qknum.data(), comm.size(), MPI_INT, 0, TG.Node().get());
@@ -477,10 +476,8 @@ inline void rotateHijkl(std::string& type,
       assert(nkcum + K0_ == M_split[nn + nn0]);
       if (M_split[nn + nn0 + 1] == M_split[nn + nn0])
         continue;
-      int nblk = Qknum[nn];
-#ifndef NDEBUG
+      int nblk       = Qknum[nn];
       long ntermscum = 0;
-#endif
       for (int bi = 0; bi < nblk; bi++, nb++)
       {
         int nterms = Qksizes[2 * nb];     // number of terms in block
@@ -525,10 +522,8 @@ inline void rotateHijkl(std::string& type,
             comm.broadcast_n(to_address(SptQk.non_zero_indices2_data()), nterms, nn);
           }
           TG.node_barrier();
-#ifndef NDEBUG
           // for safety, keep track of sum
           ntermscum += static_cast<long>(nterms);
-#endif
         }
         else
         {
@@ -602,10 +597,8 @@ inline void rotateHijkl(std::string& type,
     assert(nkcum + K0_ == M_split[nn + nn0]);
     if (M_split[nn + nn0 + 1] == M_split[nn + nn0])
       continue;
-    int nblk = Qknum[nn];
-#ifndef NDEBUG
+    int nblk       = Qknum[nn];
     long ntermscum = 0;
-#endif
     for (int bi = 0; bi < nblk; bi++, nb++)
     {
       int nterms = Qksizes[2 * nb];     // number of terms in block
@@ -650,10 +643,8 @@ inline void rotateHijkl(std::string& type,
           comm.broadcast_n(to_address(SptQk.non_zero_indices2_data()), nterms, nn);
         }
         TG.node_barrier();
-#ifndef NDEBUG
         // for safety, keep track of sum
         ntermscum += static_cast<long>(nterms);
-#endif
       }
       else
       {
@@ -773,7 +764,6 @@ inline void rotateHijkl_single_node(std::string& type,
     std::fill_n(Rl.origin(), Rl.num_elements(), SPComplexType(0.0));
 
   {
-    using std::get;
     //   Q(k,a,n) = sum_i ma::conj(Amat(i,a)) * V2_fact(ik,n)
     //   R(l,a,n) = sum_i ma::conj(Amat(i,a)) * ma::conj(V2_fact(li,n))
 
@@ -799,7 +789,7 @@ inline void rotateHijkl_single_node(std::string& type,
     {
       // Qk[norb*NAEA,nvec]
       // Rl[nvec,norb*NAEA]
-      int n0_, n1_, sz_ = get<0>(Qk.sizes());
+      int n0_, n1_, sz_ = Qk.size(0);
       std::tie(n0_, n1_) = FairDivideBoundary(coreid, sz_, ncores);
       if (n1_ - n0_ > 0)
         ma::transpose(Qk.sliced(n0_, n1_), Rl(Rl.extension(0), {n0_, n1_}));

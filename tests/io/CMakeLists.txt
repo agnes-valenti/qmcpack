@@ -20,7 +20,7 @@ function(
   #  2. run $check_script located in the same folder
 
   # build test name
-  set(full_name "${base_name}-r${procs}-t${threads}")
+  set(full_name "${base_name}-${procs}-${threads}")
   message(VERBOSE "Adding test ${full_name}")
 
   # add run (task 1)
@@ -37,7 +37,7 @@ function(
   if(test_added)
 
     # add restart (task 2)
-    set(restart_name "${base_name}-r${procs}-t${threads}-restart")
+    set(restart_name "${base_name}-${procs}-${threads}-restart")
     #set (test_added false)
     set(test_labels "")
     run_qmc_app_no_copy(
@@ -82,7 +82,7 @@ function(
 endfunction()
 
 run_restart_and_check(
-  deterministic-restart
+  restart
   "${qmcpack_SOURCE_DIR}/tests/io/restart"
   qmc_short
   8
@@ -90,7 +90,7 @@ run_restart_and_check(
   check.sh
   false)
 run_restart_and_check(
-  deterministic-restart
+  restart
   "${qmcpack_SOURCE_DIR}/tests/io/restart"
   qmc_short
   1
@@ -99,75 +99,16 @@ run_restart_and_check(
   true)
 
 run_restart_and_check(
-  deterministic-restart_batch
-  "${qmcpack_SOURCE_DIR}/tests/io/restart_batch"
-  qmc_short_batch
-  8
-  2
-  check.sh
-  false)
-
-add_test_check_file_existence(deterministic-restart_batch-8-2 qmc_short_batch.s000.config.h5 TRUE)
-add_test_check_file_existence(deterministic-restart_batch-8-2 qmc_short_batch.s000.random.h5 TRUE)
-add_test_check_file_existence(deterministic-restart_batch-8-2 qmc_short_batch.s001.config.h5 FALSE)
-add_test_check_file_existence(deterministic-restart_batch-8-2 qmc_short_batch.s001.random.h5 FALSE)
-
-run_restart_and_check(
-  deterministic-restart_batch
-  "${qmcpack_SOURCE_DIR}/tests/io/restart_batch"
-  qmc_short_batch
-  1
-  16
-  check.sh
-  true)
-
-run_restart_and_check(
-  deterministic-restart_dmc
-  "${qmcpack_SOURCE_DIR}/tests/io/restart_dmc"
-  det_qmc_vmcbatch_dmcbatch_tm
-  8
-  2
-  check.sh
-  false)
-
-run_restart_and_check(
-  deterministic-restart_dmc
-  "${qmcpack_SOURCE_DIR}/tests/io/restart_dmc"
-  det_qmc_vmcbatch_dmcbatch_tm
-  1
-  16
-  check.sh
-  true)
-
-run_restart_and_check(
-  deterministic-restart_dmc_disable_branching
-  "${qmcpack_SOURCE_DIR}/tests/io/restart_dmc_disable_branching"
-  det_qmc_vmcbatch_dmcbatch_tm
-  8
-  2
-  check.sh
-  false)
-
-run_restart_and_check(
-  deterministic-restart_dmc_disable_branching
-  "${qmcpack_SOURCE_DIR}/tests/io/restart_dmc_disable_branching"
-  det_qmc_vmcbatch_dmcbatch_tm
-  1
-  16
-  check.sh
-  true)
-
-run_restart_and_check(
-  deterministic-save_spline_coefs
-  "${qmcpack_SOURCE_DIR}/tests/io/save_spline_coefs"
+  save_coefs
+  "${qmcpack_SOURCE_DIR}/tests/io/save_coefs"
   qmc_short
   8
   2
   check.sh
   false)
 run_restart_and_check(
-  deterministic-save_spline_coefs
-  "${qmcpack_SOURCE_DIR}/tests/io/save_spline_coefs"
+  save_coefs
+  "${qmcpack_SOURCE_DIR}/tests/io/save_coefs"
   qmc_short
   1
   16

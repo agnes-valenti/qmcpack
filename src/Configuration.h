@@ -50,60 +50,60 @@ struct QMCTraits
 {
   enum
   {
-    DIM     = OHMMS_DIM,
-    DIM_VGL = OHMMS_DIM + 2 // Value(1) + Gradients(OHMMS_DIM) + Laplacian(1)
+    DIM = OHMMS_DIM
   };
-  using QTBase      = QMCTypes<OHMMS_PRECISION, DIM>;
-  using QTFull      = QMCTypes<OHMMS_PRECISION_FULL, DIM>;
-  using RealType    = QTBase::RealType;
-  using ComplexType = QTBase::ComplexType;
-  using ValueType   = QTBase::ValueType;
-  using PosType     = QTBase::PosType;
-  using GradType    = QTBase::GradType;
-  using TensorType  = QTBase::TensorType;
+  using QTBase = QMCTypes<OHMMS_PRECISION, DIM>;
+  using QTFull = QMCTypes<OHMMS_PRECISION_FULL, DIM>;
+  typedef QTBase::RealType RealType;
+  typedef QTBase::ComplexType ComplexType;
+  typedef QTBase::ValueType ValueType;
+  typedef QTBase::PosType PosType;
+  typedef QTBase::GradType GradType;
+  typedef QTBase::TensorType TensorType;
   ///define other types
-  using IndexType         = OHMMS_INDEXTYPE;
-  using FullPrecRealType  = QTFull::RealType;
-  using FullPrecValueType = QTFull::ValueType;
+  typedef OHMMS_INDEXTYPE IndexType;
+  typedef QTFull::RealType FullPrecRealType;
+  typedef QTFull::ValueType FullPrecValueType;
   ///define PropertyList_t
-  using PropertySetType = RecordNamedProperty<FullPrecRealType>;
+  typedef RecordNamedProperty<FullPrecRealType> PropertySetType;
 
   // Type for particle group index pairs
-  using PtclGrpIndexes = std::vector<std::pair<int, int>>;
+  using PtclGrpIndexes = std::vector<std::pair<int,int>>;
 };
-
-using Lattice = CrystalLattice<OHMMS_PRECISION_FULL, OHMMS_DIM>;
 
 /** Particle traits to use UniformGridLayout for the ParticleLayout.
  */
 struct PtclOnLatticeTraits
 {
+  using ParticleLayout_t = CrystalLattice<OHMMS_PRECISION, OHMMS_DIM>;
   using QTFull = QMCTraits::QTFull;
 
-  using Index_t   = int;
-  using Scalar_t  = QTFull::RealType;
-  using Complex_t = QTFull::ComplexType;
+  typedef int Index_t;
+  typedef QTFull::RealType Scalar_t;
+  typedef QTFull::ComplexType Complex_t;
 
-  using SingleParticlePos = QMCTraits::QTBase::PosType;
-  using Tensor_t          = QMCTraits::QTBase::TensorType;
+  typedef ParticleLayout_t::SingleParticleIndex_t SingleParticleIndex_t;
+  typedef ParticleLayout_t::SingleParticlePos_t SingleParticlePos_t;
+  typedef ParticleLayout_t::Tensor_t Tensor_t;
 
-  using ParticleIndex  = ParticleAttrib<Index_t>;
-  using ParticleScalar = ParticleAttrib<Scalar_t>;
-  using ParticlePos    = ParticleAttrib<SingleParticlePos>;
-  using ParticleTensor = ParticleAttrib<Tensor_t>;
+  typedef ParticleAttrib<Index_t> ParticleIndex_t;
+  typedef ParticleAttrib<Scalar_t> ParticleScalar_t;
+  typedef ParticleAttrib<SingleParticlePos_t> ParticlePos_t;
+  typedef ParticleAttrib<Tensor_t> ParticleTensor_t;
 
-  using ParticleGradient    = Vector<QTFull::GradType>;
-  using ParticleLaplacian   = Vector<QTFull::ValueType>;
-  using SingleParticleValue = QTFull::ValueType;
+  typedef ParticleAttrib<QTFull::GradType> ParticleGradient_t;
+  typedef ParticleAttrib<QTFull::ValueType> ParticleLaplacian_t;
+  typedef QTFull::ValueType SingleParticleValue_t;
 };
+
 
 // For unit tests
 //  Check if we are compiling with Catch defined.  Could use other symbols if needed.
 #ifdef TEST_CASE
 #ifdef QMC_COMPLEX
-using ValueApprox = Catch::Detail::ComplexApprox;
+  using ValueApprox = Catch::Detail::ComplexApprox;
 #else
-using ValueApprox = Catch::Detail::Approx;
+  using ValueApprox = Catch::Detail::Approx;
 #endif
 #endif
 

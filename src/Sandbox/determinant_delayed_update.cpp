@@ -22,7 +22,8 @@
 #include <getopt.h>
 using namespace std;
 #include "CPU/SIMD/aligned_allocator.hpp"
-#include "CPU/SIMD/inner_product.hpp"
+#include "CPU/SIMD/simd.hpp"
+#include "CPU/SIMD/algorithm.hpp"
 #include "QMCWaveFunctions/Fermion/DiracMatrix.h"
 #include "QMCWaveFunctions/Fermion/DelayedUpdate.h"
 using namespace qmcplusplus;
@@ -31,7 +32,7 @@ template<typename RNG, typename T>
 inline void generate(RNG& rng, T* restrict data, size_t n)
 {
   constexpr T shift(0.5);
-  std::generate(data, data + n, rng);
+  rng.generate_uniform(data, n);
   for (int i = 0; i < n; ++i)
     data[i] -= shift;
 }
@@ -40,16 +41,16 @@ int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
   mpi3::environment env(argc, argv);
-  OHMMS::Controller = new Communicate(env.world());
+  OHMMS::Controller->initialize(env);
 #endif
   Communicate* myComm = OHMMS::Controller;
 
-  using RealType  = QMCTraits::RealType;
-  using ValueType = QMCTraits::ValueType;
+  typedef QMCTraits::RealType RealType;
+  typedef QMCTraits::ValueType ValueType;
 #if defined(QMC_COMPLEX)
-  using mValueType = std::complex<OHMMS_PRECISION_FULL>;
+  typedef std::complex<OHMMS_PRECISION_FULL> mValueType;
 #else
-  using mValueType = OHMMS_PRECISION_FULL;
+  typedef OHMMS_PRECISION_FULL mValueType;
 #endif
   //use the global generator
 
@@ -94,7 +95,7 @@ int main(int argc, char** argv)
     }
   }
 
-  Random.init(iseed);
+  Random.init(0, 1, iseed);
 
   //turn off output
   if (omp_get_max_threads() > 1)
@@ -118,14 +119,14 @@ int main(int argc, char** argv)
     const int teamID = ip / ncrews;
     const int crewID = ip % ncrews;
 
-    RandomGenerator random_th(myPrimes[ip]);
+    RandomGenerator<RealType> random_th(myPrimes[ip]);
 
     Matrix<ValueType> psiM(nels, nels), psiM_inv(nels, nels);
     Vector<ValueType> psiV(nels), invRow(nels);
 
     DiracMatrix<ValueType> detEng;
-    DelayedUpdate<ValueType> FahyEng;
-    DelayedUpdate<ValueType> delayedEng;
+    DelayedUpdate<ValueType, QMCTraits::QTFull::ValueType> FahyEng;
+    DelayedUpdate<ValueType, QMCTraits::QTFull::ValueType> delayedEng;
 
     FahyEng.resize(nels, 1);
     delayedEng.resize(nels, delay);

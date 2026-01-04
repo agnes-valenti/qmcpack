@@ -20,7 +20,6 @@
 #include "Numerics/CubicBspline.h"
 #include "OptimizableFunctorBase.h"
 #include "Message/Communicate.h"
-#include "OMPTarget/OffloadAlignedAllocators.hpp"
 
 namespace qmcplusplus
 {
@@ -31,18 +30,18 @@ namespace qmcplusplus
  * - RT real data type
  * - FNOUT final numerical functor
  *  An example is in CBSOBuilder.h which uses CubicBspline
- *  using SplineEngineType = CubicBspline<RealType,LINEAR_1DGRID,FIRSTDERIV_CONSTRAINTS>;
- *  using RadialOrbitalType = CubicSplineSingle<RealType,SplineEngineType>;
+ *  typedef CubicBspline<RealType,LINEAR_1DGRID,FIRSTDERIV_CONSTRAINTS> SplineEngineType;
+ *  typedef CubicSplineSingle<RealType,SplineEngineType> RadialOrbitalType;
  */
 template<typename RT, typename FNOUT>
 struct CubicSplineSingle : public OptimizableFunctorBase
 {
   ///typedef for the value_type
-  using value_type = RT;
+  typedef RT value_type;
   ///typedef of the source functor
-  using FNIN = OptimizableFunctorBase;
+  typedef OptimizableFunctorBase FNIN;
   ///typedef for the grid
-  using grid_type = OneDimGridBase<real_type>;
+  typedef OneDimGridBase<real_type> grid_type;
 
   // mmorales: until I figure out how to go around this
   int NumParams;
@@ -76,7 +75,7 @@ struct CubicSplineSingle : public OptimizableFunctorBase
   ///set the input, analytic function
   void setInFunc(FNIN* in_) { InFunc = in_; }
 
-  void reportStatus(std::ostream& os) override
+  void reportStatus(std::ostream& os)
   {
     //myVars.print(os);
   }
@@ -115,6 +114,12 @@ struct CubicSplineSingle : public OptimizableFunctorBase
   /** implement the virtual function of OptimizableFunctorBase */
   inline real_type f(real_type r) override { return OutFunc.splint(r); }
 
+/** implement the virtual function of OptimizableFunctorBase */
+  inline real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
+
   /** implement the virtual function of OptimizableFunctorBase  */
   inline real_type df(real_type r) override
   {
@@ -123,6 +128,13 @@ struct CubicSplineSingle : public OptimizableFunctorBase
     return dudr;
   }
 
+/** implement the virtual function of OptimizableFunctorBase */
+  inline real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
+
+  
   inline real_type evaluateV(const int iat,
                              const int iStart,
                              const int iEnd,
@@ -131,23 +143,6 @@ struct CubicSplineSingle : public OptimizableFunctorBase
   {
     // need to actually implement this!
     return real_type(0);
-  }
-
-  /** evaluate sum of the pair potentials FIXME
-   * @return \f$\sum u(r_j)\f$ for r_j < cutoff_radius
-   */
-  static void mw_evaluateV(const int num_groups,
-                           const CubicSplineSingle* const functors[],
-                           const int n_src,
-                           const int* grp_ids,
-                           const int num_pairs,
-                           const int* ref_at,
-                           const RT* mw_dist,
-                           const int dist_stride,
-                           RT* mw_vals,
-                           Vector<char, OffloadPinnedAllocator<char>>& transfer_buffer)
-  {
-    throw std::runtime_error("mw_evaluateV not implemented!");
   }
 
   inline void evaluateVGL(const int iat,
@@ -171,10 +166,10 @@ struct CubicSplineSingle : public OptimizableFunctorBase
     return s;
   }
 
-  void checkInVariablesExclusive(opt_variables_type& active) override
+  void checkInVariables(opt_variables_type& active) override
   {
     if (InFunc)
-      InFunc->checkInVariablesExclusive(active);
+      InFunc->checkInVariables(active);
   }
 
   void checkOutVariables(const opt_variables_type& active) override
@@ -184,11 +179,11 @@ struct CubicSplineSingle : public OptimizableFunctorBase
   }
 
   ///reset the input/output function
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     if (InFunc)
     {
-      InFunc->resetParametersExclusive(active);
+      InFunc->resetParameters(active);
       reset();
     }
   }
@@ -236,11 +231,11 @@ template<typename RT>
 struct CubicSplineBasisSet : public OptimizableFunctorBase
 {
   ///typedef of the source functor
-  using FNIN = OptimizableFunctorBase;
+  typedef OptimizableFunctorBase FNIN;
   ///typedef for the argument
-  using FNOUT = CubicBspline<RT, LINEAR_1DGRID, FIRSTDERIV_CONSTRAINTS>;
+  typedef CubicBspline<RT, LINEAR_1DGRID, FIRSTDERIV_CONSTRAINTS> FNOUT;
   ///typedef for the grid
-  using grid_type = OneDimGridBase<real_type>;
+  typedef OneDimGridBase<real_type> grid_type;
 
   FNIN* InFunc;
   FNOUT* OutFunc;
@@ -257,11 +252,11 @@ struct CubicSplineBasisSet : public OptimizableFunctorBase
   ///set the output numerical function
   void setOutFunc(FNOUT* out_) { OutFunc = out_; }
   ///reset the input/output function
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     if (!InFunc)
       APP_ABORT("CubicSplineBasisSet::resetParameters failed due to null input function ");
-    InFunc->resetParametersExclusive(active);
+    InFunc->resetParameters(active);
     reset();
   }
 
@@ -271,7 +266,7 @@ struct CubicSplineBasisSet : public OptimizableFunctorBase
       OutFunc = new FNOUT;
     typename FNOUT::container_type datain(NumGridPoints);
     real_type r = 0;
-    for (int i = 0; i < NumGridPoints; i++, r += GridDelta)
+    for (int i = 0; i < NumGridPoints; i++, r += GridDelta) 
       datain[i] = InFunc->f(r);
     OutFunc->Init(0.0, Rmax, datain, true, InFunc->df(0.0), 0.0);
   }
@@ -290,6 +285,13 @@ struct CubicSplineBasisSet : public OptimizableFunctorBase
   /** implement the virtual function of OptimizableFunctorBase */
   real_type f(real_type r) override { return OutFunc->splint(r); }
 
+  /** implement the virtual function of OptimizableFunctorBase */
+  real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
+
+
   /** implement the virtual function of OptimizableFunctorBase  */
   real_type df(real_type r) override
   {
@@ -297,6 +299,13 @@ struct CubicSplineBasisSet : public OptimizableFunctorBase
     OutFunc->splint(r, dudr, d2udr2);
     return dudr;
   }
+
+/** implement the virtual function of OptimizableFunctorBase */
+  real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
+
 
   bool put(xmlNodePtr cur) override { return InFunc->put(cur); }
 

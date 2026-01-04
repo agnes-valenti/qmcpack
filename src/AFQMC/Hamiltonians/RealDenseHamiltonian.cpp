@@ -14,6 +14,7 @@
 #endif
 
 #include "Configuration.h"
+#include "type_traits/container_traits_multi.h"
 #include "hdf/hdf_multi.h"
 #include "hdf/hdf_archive.h"
 
@@ -60,21 +61,19 @@ HamiltonianOperations RealDenseHamiltonian::getHamiltonianOperations(bool pureSD
   using RMatrix_ref   = boost::multi::array_ref<RealType, 2>;
   using Sp3Tensor_ref = boost::multi::array_ref<SPComplexType, 3>;
 
-  using std::get;
-
   if (type == COLLINEAR)
     assert(PsiT.size() % 2 == 0);
   int nspins = ((type != COLLINEAR) ? 1 : 2);
   int ndet   = PsiT.size() / nspins;
-  int nup    = get<0>(PsiT[0].sizes());
+  int nup    = PsiT[0].size(0);
   int ndown  = 0;
   if (nspins == 2)
-    ndown = get<0>(PsiT[1].sizes());
+    ndown = PsiT[1].size(0);
   int NEL = nup + ndown;
 
   // distribute work over equivalent nodes in TGprop.TG() across TG.Global()
   auto Qcomm(TG.Global().split(TGprop.getLocalGroupNumber(), TG.Global().rank()));
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
   auto distNode(TG.Node().split(TGprop.getLocalGroupNumber(), TG.Node().rank()));
 #else
   auto distNode(TG.Node().split(0, TG.Node().rank()));
@@ -91,7 +90,12 @@ HamiltonianOperations RealDenseHamiltonian::getHamiltonianOperations(bool pureSD
       app_error() << " Error opening integral file in RealDenseHamiltonian. \n";
       APP_ABORT("");
     }
-    dump.push("Hamiltonian", false);
+    if (!dump.push("Hamiltonian", false))
+    {
+      app_error() << " Error in RealDenseHamiltonian::getHamiltonianOperations():"
+                  << " Group not Hamiltonian found. \n";
+      APP_ABORT("");
+    }
   }
 
   std::vector<int> Idata(8);
@@ -154,7 +158,12 @@ HamiltonianOperations RealDenseHamiltonian::getHamiltonianOperations(bool pureSD
   if (distNode.root())
   {
     // read L
-    dump.push("DenseFactorized", false);
+    if (!dump.push("DenseFactorized", false))
+    {
+      app_error() << " Error in RealDenseHamiltonian::getHamiltonianOperations():"
+                  << " Group DenseFactorized not found. \n";
+      APP_ABORT("");
+    }
     SpRMatrix_ref L(to_address(Likn.origin()), Likn.extensions());
     hyperslab_proxy<SpRMatrix_ref, 2> hslab(L,
                                             std::array<size_t, 2>{static_cast<size_t>(NMO * NMO),
@@ -177,14 +186,11 @@ HamiltonianOperations RealDenseHamiltonian::getHamiltonianOperations(bool pureSD
                   << " Problems reading /Hamiltonian/DenseFactorized/L. \n";
       APP_ABORT("");
     }
-
-    using std::get;
-
-    if (get<0>(Likn.sizes()) != NMO * NMO || get<1>(Likn.sizes()) != local_ncv)
+    if (Likn.size(0) != NMO * NMO || Likn.size(1) != local_ncv)
     {
       app_error() << " Error in RealDenseHamiltonian::getHamiltonianOperations():"
                   << " Problems reading /Hamiltonian/DenseFactorized/L. \n"
-                  << " Unexpected dimensions: " << get<0>(Likn.sizes()) << " " << get<1>(Likn.sizes()) << std::endl;
+                  << " Unexpected dimensions: " << Likn.size(0) << " " << Likn.size(1) << std::endl;
       APP_ABORT("");
     }
     dump.pop();
@@ -196,7 +202,7 @@ HamiltonianOperations RealDenseHamiltonian::getHamiltonianOperations(bool pureSD
   std::vector<shmSp3Tensor> Lank;
   Lank.reserve(PsiT.size());
   for (int nd = 0; nd < PsiT.size(); nd++)
-    Lank.emplace_back(shmSp3Tensor({static_cast<boost::multi::size_t>(PsiT[nd].size(0)), local_ncv, NMO}, shared_allocator<SPComplexType>{distNode}));
+    Lank.emplace_back(shmSp3Tensor({PsiT[nd].size(0), local_ncv, NMO}, shared_allocator<SPComplexType>{distNode}));
   int nrow = NEL;
   if (ndet > 1)
     nrow = 0; // not used if ndet>1

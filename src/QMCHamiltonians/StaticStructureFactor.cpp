@@ -20,7 +20,10 @@ namespace qmcplusplus
 {
 StaticStructureFactor::StaticStructureFactor(ParticleSet& P) : Pinit(P)
 {
-  if (P.getLattice().SuperCellEnum == SUPERCELL_OPEN)
+#ifndef USE_REAL_STRUCT_FACTOR
+  APP_ABORT("StaticStructureFactor: please recompile with USE_REAL_STRUCT_FACTOR=1");
+#endif
+  if (P.Lattice.SuperCellEnum == SUPERCELL_OPEN)
     APP_ABORT("StaticStructureFactor is incompatible with open boundary conditions");
 
   // get particle information
@@ -51,7 +54,7 @@ bool StaticStructureFactor::put(xmlNodePtr cur)
 {
   using std::sqrt;
   reset();
-  const k2_t& k2_init = Pinit.getSimulationCell().getKLists().getKSQWorking();
+  const k2_t& k2_init = Pinit.SK->getKLists().ksq;
 
   std::string write_report = "no";
   OhmmsAttributeSet attrib;
@@ -104,20 +107,23 @@ void StaticStructureFactor::addObservables(PropertySetType& plist, BufferType& c
 }
 
 
-void StaticStructureFactor::registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const
+void StaticStructureFactor::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
-  h5desc.emplace_back(hdf_path(name_) / "kpoints");
+  hid_t sgid = H5Gcreate(gid, name_.c_str(), 0);
+  h5desc.emplace_back("kpoints");
   auto& oh = h5desc.back();
-  oh.addProperty(const_cast<std::vector<PosType>&>(Pinit.getSimulationCell().getKLists().getKptsCartWorking()), "value", file);
+  oh.open(sgid); // add to SkAll hdf group
+  oh.addProperty(const_cast<std::vector<PosType>&>(Pinit.SK->getKLists().kpts_cart), "value");
 
   std::vector<int> ng(2);
   ng[0] = 2;
   ng[1] = nkpoints;
   for (int s = 0; s < nspecies; ++s)
   {
-    h5desc.emplace_back(hdf_path{species_name[s]});
+    h5desc.emplace_back(species_name[s]);
     auto& ohSpeciesName = h5desc.back();
     ohSpeciesName.set_dimensions(ng, my_index_ + s * 2 * nkpoints);
+    ohSpeciesName.open(sgid);
   }
 }
 
@@ -125,8 +131,8 @@ void StaticStructureFactor::registerCollectables(std::vector<ObservableHelper>& 
 StaticStructureFactor::Return_t StaticStructureFactor::evaluate(ParticleSet& P)
 {
   RealType w                     = t_walker_->Weight;
-  const Matrix<RealType>& rhok_r = P.getSK().rhok_r;
-  const Matrix<RealType>& rhok_i = P.getSK().rhok_i;
+  const Matrix<RealType>& rhok_r = P.SK->rhok_r;
+  const Matrix<RealType>& rhok_i = P.SK->rhok_i;
   int nkptot                     = rhok_r.cols();
   for (int s = 0; s < nspecies; ++s)
   {

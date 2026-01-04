@@ -20,15 +20,18 @@ namespace qmcplusplus
 class ConstantOrbital : public WaveFunctionComponent
 {
 public:
-  PsiValue FakeGradRatio;
+  void checkInVariables(opt_variables_type& active) override {}
+  void checkOutVariables(const opt_variables_type& active) override {}
+  void resetParameters(const opt_variables_type& active) override {}
+  void reportStatus(std::ostream& os) override {}
 
-  ConstantOrbital() : FakeGradRatio(1.0) {}
+  PsiValueType FakeGradRatio;
 
-  std::string getClassName() const override { return "ConstantOrbital"; }
+  ConstantOrbital() : WaveFunctionComponent("ConstantOrbital"), FakeGradRatio(1.0) {}
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override
   {
     G = 0.0;
     L = 0.0;
@@ -39,15 +42,15 @@ public:
 
   void restore(int iat) override {}
 
-  PsiValue ratio(ParticleSet& P, int iat) override { return 1.0; }
+  PsiValueType ratio(ParticleSet& P, int iat) override { return 1.0; }
 
   GradType evalGrad(ParticleSet& P, int iat) override { return GradType(0.0); }
 
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override { return FakeGradRatio; }
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override { return FakeGradRatio; }
 
   void registerData(ParticleSet& P, WFBufferType& buf) override {}
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override { return 0.0; }
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override { return 0.0; }
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override {}
 
@@ -55,12 +58,6 @@ public:
   {
     return std::make_unique<ConstantOrbital>();
   }
-
-  void evaluateDerivatives(ParticleSet& P,
-                           const opt_variables_type& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
-  {}
 };
 
 

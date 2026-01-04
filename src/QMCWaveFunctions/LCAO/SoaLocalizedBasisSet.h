@@ -21,7 +21,6 @@
 
 #include <memory>
 #include "QMCWaveFunctions/BasisSetBase.h"
-#include "OMPTarget/OffloadAlignedAllocators.hpp"
 
 namespace qmcplusplus
 {
@@ -37,16 +36,12 @@ template<class COT, typename ORBT>
 class SoaLocalizedBasisSet : public SoaBasisSetBase<ORBT>
 {
 public:
-  using RealType  = typename COT::RealType;
-  using BaseType  = SoaBasisSetBase<ORBT>;
-  using ValueType = QMCTraits::ValueType;
-
-  using vgl_type          = typename BaseType::vgl_type;
-  using vgh_type          = typename BaseType::vgh_type;
-  using vghgh_type        = typename BaseType::vghgh_type;
-  using PosType           = typename ParticleSet::PosType;
-  using OffloadMWVGLArray = Array<ValueType, 3, OffloadPinnedAllocator<ValueType>>; // [VGL, walker, Orbs]
-  using OffloadMWVArray   = Array<ValueType, 2, OffloadPinnedAllocator<ValueType>>; // [walker, Orbs]
+  using RealType   = typename COT::RealType;
+  using BaseType   = SoaBasisSetBase<ORBT>;
+  using vgl_type   = typename BaseType::vgl_type;
+  using vgh_type   = typename BaseType::vgh_type;
+  using vghgh_type = typename BaseType::vghgh_type;
+  using PosType    = typename ParticleSet::PosType;
 
   using BaseType::BasisSetSize;
 
@@ -62,8 +57,9 @@ public:
   PosType SuperTwist;
 
 
-  /** container to store the offsets of the basis functions for each center
-   * Due to potential reordering of ions, offsets can be in any order.
+  /** container to store the offsets of the basis functions
+   *
+   * the number of basis states for center J is BasisOffset[J+1]-Basis[J]
    */
   std::vector<size_t> BasisOffset;
 
@@ -91,8 +87,7 @@ public:
   */
   void setPBCParams(const TinyVector<int, 3>& PBCImages,
                     const TinyVector<double, 3> Sup_Twist,
-                    const Vector<ValueType, OffloadPinnedAllocator<ValueType>>& phase_factor,
-                    const Array<RealType, 2, OffloadPinnedAllocator<RealType>>& pbc_displacements);
+                    const std::vector<QMCTraits::ValueType>& phase_factor);
 
   /** set BasisSetSize and allocate mVGL container
    */
@@ -109,38 +104,6 @@ public:
    * @param trialMove if true, use getTempDists()/getTempDispls()
    */
   void evaluateVGL(const ParticleSet& P, int iat, vgl_type& vgl) override;
-
-  /** compute V using packed array with all walkers 
-   * @param basis_list list of basis sets (one for each walker)
-   * @param P_list list of quantum particleset (one for each walker)
-   * @param iat active particle
-   * @param v   Array(n_walkers, BasisSetSize)
-   */
-  void mw_evaluateValue(const RefVectorWithLeader<SoaBasisSetBase<ORBT>>& basis_list,
-                        const RefVectorWithLeader<ParticleSet>& P_list,
-                        int iat,
-                        OffloadMWVArray& v) override;
-
-  /** compute V using packed array with all walkers 
-   * @param basis_list list of basis sets (one for each walker)
-   * @param vp_list list of quantum virtual particleset (one for each walker)
-   * @param v   Array(n_walkers, BasisSetSize)
-   */
-  void mw_evaluateValueVPs(const RefVectorWithLeader<SoaBasisSetBase<ORBT>>& basis_list,
-                           const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
-                           OffloadMWVArray& v) override;
-
-
-  /** compute VGL using packed array with all walkers 
-   * @param basis_list list of basis sets (one for each walker)
-   * @param P_list list of quantum particleset (one for each walker)
-   * @param iat active particle
-   * @param vgl   Array(n_walkers, 5, BasisSetSize)
-   */
-  void mw_evaluateVGL(const RefVectorWithLeader<SoaBasisSetBase<ORBT>>& basis_list,
-                      const RefVectorWithLeader<ParticleSet>& P_list,
-                      int iat,
-                      OffloadMWVGLArray& vgl) override;
 
   /** compute VGH 
    * @param P quantum particleset
@@ -184,51 +147,6 @@ public:
    * @param aos a set of Centered Atomic Orbitals
    */
   void add(int icenter, std::unique_ptr<COT> aos);
-
-
-  /** initialize a shared resource and hand it to collection
-   */
-  void createResource(ResourceCollection& collection) const override;
-
-  /** acquire a shared resource from collection
-   */
-  void acquireResource(ResourceCollection& collection,
-                       const RefVectorWithLeader<SoaBasisSetBase<ORBT>>& basisset_list) const override;
-
-  /** return a shared resource to collection
-   */
-  void releaseResource(ResourceCollection& collection,
-                       const RefVectorWithLeader<SoaBasisSetBase<ORBT>>& basisset_list) const override;
-
-
-  /** helper function for extracting a list of atomic basis sets for a single species (indexed by `id`)
-   *  from a list of basis sets
-   */
-  static RefVectorWithLeader<COT> extractOneSpeciesBasisRefList(
-      const RefVectorWithLeader<SoaBasisSetBase<ORBT>>& basisset_list,
-      int id);
-
-private:
-  using PinnedVecSizeT    = Vector<size_t, OffloadPinnedAllocator<size_t>>;
-
-  /// multi walker shared memory buffer
-  struct SoaLocalizedBSetMultiWalkerMem;
-  /// Pinned per-species list of ion indices for batched multi-center evaluation
-  std::vector<PinnedVecSizeT> species_centers_;
-  /// Pinned per-species list of basis-function offsets matching species_centers_
-  std::vector<PinnedVecSizeT> species_center_coffsets_;
-  /// multi walker resource handle
-  ResourceHandle<SoaLocalizedBSetMultiWalkerMem> mw_mem_handle_;
-  NewTimer& NumCenter_timer_;
-
-  /**
-  * @brief Initialize and upload per‐species ion center indices and basis‐function offsets.
-  *
-  * Groups all ions and their basis offsets by species into pinned host/device vectors
-  * and performs the one‐time upload. Called only once from Constructor
-  */
-  void initializeSpeciesOffsets();
-
 };
 } // namespace qmcplusplus
 #endif

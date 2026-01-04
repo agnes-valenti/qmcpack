@@ -41,7 +41,7 @@ struct OhmmsAttributeSet
   template<class PDT>
   void add(PDT& aparam,
            const std::string& aname,
-           std::vector<PDT> candidate_values = {},
+           std::vector<PDT>&& candidate_values = {},
            TagStatus status                    = TagStatus::OPTIONAL)
   {
     if (auto it = m_param.find(aname); it == m_param.end())
@@ -54,6 +54,7 @@ struct OhmmsAttributeSet
    */
   bool put(xmlNodePtr cur)
   {
+    //std::cout<<"AV entering AttributSet::put"<<std::endl;
     xmlAttrPtr att = cur->properties;
     while (att != NULL)
     {
@@ -64,7 +65,8 @@ struct OhmmsAttributeSet
         it->second->put(stream);
       }
       att = att->next;
-    }
+    }    
+    //std::cout<<"AV exiting AttributeSet::put"<<std::endl;
     return true;
   }
 };

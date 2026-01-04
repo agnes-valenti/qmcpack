@@ -1154,8 +1154,8 @@ class HDFgroup(DevBase):
 
 
 class HDFreader(DevBase):
-    datasets = set(["<class 'h5py.highlevel.Dataset'>","<class 'h5py._hl.dataset.Dataset'>","<class 'h5py._debian_h5py_serial._hl.dataset.Dataset'>"])
-    groups   = set(["<class 'h5py.highlevel.Group'>","<class 'h5py._hl.group.Group'>","<class 'h5py._debian_h5py_serial._hl.group.Group'>"])
+    datasets = set(["<class 'h5py.highlevel.Dataset'>","<class 'h5py._hl.dataset.Dataset'>"])
+    groups   = set(["<class 'h5py.highlevel.Group'>","<class 'h5py._hl.group.Group'>"])
     
     def __init__(self,fpath,verbose=False,view=False):
         
@@ -1199,7 +1199,8 @@ class HDFreader(DevBase):
                     elif vtype in HDFreader.groups:
                         self.add_group(hcur,cur,k,v)
                     else:
-                        raise Exception('hdfreader error: encountered invalid type: '+vtype)
+                        print('hdfreader error: encountered invalid type: '+vtype)
+                        sys.exit()
                     #end if
                 else:
                     print('hdfreader warning: attribute '+k+' is not a valid variable name and has been ignored')
@@ -1562,15 +1563,6 @@ def erfinv(z):
 
 
 
-def_atol =  0.0
-def_rtol = 1e-6
-
-# determine if two floats differ
-def float_diff(v1,v2,atol=def_atol,rtol=def_rtol):
-    return abs(v1-v2)>atol+rtol*abs(v2)
-#end def float_diff
-
-
 
 
 # Returns failure error code to OS.
@@ -1746,56 +1738,6 @@ def load_scalar_file(options,selector):
 
 
 
-######################################################################
-#                    IMPORTANT DEVELOPER INFO                        #
-######################################################################
-# Information for individual quantities in stat.h5 file.
-#   For each quantity, list a default label and data paths.
-#   To add new quantities to be checked, update this data structure.
-stat_info = obj({
-    'density'       : obj(
-        default_label = 'Density',
-        data_paths    = obj(tot='value'),
-        ),
-    'spindensity'   : obj(
-        default_label = 'SpinDensity',
-        data_paths    = obj(u='u/value',
-                            d='d/value'),
-        ),
-    'energydensity' : obj(
-        default_label = 'EnergyDensity',
-        data_paths    = obj(W=('spacegrid1/value',0,3),
-                            T=('spacegrid1/value',1,3),
-                            V=('spacegrid1/value',2,3)),
-        ),
-    '1rdm'          : obj(
-        default_label = 'DensityMatrices',
-        data_paths    = obj(u='number_matrix/u/value',
-                            d='number_matrix/d/value'),
-        ),
-    '1redm'         : obj(
-        default_label = 'DensityMatrices',
-        data_paths    = obj(u='energy_matrix/u/value',
-                            d='energy_matrix/d/value'),
-        ),
-    'obdm'          : obj(
-        default_label = 'OneBodyDensityMatrices',
-        data_paths    = obj(u='number_matrix/u/value',
-                            d='number_matrix/d/value'),
-        ),
-    'momentum'      : obj(
-        default_label = 'nofk',
-        data_paths    = obj(tot='value'),
-        ),
-    'sh_coeff'      : obj(
-        default_label = 'sh_coeff',
-        data_paths    = obj(coeff='value'),
-        ),
-    })
-
-
-
-
 # Reads command line options.
 def read_command_line():
     try:
@@ -1826,10 +1768,6 @@ def read_command_line():
                           default='3',
                           help='Sigma requirement for pass/fail (default=%default).'
                           )
-        parser.add_option('-a','--abs_err',dest='abs_err',
-                          default='none',
-                          help='Absolute error requirement for pass/fail (default=%default).'
-                          )
         parser.add_option('-q','--quantity',dest='quantity',
                           default='none',
                           help = 'Quantity to check (required).  If a non-default name for the quantity is used, pass in the quantity and name as a pair.'
@@ -1859,7 +1797,15 @@ def read_command_line():
                           help='Print detailed information (default=%default).'
                           )
 
-        allowed_quantities = list(stat_info.keys())
+        allowed_quantities = [
+            'density',
+            'spindensity',
+            'energydensity',
+            '1rdm',
+            '1redm',
+            'obdm',
+            'momentum',
+            ]
 
         opt,files_in = parser.parse_args()
         options = obj()
@@ -1907,7 +1853,16 @@ def read_command_line():
             options.quantity,options.qlabel = qlist
         #end if
         if options.qlabel is None:
-            options.qlabel = stat_info[options.quantity].default_label
+            default_label = obj({
+                'density'       : 'Density'        ,
+                'spindensity'   : 'SpinDensity'    ,
+                'energydensity' : 'EnergyDensity'  ,
+                '1rdm'          : 'DensityMatrices',
+                '1redm'         : 'DensityMatrices',
+                'obdm'          : 'OneBodyDensityMatrices' ,
+                'momentum'      : 'nofk'           ,
+                })
+            options.qlabel = default_label[options.quantity]
         #end if
         if options.quantity=='none':
             exit_fail('must provide quantity')
@@ -1945,27 +1900,10 @@ def read_command_line():
             options.fixed_sum = True
         #end if
 
-        if options.abs_err!='none':
-            try:
-                options.abs_err = float(options.abs_err)
-            except:
-                exit_fail('abs_err must be a real number\nyou provided: {}'.format(options.abs_err))
-            #end try
-            if options.abs_err<0:
-                exit_fail('abs_err must be positive\nyou provided: {}'.format(options.abs_err))
-            #end if
-        else:
-            options.abs_err = None
-        #end if
-
         vlog('inputted options:\n'+str(options),n=1)
 
     except Exception as e:
-        import traceback
-        import io
-        ftmp = io.StringIO()
-        traceback.print_exc(file=ftmp)
-        exit_fail('error during command line read:\n'+str(ftmp.getvalue()))
+        exit_fail('error during command line read:\n'+str(e))
     #end try
 
     return options
@@ -2005,7 +1943,7 @@ def process_stat_file(options):
 
         # read data from the stat file
         vlog('opening stat.h5 file',n=1)
-        stat = read_hdf(os.path.join(options.path,output_files.stat),verbose=options.verbose,view=True)
+        stat = read_hdf(os.path.join(options.path,output_files.stat),view=True)
         vlog('file contents:\n'+repr(stat).rstrip(),n=2)
         vlog('extracting {0} data'.format(options.quantity),n=1)
         vlog('searching for {0} with label {1}'.format(options.quantity,options.qlabel),n=2)
@@ -2015,7 +1953,22 @@ def process_stat_file(options):
         else:
             exit_fail('could not find {0} data with label {1}'.format(options.quantity,options.qlabel))
         #end if
-        qpaths = stat_info[options.quantity].data_paths
+        quantity_paths = obj({
+            'density'       : obj(tot='value'),
+            'spindensity'   : obj(u='u/value',
+                                  d='d/value'),
+            '1rdm'          : obj(u='number_matrix/u/value',
+                                  d='number_matrix/d/value'),
+            '1redm'         : obj(u='energy_matrix/u/value',
+                                  d='energy_matrix/d/value'),
+            'obdm'          : obj(u='number_matrix/u/value',
+                                  d='number_matrix/d/value'),
+            'energydensity' : obj(W=('spacegrid1/value',0,3),
+                                  T=('spacegrid1/value',1,3),
+                                  V=('spacegrid1/value',2,3)),
+            'momentum'      : obj(tot='value'),
+            })
+        qpaths = quantity_paths[options.quantity]
         vlog('search paths:\n{0}'.format(str(qpaths).rstrip()),n=2)
         qdata = obj()
         dfull = None
@@ -2104,11 +2057,7 @@ def process_stat_file(options):
             show()
         #end if
     except Exception as e:
-        import traceback
-        import io
-        ftmp = io.StringIO()
-        traceback.print_exc(file=ftmp)
-        exit_fail('error during stat file processing:\n'+str(ftmp.getvalue()))
+        exit_fail('error during stat file processing:\n'+str(e))
     #end try
 
     return values
@@ -2139,12 +2088,7 @@ def make_reference_files(options,values):
             dvalues = values[dname]
             fmean   = dvalues.full_mean
             ferror  = dvalues.full_error
-            if options.abs_err is not None:
-                err = 0.0
-            else:
-                err = errfac*ferror
-            #end if
-            line += '  {0: 16.12e}  {1: 16.12e}'.format(fmean,err)
+            line += '  {0: 16.8e}  {1: 16.8e}'.format(fmean,errfac*ferror)
         #end for
         f.write(line+'\n')
         # write means and errors of partial sums
@@ -2154,12 +2098,7 @@ def make_reference_files(options,values):
                 dvalues = values[dname]
                 pmean   = dvalues.partial_mean
                 perror  = dvalues.partial_error
-                if options.abs_err is not None:
-                    err = 0.0
-                else:
-                    err     = errfac*perror[p]
-                #end if
-                line += '  {0: 16.12e}  {1: 16.12e}'.format(pmean[p],err)
+                line += '  {0: 16.8e}  {1: 16.8e}'.format(pmean[p],errfac*perror[p])
             #end for
             f.write(line+'\n')
         #end for
@@ -2188,9 +2127,9 @@ def make_reference_files(options,values):
             dvalues = values[dname].data
             fsum  = dvalues.full_sum
             psums = dvalues.partial_sums[b]
-            line += '  {0: 16.12e}'.format(fsum[b])
+            line += '  {0: 16.8e}'.format(fsum[b])
             for psum in psums:
-                line += '  {0: 16.12e}'.format(psum)
+                line += '  {0: 16.8e}'.format(psum)
             #end for
         #end for
         f.write(line+'\n')
@@ -2201,58 +2140,9 @@ def make_reference_files(options,values):
 
 
 
-def read_reference_file(filepath):
-    vlog('reading reference file',n=1)
-    vlog('reference file location: {0}'.format(options.reference_file),n=2)
-    f = open(options.reference_file,'r')
-    dnames = f.readline().split()[1::2]
-    vlog('sub-quantities found: {0}'.format(dnames),n=2)
-    if set(dnames)!=set(values.keys()):
-        missing = set(values.keys())-set(dnames)
-        extra   = set(dnames)-set(values.keys())
-        if missing>0:
-            exit_fail('some sub-quantities are missing\npresent in test files: {0}\npresent in reference files: {1}\nmissing: {2}'.format(sorted(values.keys()),sorted(dnames),sorted(missing)))
-        elif extra>0:
-            exit_fail('some sub-quantities are extra\npresent in test files: {0}\npresent in reference files: {1}\nextra: {2}'.format(sorted(values.keys()),sorted(dnames),sorted(extra)))
-        else:
-            exit_fail('developer error, this point should be impossible to reach')
-        #end if
-    #end if
-    ref = array(f.read().split(),dtype=float)
-    ref.shape = len(ref)//(2*len(dnames)),2*len(dnames)
-    full    = ref[0,:].ravel()
-    partial = ref[1:,:].T
-    if len(ref)-1!=options.npartial_sums:
-        exit_fail('test and reference partial sum counts do not match\ntest partial sum count: {0}\nreference partial sum count: {1}'.format(options.npartial_sums,len(ref)-1))
-    #end if
-    vlog('partial sum count found: {0}'.format(len(ref)-1),n=2)
-    ref_values = obj()
-    for dname in dnames:
-        ref_values[dname] = obj()
-    #end for
-    n=0
-    for dname in dnames:
-        ref_values[dname].set(
-            full_mean     = full[n],
-            full_error    = full[n+1],
-            partial_mean  = partial[n,:].ravel(),
-            partial_error = partial[n+1,:].ravel(),
-            )
-        n+=2
-    #end for
-    npartial = len(ref)-1
-    f.close()
-    dnames = sorted(dnames)
-    vlog('reference file read successfully',n=2)
-    return ref_values,dnames
-#end def read_reference_file
-
-
-
 # Checks computed values from stat.h5 files against specified reference values.
 passfail = {True:'pass',False:'fail'}
 def check_values(options,values):
-    # check_values is for statistical tests 
     vlog('\nchecking against reference values')
 
     success = True
@@ -2271,7 +2161,48 @@ def check_values(options,values):
         vlog('adjusted per partial sum nsigma : {0}'.format(nsigma_partial),n=2)
 
         # read in the reference file
-        ref_values,dnames = read_reference_file(options)
+        vlog('reading reference file',n=1)
+        vlog('reference file location: {0}'.format(options.reference_file),n=2)
+        f = open(options.reference_file,'r')
+        dnames = f.readline().split()[1::2]
+        vlog('sub-quantities found: {0}'.format(dnames),n=2)
+        if set(dnames)!=set(values.keys()):
+            missing = set(values.keys())-set(dnames)
+            extra   = set(dnames)-set(values.keys())
+            if missing>0:
+                exit_fail('some sub-quantities are missing\npresent in test files: {0}\npresent in reference files: {1}\nmissing: {2}'.format(sorted(values.keys()),sorted(dnames),sorted(missing)))
+            elif extra>0:
+                exit_fail('some sub-quantities are extra\npresent in test files: {0}\npresent in reference files: {1}\nextra: {2}'.format(sorted(values.keys()),sorted(dnames),sorted(extra)))
+            else:
+                exit_fail('developer error, this point should be impossible to reach')
+            #end if
+        #end if
+        ref = array(f.read().split(),dtype=float)
+        ref.shape = len(ref)//(2*len(dnames)),2*len(dnames)
+        full    = ref[0,:].ravel()
+        partial = ref[1:,:].T
+        if len(ref)-1!=options.npartial_sums:
+            exit_fail('test and reference partial sum counts do not match\ntest partial sum count: {0}\nreference partial sum count: {1}'.format(options.npartial_sums,len(ref)-1))
+        #end if
+        vlog('partial sum count found: {0}'.format(len(ref)-1),n=2)
+        ref_values = obj()
+        for dname in dnames:
+            ref_values[dname] = obj()
+        #end for
+        n=0
+        for dname in dnames:
+            ref_values[dname].set(
+                full_mean     = full[n],
+                full_error    = full[n+1],
+                partial_mean  = partial[n,:].ravel(),
+                partial_error = partial[n+1,:].ravel(),
+                )
+            n+=2
+        #end for
+        npartial = len(ref)-1
+        f.close()
+        dnames = sorted(dnames)
+        vlog('reference file read successfully',n=2)
 
         # for cases with fixed full sum, check the per block sum
         if options.fixed_sum:
@@ -2433,91 +2364,11 @@ def check_values(options,values):
             #end for
         #end for
     except Exception as e:
-        import traceback
-        import io
-        ftmp = io.StringIO()
-        traceback.print_exc(file=ftmp)
-        exit_fail('error during value check:\n'+str(ftmp.getvalue()))
+        exit_fail('error during value check:\n'+str(e))
     #end try
 
     return success,msg
 #end def check_values
-
-
-
-def check_values_abs_err(options,values):
-    # check_values is for deterministic tests based on an absolute tolerance
-    vlog('\nchecking against reference values')
-
-    success = True
-    msg     = ''
-    
-    try:
-        msg += '\nTests for series {0} quantity "{1}"\n'.format(options.series,options.quantity)
-        N = options.npartial_sums
-        
-        # read in the reference file
-        ref_values,dnames = read_reference_file(options)
-
-
-        # function used immediately below to test a value vs reference
-        def check_abs_err(label,value_comp,value_ref,abs_tol):
-            msg='\n  Testing quantity: {0}\n'.format(label)
-
-            vdiff = float_diff(value_comp,value_ref,atol=abs_tol,rtol=0.0)
-            quant_success = not vdiff
-
-            msg+='    reference value          : {0: 16.12f}\n'.format(value_ref)
-            msg+='    computed  value          : {0: 16.12f}\n'.format(value_comp)
-            msg+='    pass tolerance           : {0: 16.12f}\n'.format(abs_tol)
-            msg+='    deviation from reference : {0: 16.12f}\n'.format(value_comp-value_ref)
-            #end if
-            msg+='    status of this test      :   {0}\n'.format(passfail[quant_success])
-
-            return quant_success,msg
-        #end def check_abs_err
-
-
-        # check full and partial sums vs the reference
-        vlog('checking full and partial sums',n=1)
-        for dname in dnames:
-            vals = values[dname]
-            ref_vals = ref_values[dname]
-            # check full sum
-            vlog('checking full sum absolute error for "{0}"'.format(dname),n=2)
-            qsuccess,qmsg = check_abs_err(
-                label      = '{0} full sum'.format(dname),
-                value_comp = vals.full_mean,
-                value_ref  = ref_vals.full_mean,
-                abs_tol    = max(ref_vals.full_error,options.abs_err)
-                )
-            vlog('status for full sum: {0}'.format(passfail[qsuccess]),n=3)
-            msg     += qmsg
-            success &= qsuccess
-            # check partial sums
-            vlog('checking partial sum absolute errors for "{0}"'.format(dname),n=2)
-            for p in range(len(ref_vals.partial_mean)):
-                qsuccess,qmsg = check_abs_err(
-                    label      = '{0} partial sum {1}'.format(dname,p),
-                    value_comp = vals.partial_mean[p],
-                    value_ref  = ref_vals.partial_mean[p],
-                    abs_tol    = max(ref_vals.partial_error[p],options.abs_err),
-                    )
-                vlog('status for partial sum {0}: {1}'.format(p,passfail[qsuccess]),n=3)
-                msg     += qmsg
-                success &= qsuccess
-            #end for
-        #end for
-    except Exception as e:
-        import traceback
-        import io
-        ftmp = io.StringIO()
-        traceback.print_exc(file=ftmp)
-        exit_fail('error during value check:\n'+str(ftmp.getvalue()))
-    #end try
-
-    return success,msg
-#end def check_values_abs_err
 
 
 
@@ -2536,11 +2387,7 @@ if __name__=='__main__':
         exit()
     else:
         # Check computed means against reference solutions.
-        if options.abs_err:
-            success,msg = check_values_abs_err(options,values)
-        else:
-            success,msg = check_values(options,values)
-        #end if
+        success,msg = check_values(options,values)
 
         # Pass success/failure exit codes and strings to the OS.
         if success:

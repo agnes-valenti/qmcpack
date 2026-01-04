@@ -43,7 +43,7 @@ public:
   EwaldHandler3D(ParticleSet& ref, mRealType kc_in = -1.0) : LRHandlerBase(kc_in)
   {
     LRHandlerBase::ClassName = "EwaldHandler3D";
-    Sigma = LR_kc = ref.getLattice().LR_kc;
+    Sigma = LR_kc = ref.Lattice.LR_kc;
   }
 
   /** "copy" constructor
@@ -103,26 +103,24 @@ public:
 
   void fillYkgstrain(const KContainer& KList)
   {
-    Fkgstrain.resize(KList.getKptsCartWorking().size());
-    const std::vector<int>& kshell(KList.getKShell());
+    Fkgstrain.resize(KList.kpts_cart.size());
+    const std::vector<int>& kshell(KList.kshell);
     MaxKshell = kshell.size() - 1;
-    const auto& ksq = KList.getKSQWorking();
     for (int ks = 0, ki = 0; ks < MaxKshell; ks++)
     {
-      mRealType uk = evalYkgstrain(std::sqrt(ksq[ki]));
-      while (ki < kshell[ks + 1] && ki < Fkgstrain.size())
+      mRealType uk = evalYkgstrain(std::sqrt(KList.ksq[ki]));
+      while (ki < KList.kshell[ks + 1] && ki < Fkgstrain.size())
         Fkgstrain[ki++] = uk;
     }
   }
 
   void filldFk_dk(const KContainer& KList)
   {
-    const auto& kpts_cart = KList.getKptsCartWorking();
-    dFk_dstrain.resize(kpts_cart.size());
-    const auto& ksq = KList.getKSQWorking();
+    dFk_dstrain.resize(KList.kpts_cart.size());
+
     for (int ki = 0; ki < dFk_dstrain.size(); ki++)
     {
-      dFk_dstrain[ki] = evaluateLR_dstrain(kpts_cart[ki], std::sqrt(ksq[ki]));
+      dFk_dstrain[ki] = evaluateLR_dstrain(KList.kpts_cart[ki], std::sqrt(KList.ksq[ki]));
     }
   }
 

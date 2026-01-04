@@ -35,7 +35,6 @@ public:
    */
   PairCorrEstimator(ParticleSet& elns, std::string& sources);
 
-  std::string getClassName() const override { return "PairCorrEstimator"; }
   void resetTargetParticleSet(ParticleSet& P) override;
 
   /* evaluate the pair correlation functions */
@@ -46,7 +45,7 @@ public:
 
   void addObservables(PropertySetType& plist) {}
   void addObservables(PropertySetType& plist, BufferType& collectables) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5list, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5list, hid_t gid) const override;
   void setObservables(PropertySetType& plist) override;
   void setParticlePropertyList(PropertySetType& plist, int offset) override;
   bool put(xmlNodePtr cur) override;

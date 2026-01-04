@@ -61,19 +61,23 @@ struct PadeFunctor : public OptimizableFunctorBase
   std::string ID_B;
 
   ///default constructor
-  PadeFunctor(const std::string& my_name)
-      : OptimizableFunctorBase(my_name), Opt_A(false), Opt_B(true), A(1.0), B0(1.0), Scale(1.0), ID_A("0"), ID_B("0")
-  {
-    reset();
-  }
-
-  constexpr static bool isOMPoffload() { return false; }
+  PadeFunctor() : Opt_A(false), Opt_B(true), A(1.0), B0(1.0), Scale(1.0), ID_A("0"), ID_B("0") { reset(); }
 
   void setCusp(real_type cusp) override
   {
     A     = cusp;
     Opt_A = false;
     reset();
+  }
+ 
+  void setEtaVar(real_type etavar) override
+  { 
+    APP_ABORT("PadeFunctors::setEtaVar needs to be implemented")
+  }
+
+ void setNewCutoff(real_type cutoff) override
+  { 
+    APP_ABORT("PadeFunctors::setNewCutoff needs to be implemented")
   }
 
   OptimizableFunctorBase* makeClone() const override { return new PadeFunctor(*this); }
@@ -89,6 +93,15 @@ struct PadeFunctor : public OptimizableFunctorBase
   }
 
   inline real_type evaluate(real_type r) const { return A * r / (1.0 + B * r) - AoverB; }
+
+  inline real_type evaluate(real_type r, real_type x, real_type y, int numpart, int tauvalue) const
+  {
+    std::cout<<"AV in PadeFunctors.h:evaluate, needs to be implemented"<<std::endl;
+    std::flush(std::cout);
+    abort();
+    return 0;
+  }
+
 
   inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2) const
   {
@@ -120,6 +133,21 @@ struct PadeFunctor : public OptimizableFunctorBase
     return sum;
   }
 
+  inline real_type evaluateV2(const int iat,
+                          const int iStart,
+                          const int iEnd,
+                          const int numpar,
+                          const T* restrict distArray,
+                          const T* restrict displArrayX,
+                          const T* restrict displArrayY,
+                          T* restrict distArrayCompressed,
+                          T* restrict displArrayCompressedXsquared,
+                          T* restrict displArrayCompressedYsquared, int tauvalue) const
+  {
+   std::cout<<"AV in PadeFunctor::evaluateV2, need to implement!"<<std::endl;
+   std::flush(std::cout);
+   abort();
+  }
   /** evaluate sum of the pair potentials FIXME
    * @return \f$\sum u(r_j)\f$ for r_j < cutoff_radius
    */
@@ -166,6 +194,28 @@ struct PadeFunctor : public OptimizableFunctorBase
       valArray[iat] = gradArray[iat] = laplArray[iat] = T(0);
   }
 
+  inline void evaluateVGL2(const int iat,
+                          const int iStart,
+                          const int iEnd,
+                          const int numpar,
+                          const T* distArray,
+                          const T* displArrayX,
+                          const T* displArrayY,
+                          T* restrict valArray,
+                          T* restrict _gradArray_x,
+                          T* restrict _gradArray_y,
+                          T* restrict _laplArray_x,
+                          T* restrict _laplArray_y,
+                          T* restrict distArrayCompressed,
+                          T* restrict displArrayCompressedX,
+                          T* restrict displArrayCompressedY,
+                          int* restrict distIndices, int tauvalue) const
+  {
+   std::cout<<"AV in PadeFunctor::evaluateVGL2, need to implement!"<<std::endl;
+   std::flush(std::cout);
+   abort();
+  }
+
   static void mw_evaluateVGL(const int iat,
                              const int num_groups,
                              const PadeFunctor* const functors[],
@@ -182,6 +232,10 @@ struct PadeFunctor : public OptimizableFunctorBase
   }
 
   inline real_type f(real_type r) override { return evaluate(r) - AoverB; }
+  inline real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
 
   inline real_type df(real_type r) override
   {
@@ -189,6 +243,14 @@ struct PadeFunctor : public OptimizableFunctorBase
     real_type res = evaluate(r, dudr, d2udr2);
     return dudr;
   }
+
+  /** implement the virtual function of OptimizableFunctorBase */
+  inline real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
+
+  
 
   static void mw_updateVGL(const int iat,
                            const std::vector<bool>& isAccepted,
@@ -207,6 +269,14 @@ struct PadeFunctor : public OptimizableFunctorBase
     throw std::runtime_error("PadeFunctor mw_updateVGL not implemented!");
   }
 
+
+inline bool evaluateDerivatives(real_type r, real_type x, real_type y, int& nparamsu, int& nv, std::vector<TinyVector<real_type, 3>>& derivs,
+   int tauvalue) override
+  { 
+    std::cout<<"AV in PadeFunctor::evaluateDerivatives, needs to be implemented"<<std::endl;
+    abort();
+    return false;
+  }
   /// compute derivatives with respect to A and B
   inline bool evaluateDerivatives(real_type r, std::vector<TinyVector<real_type, 3>>& derivs) override
   {
@@ -229,7 +299,7 @@ struct PadeFunctor : public OptimizableFunctorBase
   }
 
   /// compute derivatives with respect to A and B
-  inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs) override
+  inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs)
   {
     int i       = 0;
     real_type u = 1.0 / (1.0 + B * r);
@@ -289,17 +359,19 @@ struct PadeFunctor : public OptimizableFunctorBase
     return true;
   }
 
-  void checkInVariablesExclusive(opt_variables_type& active) override
+  void checkInVariables(opt_variables_type& active) override
   {
     active.insertFrom(myVars);
+    //myVars.print(std::cout);
   }
 
   void checkOutVariables(const opt_variables_type& active) override
   {
     myVars.getIndex(active);
+    //myVars.print(std::cout);
   }
 
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     if (myVars.size())
     {
@@ -336,8 +408,8 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
   std::string ID_C;
 
   ///constructor
-  Pade2ndOrderFunctor(const std::string& my_name, real_type a = 1.0, real_type b = 1.0, real_type c = 1.0)
-      : OptimizableFunctorBase(my_name), A(a), B(b), C(c), ID_A("0"), ID_B("0"), ID_C("0")
+  Pade2ndOrderFunctor(real_type a = 1.0, real_type b = 1.0, real_type c = 1.0)
+      : A(a), B(b), C(c), ID_A("0"), ID_B("0"), ID_C("0")
   {
     reset();
   }
@@ -363,6 +435,14 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
     return u * v;
   }
 
+  inline real_type evaluate(real_type r, real_type x, real_type y, int numpart, int tauvalue) const
+  {
+    std::cout<<"AV in PadeFunctors.h:evaluate, needs to be implemented"<<std::endl;
+    std::flush(std::cout);
+    abort();
+    return 0;
+  }
+
   /** evaluate the value at r
    * @param r the distance
    @param dudr return value  \f$ du/dr = a/(1+br)^2 \f$
@@ -378,6 +458,16 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
     d2udr2      = 2.0 * u * u * u * (C - B * A);
     return u * v;
   }
+
+  /*
+  inline real_type evaluate(real_type r, real_type xsquared, real_type ysquared, int numpart) const
+  {
+    std::cout<<"AV in PadeFunctors::evaluate, need to define function!!"<<std::endl;
+    real_type u = 1.0 / (1.0 + B * r);
+    real_type v = A * r + C * r * r;
+    return u * v;
+  }
+  */
 
   inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2, real_type& d3udr3) const
   {
@@ -403,33 +493,6 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
     return sum;
   }
 
-  /** evaluate sum of the pair potentials FIXME
-   * @return \f$\sum u(r_j)\f$ for r_j < cutoff_radius
-   */
-  static void mw_evaluateV(const int num_groups,
-                           const Pade2ndOrderFunctor* const functors[],
-                           const int n_src,
-                           const int* grp_ids,
-                           const int num_pairs,
-                           const int* ref_at,
-                           const T* mw_dist,
-                           const int dist_stride,
-                           T* mw_vals,
-                           Vector<char, OffloadPinnedAllocator<char>>& transfer_buffer)
-  {
-    for (int ip = 0; ip < num_pairs; ip++)
-    {
-      mw_vals[ip] = 0;
-      for (int j = 0; j < n_src; j++)
-      {
-        const int ig = grp_ids[j];
-        auto& functor(*functors[ig]);
-        if (j != ref_at[ip])
-          mw_vals[ip] += functor.evaluate(mw_dist[ip * dist_stride + j]);
-      }
-    }
-  }
-
   inline void evaluateVGL(const int iat,
                           const int iStart,
                           const int iEnd,
@@ -450,13 +513,22 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
   }
 
   real_type f(real_type r) override { return evaluate(r); }
-
+  real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
   real_type df(real_type r) override
   {
     real_type dudr, d2udr2;
     real_type res = evaluate(r, dudr, d2udr2);
     return dudr;
   }
+
+  /** implement the virtual function of OptimizableFunctorBase */
+  real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
 
   inline bool evaluateDerivatives(real_type r, std::vector<TinyVector<real_type, 3>>& derivs) override
   {
@@ -492,7 +564,7 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
   }
 
 
-  inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs) override
+  inline bool evaluateDerivatives(real_type r, std::vector<real_type>& derivs)
   {
     real_type u = 1.0 / (1.0 + B * r);
     int i       = 0;
@@ -590,10 +662,10 @@ struct Pade2ndOrderFunctor : public OptimizableFunctorBase
     return true;
   }
 
-  void checkInVariablesExclusive(opt_variables_type& active) override { active.insertFrom(myVars); }
+  void checkInVariables(opt_variables_type& active) override { active.insertFrom(myVars); }
 
   void checkOutVariables(const opt_variables_type& active) override { myVars.getIndex(active); }
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     int i = 0;
     if (ID_A != "0")
@@ -674,6 +746,14 @@ struct PadeTwo2ndOrderFunctor : public OptimizableFunctorBase
     return (A * r + br * r) / (1.0 + C * C * r + dr * dr);
   }
 
+  inline real_type evaluate(real_type r, real_type x, real_type y, int numpart, int tauvalue) const
+  {
+    std::cout<<"AV in PadeFunctors.h:evaluate, needs to be implemented"<<std::endl;
+    std::flush(std::cout);
+    abort();
+    return 0;
+  }
+
   inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2)
   {
     real_type ar(A * r);
@@ -726,13 +806,21 @@ struct PadeTwo2ndOrderFunctor : public OptimizableFunctorBase
   }
 
   real_type f(real_type r) override { return evaluate(r); }
-
+  real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
   real_type df(real_type r) override
   {
     real_type dudr, d2udr2;
     real_type res = evaluate(r, dudr, d2udr2);
     return dudr;
   }
+  /** implement the virtual function of OptimizableFunctorBase */
+  real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
 
   inline bool evaluateDerivatives(real_type r, std::vector<TinyVector<real_type, 3>>& derivs) override
   {
@@ -915,10 +1003,10 @@ struct PadeTwo2ndOrderFunctor : public OptimizableFunctorBase
     return true;
   }
 
-  void checkInVariablesExclusive(opt_variables_type& active) override { active.insertFrom(myVars); }
+  void checkInVariables(opt_variables_type& active) override { active.insertFrom(myVars); }
 
   void checkOutVariables(const opt_variables_type& active) override { myVars.getIndex(active); }
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     if (myVars.size() == 0)
       return;
@@ -1008,21 +1096,29 @@ struct ScaledPadeFunctor : public OptimizableFunctorBase
 
 
   real_type f(real_type r) override { return evaluate(r); }
-
+  real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
   real_type df(real_type r) override
   {
     real_type dudr, d2udr2;
     real_type res = evaluate(r, dudr, d2udr2);
     return dudr;
   }
+  /** implement the virtual function of OptimizableFunctorBase */
+  real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
 
   bool put(xmlNodePtr cur) override { return true; }
 
-  void checkInVariablesExclusive(opt_variables_type& active) override { active.insertFrom(myVars); }
+  void checkInVariables(opt_variables_type& active) override { active.insertFrom(myVars); }
 
   void checkOutVariables(const opt_variables_type& active) override { myVars.getIndex(active); }
 
-  inline void resetParametersExclusive(const opt_variables_type& active) override
+  inline void resetParameters(const opt_variables_type& active) override
   {
     OneOverC = 1.0 / C;
     B2       = 2.0 * B;

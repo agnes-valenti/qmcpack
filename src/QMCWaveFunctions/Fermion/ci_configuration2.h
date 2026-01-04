@@ -14,7 +14,8 @@
 
 #ifndef QMCPLUSPLUS_CI_CONFIGURATION2_H
 #define QMCPLUSPLUS_CI_CONFIGURATION2_H
-
+//#include <vector>
+#include "CPU/SIMD/simd.hpp"
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -39,7 +40,7 @@ struct ci_configuration2
     if (occup.size() != c.occup.size())
       throw std::runtime_error("ci_configuration2::operator==() - ci_configuration2s are not compatible.");
 
-    for (size_t i = 0; i < occup.size(); i++)
+    for (int i = 0; i < occup.size(); i++)
       if (occup[i] != c.occup[i])
         return false;
     return true;

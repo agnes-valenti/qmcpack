@@ -15,7 +15,7 @@
 
 #include "SOVMCUpdateAll.h"
 #include "QMCDrivers/DriftOperators.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 
 namespace qmcplusplus
 {
@@ -24,7 +24,7 @@ using WP = WalkerProperties::Indexes;
 SOVMCUpdateAll::SOVMCUpdateAll(MCWalkerConfiguration& w,
                                TrialWaveFunction& psi,
                                QMCHamiltonian& h,
-                               RandomBase<FullPrecRealType>& rg)
+                               RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg)
 {
   UpdatePbyP = false;
@@ -34,6 +34,8 @@ SOVMCUpdateAll::~SOVMCUpdateAll() {}
 
 void SOVMCUpdateAll::advanceWalker(Walker_t& thisWalker, bool recompute)
 {
+  std::cout<<"AV SOVMCUpdateAll advance Walker (only one)"<<std::endl;
+  std::flush(std::cout);
   /* thisWalker.R will track the last accepted configuration
    * W.R will track the proposed configuration 
    *

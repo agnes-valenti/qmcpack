@@ -47,28 +47,28 @@ struct GridTraits
 template<>
 struct GridTraits<double>
 {
-  using point_type = double;
-  using value_type = double;
+  typedef double point_type;
+  typedef double value_type;
 };
 
 template<>
 struct GridTraits<std::complex<double>>
 {
-  using point_type = double;
-  using value_type = std::complex<double>;
+  typedef double point_type;
+  typedef std::complex<double> value_type;
 };
 
 template<>
 struct GridTraits<float>
 {
-  using point_type = float;
-  using value_type = float;
+  typedef float point_type;
+  typedef float value_type;
 };
 
 template<>
 struct GridTraits<std::complex<float>>
 {
-  using point_type = float;
-  using value_type = std::complex<float>;
+  typedef float point_type;
+  typedef std::complex<float> value_type;
 };
 #endif

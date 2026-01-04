@@ -31,16 +31,14 @@ namespace qmcplusplus
  */
 class RPAJastrow : public WaveFunctionComponent
 {
-  using HandlerType = LRHandlerBase;
-  using FuncType    = BsplineFunctor<RealType>;
-  using GridType    = LinearGrid<RealType>;
+  typedef LRHandlerBase HandlerType;
+  typedef BsplineFunctor<RealType> FuncType;
+  typedef LinearGrid<RealType> GridType;
 
 public:
   RPAJastrow(ParticleSet& target);
 
   ~RPAJastrow() override;
-
-  std::string getClassName() const override { return "RPAJastrow"; }
 
   bool put(xmlNodePtr cur);
 
@@ -56,24 +54,29 @@ public:
 
   void setHandler(std::unique_ptr<HandlerType> Handler) { myHandler = std::move(Handler); };
 
-  bool isOptimizable() const override { return true; }
   /** check out optimizable variables
     */
   void checkOutVariables(const opt_variables_type& o) override;
 
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override
-  {
-    opt_obj_refs.push_back(*LongRangeRPA);
-    ShortRangeRPA->extractOptimizableObjectRefs(opt_obj_refs);
-  }
+  /** check in an optimizable parameter
+        * @param o a super set of optimizable variables
+    */
+  void checkInVariables(opt_variables_type& o) override;
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+  /** print the state, e.g., optimizables */
+  void reportStatus(std::ostream& os) override;
 
-  PsiValue ratio(ParticleSet& P, int iat) override;
+  /** reset the parameters during optimizations
+    */
+  void resetParameters(const opt_variables_type& active) override;
+
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
+
+  PsiValueType ratio(ParticleSet& P, int iat) override;
   GradType evalGrad(ParticleSet& P, int iat) override;
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override;
 
@@ -81,17 +84,11 @@ public:
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
-
-  void evaluateDerivatives(ParticleSet& P,
-                           const opt_variables_type& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
-  {}
 
 private:
   bool IgnoreSpin;

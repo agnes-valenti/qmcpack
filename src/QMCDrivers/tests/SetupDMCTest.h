@@ -12,9 +12,9 @@
 #ifndef QMCPLUSPLUS_SETUP_DMCTEST_H
 #define QMCPLUSPLUS_SETUP_DMCTEST_H
 
-#include <MinimalParticlePool.h>
-#include <MinimalWaveFunctionPool.h>
-#include <MinimalHamiltonianPool.h>
+#include "Particle/tests/MinimalParticlePool.h"
+#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
+#include "QMCHamiltonians/tests/MinimalHamiltonianPool.h"
 #include "Concurrency/Info.hpp"
 #include "Concurrency/UtilityFunctions.hpp"
 #include "QMCDrivers/DMC/DMCBatched.h"
@@ -28,7 +28,7 @@ namespace testing
 class SetupDMCTest : public SetupPools
 {
 public:
-  SetupDMCTest(int nranks = 4) : rng_pool(Concurrency::maxCapacity<>()), num_ranks(nranks), qmcdrv_input()
+  SetupDMCTest(int nranks = 4) : num_ranks(nranks), qmcdrv_input()
   {
     if (Concurrency::maxCapacity<>() < 8)
       num_crowds = Concurrency::maxCapacity<>();
@@ -45,21 +45,15 @@ public:
 
     QMCDriverInput qmc_input_copy(qmcdrv_input);
     DMCDriverInput dmc_input_copy(dmcdrv_input);
-    return {test_project,
-            std::move(qmc_input_copy),
-            nullptr,
-            std::move(dmc_input_copy),
-            walker_confs,
-            MCPopulation(comm->size(), comm->rank(), particle_pool->getParticleSet("e"),
-                         wavefunction_pool->getPrimary(), hamiltonian_pool->getPrimary()),
-            rng_pool.getRngRefs(),
+    return {test_project, std::move(qmc_input_copy), std::move(dmc_input_copy),
+            MCPopulation(comm->size(), comm->rank(), walker_confs, particle_pool->getParticleSet("e"),
+                         wavefunction_pool->getPrimary(), wavefunction_pool->getWaveFunctionFactory("wavefunction"),
+                         hamiltonian_pool->getPrimary()),
             comm};
   }
 
 private:
   ProjectData test_project;
-
-  RandomNumberGeneratorPool rng_pool;
 
 public:
   WalkerConfigurations walker_confs;

@@ -21,20 +21,18 @@
 #include "Utilities/IteratorUtility.h"
 #include "Utilities/SimpleParser.h"
 #include "Message/CommOperators.h"
-#include "Platforms/Host/OutputManager.h"
 #include <cmath>
 #include "Utilities/qmc_common.h"
 
 
 namespace qmcplusplus
 {
-ECPComponentBuilder::ECPComponentBuilder(const std::string& aname, Communicate* c, int nrule, int llocal, int srule)
+ECPComponentBuilder::ECPComponentBuilder(const std::string& aname, Communicate* c, int nrule)
     : MPIObjectBase(c),
       NumNonLocal(0),
       Lmax(0),
-      Llocal(llocal),
       Nrule(nrule),
-      Srule(srule),
+      Srule(8),
       AtomicNumber(0),
       Zeff(0),
       RcutMax(-1),
@@ -62,7 +60,7 @@ ECPComponentBuilder::ECPComponentBuilder(const std::string& aname, Communicate* 
 
 bool ECPComponentBuilder::parse(const std::string& fname, xmlNodePtr cur)
 {
-  const std::string cutoff_str(getXMLAttributeValue(cur, "cutoff"));
+  const XMLAttrString cutoff_str(cur, "cutoff");
   if (!cutoff_str.empty())
     RcutMax = std::stod(cutoff_str);
 
@@ -174,8 +172,8 @@ bool ECPComponentBuilder::put(xmlNodePtr cur)
     std::string cname((const char*)cur->name);
     if (cname == "header")
     {
-      Zeff         = std::stoi(getXMLAttributeValue(cur, "zval"));
-      AtomicNumber = std::stoi(getXMLAttributeValue(cur, "atomic-number"));
+      Zeff         = std::stoi(XMLAttrString{cur, "zval"});
+      AtomicNumber = std::stoi(XMLAttrString{cur, "atomic-number"});
     }
     else if (cname == "grid")
     {
@@ -224,11 +222,10 @@ void ECPComponentBuilder::printECPTable()
 {
   if (!qmc_common.io_node || qmc_common.mpi_groups > 1)
     return;
-  if (!outputManager.isActive(Verbosity::DEBUG))
-    return;
-  std::array<char, 12> fname;
-  std::snprintf(fname.data(), fname.size(), "%s.pp.dat", Species.c_str());
-  std::ofstream fout(fname.data());
+
+  char fname[12];
+  sprintf(fname, "%s.pp.dat", Species.c_str());
+  std::ofstream fout(fname);
   fout.setf(std::ios::scientific, std::ios::floatfield);
   fout.precision(12);
   int nl      = pp_nonloc ? pp_nonloc->nlpp_m.size() : 0;
@@ -271,8 +268,8 @@ void ECPComponentBuilder::SetQuadratureRule(int rule)
   pp_nonloc->resize_warrays(myRule.nk, NumNonLocal, Lmax);
   if (pp_so)
   { //added here bc must have nonlocal terms to have SO contributions
-    pp_so->sgridxyz_m_    = myRule.xyz_m;
-    pp_so->sgridweight_m_ = myRule.weight_m;
+    pp_so->sgridxyz_m    = myRule.xyz_m;
+    pp_so->sgridweight_m = myRule.weight_m;
     pp_so->resize_warrays(myRule.nk, NumSO, Srule);
   }
 }

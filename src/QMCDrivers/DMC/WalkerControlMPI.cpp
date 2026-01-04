@@ -13,7 +13,6 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <array>
 #include <cmath>
 #include <sstream>
 
@@ -58,13 +57,13 @@ TimerNameList_t<DMC_MPI_Timers> DMCMPITimerNames = {{DMC_MPI_branch, "WalkerCont
  * In the new drivers SFNB should throw an except if there is attempted 
  * reuse of WalkerController
  */
-WalkerControlMPI::WalkerControlMPI(Communicate* c)
-    : WalkerControlBase(c), myTimers(getGlobalTimerManager(), DMCMPITimerNames, timer_level_medium)
+WalkerControlMPI::WalkerControlMPI(Communicate* c) : WalkerControlBase(c)
 {
   NumWalkersSent = 0;
   SwapMode       = 1;
   Cur_min        = 0;
   Cur_max        = 0;
+  setup_timers(myTimers, DMCMPITimerNames, timer_level_medium);
 }
 
 /** Perform branch and swap walkers as required
@@ -87,7 +86,7 @@ int WalkerControlMPI::branch(int iter, MCWalkerConfiguration& W, FullPrecRealTyp
   ScopedTimer local_timer(myTimers[DMC_MPI_branch]);
   {
     ScopedTimer local_timer(myTimers[DMC_MPI_prebalance]);
-    std::fill(curData.begin(), curData.end(), 0.0);
+    std::fill(curData.begin(), curData.end(), 0);
     sortWalkers(W);
     //use NumWalkersSent from the previous exchange
     curData[SENTWALKERS_INDEX] = NumWalkersSent;
@@ -117,12 +116,15 @@ int WalkerControlMPI::branch(int iter, MCWalkerConfiguration& W, FullPrecRealTyp
     copyWalkers(W);
   }
   //set Weight and Multiplicity to default values
-  for (auto& walker : W)
+  MCWalkerConfiguration::iterator it(W.begin()), it_end(W.end());
+  while (it != it_end)
   {
-    walker->Weight       = 1.0;
-    walker->Multiplicity = 1.0;
+    (*it)->Weight       = 1.0;
+    (*it)->Multiplicity = 1.0;
+    ++it;
   }
-  //update the walkers offsets
+  //update the global number of walkers and offsets
+  W.setGlobalNumWalkers(Cur_pop);
   W.setWalkerOffsets(FairOffSet);
 
   return Cur_pop;
@@ -193,10 +195,9 @@ void WalkerControlMPI::swapWalkersSimple(MCWalkerConfiguration& W)
   std::vector<std::unique_ptr<Walker_t>> newW;
   std::vector<int> ncopy_newW;
 #ifdef MCWALKERSET_MPI_DEBUG
-  std::array<char, 128> fname;
-  if (std::snprintf(fname.data(), fname.size() "test.%d", MyContext) < 0)
-    throw std::runtime_error("Error generating filename");
-  std::ofstream fout(fname.data(), std::ios::app);
+  char fname[128];
+  sprintf(fname, "test.%d", MyContext);
+  std::ofstream fout(fname, std::ios::app);
   //fout << NumSwaps << " " << Cur_pop << " ";
   //for(int ic=0; ic<NumContexts; ic++) fout << NumPerRank[ic] << " ";
   //fout << " | ";

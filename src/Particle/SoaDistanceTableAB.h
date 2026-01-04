@@ -13,9 +13,10 @@
 #ifndef QMCPLUSPLUS_DTDIMPL_AB_H
 #define QMCPLUSPLUS_DTDIMPL_AB_H
 
-#include "Lattice/ParticleBConds3DSoa.h"
+//#include "Lattice/ParticleBConds3DSoa.h"
+#include "Lattice/ParticleBConds2DSoa.h"
 #include "Utilities/FairDivide.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 
 namespace qmcplusplus
 {
@@ -25,15 +26,18 @@ namespace qmcplusplus
 template<typename T, unsigned D, int SC>
 struct SoaDistanceTableAB : public DTD_BConds<T, D, SC>, public DistanceTableAB
 {
-  SoaDistanceTableAB(const ParticleSet& source, const ParticleSet& target)
-      : DTD_BConds<T, D, SC>(source.getLattice()),
-        DistanceTableAB(source, target, DTModes::ALL_OFF),
-        evaluate_timer_(createGlobalTimer(std::string("DTAB::evaluate_") + target.getName() + "_" + source.getName(),
-                                          timer_level_fine)),
-        move_timer_(createGlobalTimer(std::string("DTAB::move_") + target.getName() + "_" + source.getName(),
-                                      timer_level_fine)),
-        update_timer_(createGlobalTimer(std::string("DTAB::update_") + target.getName() + "_" + source.getName(),
-                                        timer_level_fine))
+  SoaDistanceTableAB(const ParticleSet& source, ParticleSet& target)
+      : DTD_BConds<T, D, SC>(source.Lattice),
+        DistanceTableAB(source, target, DTModes::NEED_TEMP_DATA_ON_HOST),
+        evaluate_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableAB::evaluate_") + target.getName() +
+                                                       "_" + source.getName(),
+                                                   timer_level_fine)),
+        move_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableAB::move_") + target.getName() + "_" +
+                                                   source.getName(),
+                                               timer_level_fine)),
+        update_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableAB::update_") + target.getName() + "_" +
+                                                     source.getName(),
+                                                 timer_level_fine))
   {
     resize();
   }
@@ -100,6 +104,28 @@ struct SoaDistanceTableAB : public DTD_BConds<T, D, SC>, public DistanceTableAB
       std::copy_n(temp_dr_.data(idim), num_sources_, displacements_[iat].data(idim));
   }
 
+  size_t get_neighbors(int iat,
+                       RealType rcut,
+                       int* restrict jid,
+                       RealType* restrict dist,
+                       PosType* restrict displ) const override
+  {
+    constexpr T cminus(-1);
+    size_t nn = 0;
+    for (int jat = 0; jat < num_targets_; ++jat)
+    {
+      const RealType rij = distances_[jat][iat];
+      if (rij < rcut)
+      { //make the compact list
+        jid[nn]   = jat;
+        dist[nn]  = rij;
+        displ[nn] = cminus * displacements_[jat][iat];
+        nn++;
+      }
+    }
+    return nn;
+  }
+
   int get_first_neighbor(IndexType iat, RealType& r, PosType& dr, bool newpos) const override
   {
     RealType min_dist = std::numeric_limits<RealType>::max();
@@ -134,6 +160,21 @@ struct SoaDistanceTableAB : public DTD_BConds<T, D, SC>, public DistanceTableAB
     }
     assert(index >= 0 && index < num_sources_);
     return index;
+  }
+
+  size_t get_neighbors(int iat, RealType rcut, RealType* restrict dist) const
+  {
+    size_t nn = 0;
+    for (int jat = 0; jat < num_targets_; ++jat)
+    {
+      const RealType rij = distances_[jat][iat];
+      if (rij < rcut)
+      { //make the compact list
+        dist[nn] = rij;
+        nn++;
+      }
+    }
+    return nn;
   }
 
 private:

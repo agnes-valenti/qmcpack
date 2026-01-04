@@ -27,7 +27,7 @@ struct GaussianCombo
   // Caution: most other code assumes value_type can only be real
   // but maybe it can be different precision
   // Possibly one of these types is the full precision and the other reduced precision
-  using real_type = T;
+  typedef T real_type;
   real_type Y, dY, d2Y, d3Y;
 
   struct BasicGaussian
@@ -67,18 +67,23 @@ struct GaussianCombo
     inline void setgrid(real_type r) {}
 
     inline real_type f(real_type rr) const { return Coeff * std::exp(MinusSigma * rr); }
+    //inline real_type f(real_type r, real_type xsquared, real_type ysquared) override { 
+    //std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    //abort;
+    //return 0; }
+
     inline real_type df(real_type r, real_type rr) const { return CoeffP * r * std::exp(MinusSigma * rr); }
     inline real_type evaluate(real_type r, real_type rr, real_type& du, real_type& d2u)
     {
       real_type v = std::exp(MinusSigma * rr);
-      du += CoeffP * r * v;
+      du  += CoeffP * r * v;
       d2u += (CoeffP + CoeffPP * rr) * v;
       return Coeff * v;
     }
     inline real_type evaluate(real_type r, real_type rr, real_type& du, real_type& d2u, real_type& d3u)
     {
       real_type v = std::exp(MinusSigma * rr);
-      du += CoeffP * r * v;
+      du  += CoeffP * r * v;
       d2u += (CoeffP + CoeffPP * rr) * v;
       d3u += (CoeffPPP1 * r + CoeffPPP2 * r * rr) * v;
       return Coeff * v;

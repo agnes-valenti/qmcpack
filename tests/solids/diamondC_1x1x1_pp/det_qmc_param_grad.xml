@@ -1,8 +1,7 @@
 <?xml version="1.0"?>
 <simulation>
    <project id="det_qmc_short_param_grad" series="0">
-     <application name="qmcapp" role="molecu" class="serial" version="1.0"/>
-     <parameter name="driver_version">batched</parameter>
+      <application name="qmcapp" role="molecu" class="serial" version="1.0"/>
    </project>
    <random seed="2"/>
    <qmcsystem>
@@ -40,15 +39,16 @@
          </group>
       </particleset>
       <wavefunction name="psi0" target="e">
-         <sposet_collection type="bspline" href="pwscf.pwscf.h5" tilematrix="1 0 0 0 1 0 0 0 1" twistnum="0" source="ion0" meshfactor="1.0" precision="double">
-            <sposet type="bspline" name="spo_ud" size="4" spindataset="0"/>
-         </sposet_collection>
-         <determinantset>
-           <slaterdeterminant>
-               <determinant sposet="spo_ud"/>
-               <determinant sposet="spo_ud"/>
-           </slaterdeterminant>
-         </determinantset>	      
+         <determinantset type="einspline" href="pwscf.pwscf.h5" tilematrix="1 0 0 0 1 0 0 0 1" twistnum="0" source="ion0" meshfactor="1.0" precision="float">
+            <slaterdeterminant>
+               <determinant id="updet" size="4">
+                  <occupation mode="ground" spindataset="0"/>
+               </determinant>
+               <determinant id="downdet" size="4">
+                  <occupation mode="ground" spindataset="0"/>
+               </determinant>
+            </slaterdeterminant>
+         </determinantset>
          <jastrow type="One-Body" name="J1" function="bspline" source="ion0" print="yes">
             <correlation elementType="C" size="8" cusp="0.0">
                <coefficients id="eC" type="Array">                  
@@ -83,7 +83,7 @@
       </hamiltonian>
    </qmcsystem>
  <loop max="1">
-  <qmc gpu="yes" method="linear" move="pbyp">
+  <qmc gpu="yes" method="linear_batch" move="pbyp">
     <optimize method="gradient_test">
       <parameter name="output_param_file">yes</parameter>
     </optimize>
@@ -95,6 +95,8 @@
     <parameter name="blocks">                 1 </parameter>
     <parameter name="timestep">             1.0 </parameter>
     <parameter name="usedrift">             yes </parameter>
+    <parameter name="nonlocalpp">           yes </parameter>
+    <parameter name="use_nonlocalpp_deriv"> yes </parameter>
     <cost name="energy"> 1.0 </cost>
     <cost name="reweightedvariance"> 0.0 </cost>
   </qmc>

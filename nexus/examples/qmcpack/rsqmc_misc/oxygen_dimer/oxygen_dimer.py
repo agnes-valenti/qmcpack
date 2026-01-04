@@ -118,7 +118,6 @@ p2q = generate_pw2qmcpack(
     
 # describe optimization run
 opt = generate_qmcpack(
-    driver = 'legacy',
     identifier   = 'opt',
     path         = directory,
     system       = dimer,
@@ -134,7 +133,6 @@ opt = generate_qmcpack(
 
 # describe DMC run
 qmc = generate_qmcpack(
-    driver = 'legacy',
     identifier   = 'qmc',
     path         = directory,
     system       = dimer,

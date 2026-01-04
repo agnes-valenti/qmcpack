@@ -12,11 +12,11 @@
 
 from __future__ import print_function
 
-def savetoqmcpack(cell,mf,title="Default",kpts=[],kmesh=[],sp_twist=[],weight=1.0,cas_idx=None,kmap=None):
+def savetoqmcpack(cell,mf,title="Default",kpts=[],kmesh=[],sp_twist=[],weight=1.0,cas_idx=None):
   import h5py, re, sys
   from collections import defaultdict
   from pyscf.pbc import gto, scf, df, dft
-  from pyscf import lib, mcscf, fci
+  from pyscf import lib
   from pyscf.pbc import tools
   from numpy import empty
   import numpy
@@ -38,12 +38,12 @@ def savetoqmcpack(cell,mf,title="Default",kpts=[],kmesh=[],sp_twist=[],weight=1.
      Python2=True
  
 
-  val=str(mf.dump_flags)
+  val=str(mf)
   ComputeMode= re.split('[. ]',val)
 
   SizeMode=len(ComputeMode)
   for i in range(SizeMode):
-     if ComputeMode[i] in ("UHF","KUHF","UKS","SymAdaptedUHF","SymAdaptedUKS"):
+     if ComputeMode[i] in ("UHF","KUHF","UKS"):
            Restricted=False
      if ComputeMode[i]=="pbc":
            PBC=True
@@ -539,17 +539,8 @@ def savetoqmcpack(cell,mf,title="Default",kpts=[],kmesh=[],sp_twist=[],weight=1.
        mo_coeff_unsorted = mo_coeff_ 
        NbAO, NbMO =mo_coeff.shape 
     else: 
-      if kmap is not None:
-           if cas_idx is not None:
-               mo_k = numpy.array([c[:, cas_idx] for c in (mf.mo_coeff[idx] for idx in kmap)])
-               e_k = numpy.array([e[cas_idx] for e in (mf.mo_energy[idx] for idx in kmap)])
-           else:
-               mo_k = numpy.array([mf.mo_coeff[idx] for idx in kmap])
-               e_k = numpy.array([mf.mo_energy[idx] for idx in kmap])
-      else:
-           mo_k = numpy.array([c[:,cas_idx] for c in mf.mo_coeff] if cas_idx is not None else mf.mo_coeff)
-           e_k =  numpy.array([e[cas_idx] for e in mf.mo_energy] if cas_idx is not None else mf.mo_energy)
-
+      mo_k = numpy.array([c[:,cas_idx] for c in mf.mo_coeff] if cas_idx is not None else mf.mo_coeff)
+      e_k =  numpy.array([e[cas_idx] for e in mf.mo_energy] if cas_idx is not None else mf.mo_energy)
       E_g, C_gamma,E_g_unsorted,C_unsorted = mo_k2gamma(cell, e_k, mo_k, kpts,kmesh)
       mo_coeff=C_gamma
       NbAO, NbMO =mo_coeff.shape 
@@ -576,51 +567,10 @@ def savetoqmcpack(cell,mf,title="Default",kpts=[],kmesh=[],sp_twist=[],weight=1.
   GroupParameter.create_dataset("numMO",(1,),dtype="i4",data=NbMO)
   GroupParameter.create_dataset("numAO",(1,),dtype="i4",data=NbAO)
   
-  is_multidet = isinstance(mf, (mcscf.casci.CASCI, mcscf.mc1step.CASSCF))
-
-  if is_multidet:
-    make_multidet(cell, mf, title, H5_qmcpack)
-    print(f'Multideterminant wavefunction saved to {title}_multidet.h5')
-
-  # Close the file before exiting
   H5_qmcpack.close()
 
   print ('Wavefunction successfully saved to QMCPACK HDF5 Format')
-  print ('Use: "convert4qmc -orbitals  {}.h5" to generate QMCPACK input files'.format(title))
+  print ('Use: "convert4qmc -pyscf  {}.h5" to generate QMCPACK input files'.format(title))
+  # Close the file before exiting
 
 
-def make_multidet(cell, mf, title, h5_handle):
-  import numpy
-  import h5py, re, sys
-  a = mf.fcisolver.large_ci(mf.ci, mf.ncas, mf.nelecas, tol=0.0, return_strs=True)
-  dets_a = []
-  dets_b = []
-  coeffs = []
-  cas_mo_start_a = cell.nelec[0]-mf.nelecas[0]
-  cas_mo_start_b = cell.nelec[1]-mf.nelecas[1]
-  n = 64 # chunk length
-  for idx,i in enumerate(a):
-      occ_a = numpy.array(list(i[1][2:]),dtype=int)
-      occ_b = numpy.array(list(i[2][2:]),dtype=int)
-      string_a = '0'*(len(mf.mo_coeff) - cas_mo_start_a - len(occ_a)) + i[1][2:] + '1'*cas_mo_start_a
-      string_b = '0'*(len(mf.mo_coeff) - cas_mo_start_b - len(occ_b)) + i[2][2:] + '1'*cas_mo_start_b
-      chunks_a = [int(string_a[j:j+n],2) for j in range(0, len(string_a), n)]
-      chunks_b = [int(string_b[j:j+n],2) for j in range(0, len(string_b), n)]
-      dets_a.append(chunks_a)
-      dets_b.append(chunks_b)
-      coeffs.append(i[0])
-  H5_qmcpack_multidet = h5py.File(title+'_multidet.h5','w')
-  groupApp=H5_qmcpack_multidet.create_group("MultiDet")
-  dets_a = numpy.array(dets_a)
-  dets_b = numpy.array(dets_b)
-
-  dt = numpy.dtype(numpy.uint64)
-  groupApp.create_dataset('CI_Alpha',dets_a.shape,dtype=dt, data = dets_a)
-  groupApp.create_dataset('CI_Beta',dets_b.shape,dtype=dt, data = dets_b)
-  groupApp.create_dataset('Coeff', (len(coeffs),),dtype = float,data = coeffs)
-  groupApp.create_dataset('NbDet', (1,),dtype = "i4",data = len(coeffs))
-  groupApp.create_dataset('Nbits', (1,),dtype = "i4",data = len(dets_a[0]))
-  groupApp.create_dataset('nstate', (1,),dtype = "i4",data = mf.mo_coeff.shape[0])
-  groupApp.create_dataset('nexcitedstate', (1,),dtype = "i4",data = 2)
-
-  H5_qmcpack_multidet.close()

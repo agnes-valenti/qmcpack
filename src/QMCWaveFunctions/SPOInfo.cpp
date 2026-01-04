@@ -17,7 +17,7 @@
 
 namespace qmcplusplus
 {
-using RealType = QMCTraits::RealType;
+typedef QMCTraits::RealType RealType;
 
 const int SPOInfo::no_index       = -1;
 const int SPOInfo::no_degeneracy  = -1;

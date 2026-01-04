@@ -14,7 +14,6 @@
 #ifndef QMCPLUSPLUS_FORCE_CHIESA_HAMILTONIAN_H
 #define QMCPLUSPLUS_FORCE_CHIESA_HAMILTONIAN_H
 #include "QMCHamiltonians/ForceBase.h"
-#include "QMCHamiltonians/OperatorBase.h"
 #include "LongRange/LRCoulombSingleton.h"
 #include "Numerics/OneDimGridBase.h"
 #include "Numerics/OneDimGridFunctor.h"
@@ -24,9 +23,9 @@ namespace qmcplusplus
 {
 struct ForceChiesaPBCAA : public OperatorBase, public ForceBase
 {
-  using LRHandlerType  = LRCoulombSingleton::LRHandlerType;
-  using GridType       = LRCoulombSingleton::GridType;
-  using RadFunctorType = LRCoulombSingleton::RadFunctorType;
+  typedef LRCoulombSingleton::LRHandlerType LRHandlerType;
+  typedef LRCoulombSingleton::GridType GridType;
+  typedef LRCoulombSingleton::RadFunctorType RadFunctorType;
 
   RealType Rcut;         // parameter: radial distance within which estimator is used
   int m_exp;             // parameter: exponent in polynomial fit
@@ -62,8 +61,6 @@ struct ForceChiesaPBCAA : public OperatorBase, public ForceBase
 
   ForceChiesaPBCAA(ParticleSet& ions, ParticleSet& elns, bool firsttime = true);
 
-  std::string getClassName() const override { return "ForceChiesaPBCAA"; }
-
   Return_t evaluate(ParticleSet& P) override;
 
   void InitMatrix();
@@ -76,9 +73,9 @@ struct ForceChiesaPBCAA : public OperatorBase, public ForceBase
 
   Return_t g_filter(RealType r);
 
-  void registerObservables(std::vector<ObservableHelper>& h5list, hdf_archive& file) const override
+  void registerObservables(std::vector<ObservableHelper>& h5list, hid_t gid) const override
   {
-    registerObservablesF(h5list, file);
+    registerObservablesF(h5list, gid);
   }
 
   void addObservables(PropertySetType& plist, BufferType& collectables) override;
@@ -106,7 +103,7 @@ struct ForceChiesaPBCAA : public OperatorBase, public ForceBase
 
   bool get(std::ostream& os) const override
   {
-    os << "Ceperley Force Estimator Hamiltonian: " << pair_name_;
+    os << "Ceperley Force Estimator Hamiltonian: " << pairName;
     return true;
   }
 

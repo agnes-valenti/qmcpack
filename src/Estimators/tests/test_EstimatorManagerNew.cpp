@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2024 QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Lab
 //
@@ -10,7 +10,6 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "OperatorEstBase.h"
 #include "catch.hpp"
 
 #include "Message/Communicate.h"
@@ -19,155 +18,58 @@
 #include "Estimators/EstimatorManagerNew.h"
 #include "Estimators/ScalarEstimatorBase.h"
 #include "Estimators/tests/EstimatorManagerNewTest.h"
-#include "Estimators/EstimatorInputDelegates.h"
-#include "EstimatorManagerInputTest.h"
-#include <MinimalParticlePool.h>
-#include <MinimalHamiltonianPool.h>
-#include <MinimalWaveFunctionPool.h>
-#include "Utilities/ProjectData.h"
+
 #include <stdio.h>
 #include <sstream>
 
 namespace qmcplusplus
 {
 
-TEST_CASE("EstimatorManagerNew::EstimatorManager(comm)", "[estimators]")
-{
-  Communicate* c = OHMMS::Controller;
-  using namespace testing;
-
-  QMCHamiltonian ham;
-  testing::EstimatorManagerNewTest embt(ham, c, 1);
-
-  // Just checking here that we have an empty estimator manager in embt.
-
-  CHECK(embt.em.getNumEstimators() == 0);
-  CHECK(embt.em.getNumScalarEstimators() == 0);
-}
-
-TEST_CASE("EstimatorManagerNew::EstimatorManagerNew(EstimatorManagerInput,...)", "[estimators]")
-{
-  ProjectData test_project("test", ProjectData::DriverVersion::BATCH);
-  Communicate* comm = OHMMS::Controller;
-
-  using namespace testing;
-  Libxml2Document estimators_doc = createEstimatorManagerNewVMCInputXML();
-  EstimatorManagerInput emi(estimators_doc.getRoot());
-
-  CHECK(emi.get_estimator_inputs().size() == 3);
-  CHECK(emi.get_scalar_estimator_inputs().size() == 1);
-
-  auto particle_pool = MinimalParticlePool::make_diamondC_1x1x1(comm);
-  auto wavefunction_pool =
-      MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& pset            = *(particle_pool.getParticleSet("e"));
-  auto hamiltonian_pool = MinimalHamiltonianPool::make_hamWithEE(comm, particle_pool, wavefunction_pool);
-  auto& twf             = *(wavefunction_pool.getWaveFunction("wavefunction"));
-  auto& ham             = *(hamiltonian_pool.getPrimary());
-  EstimatorManagerNew emn(ham, comm);
-  emn.constructEstimators(std::move(emi), pset, twf, ham, particle_pool.getPool());
-
-  CHECK(emn.getNumEstimators() == 3);
-  // Because the only scalar estimator becomes the main estimator.
-  CHECK(emn.getNumScalarEstimators() == 0);
-  EstimatorManagerNewTestAccess emnta(emn);
-  CHECK(emnta.getMainEstimator().getName() == "LocalEnergyEstimator");
-
-  // Check behavior when multiple "main" estimators are in the input
-  // Each should override the previous main input as this is the behavior of legacy.
-  Libxml2Document estimators_doc2 = createEstimatorManagerNewInputXML();
-  EstimatorManagerInput emi2(estimators_doc2.getRoot());
-
-  CHECK(emi2.get_estimator_inputs().size() == n_opest_new_input_xml);
-  CHECK(emi2.get_scalar_estimator_inputs().size() == 4);
-
-  EstimatorManagerNew emn2(ham, comm);
-  emn2.constructEstimators(std::move(emi2), pset, twf, ham, particle_pool.getPool());
-  CHECK(emn2.getNumEstimators() == n_opest_new_input_xml);
-  // Because the only scalar estimator becomes the main estimator.
-  CHECK(emn2.getNumScalarEstimators() == 0);
-  EstimatorManagerNewTestAccess emnta2(emn2);
-  CHECK(emnta2.getMainEstimator().getName() == "RMCLocalEnergyEstimator");
-}
-
-TEST_CASE("EstimatorManagerNew_estimator_naming", "[estimators]")
-{
-  ProjectData test_project("test", ProjectData::DriverVersion::BATCH);
-  Communicate* comm = OHMMS::Controller;
-
-  using namespace testing;
-  Libxml2Document estimators_doc = createEstimatorManagerNewVMCInputXML();
-  EstimatorManagerInput emi_l(estimators_doc.getRoot());
-  Libxml2Document estimators_doc2 = createEstimatorNewGlobalOperatorEstInputXML();
-  EstimatorManagerInput emi_g(estimators_doc2.getRoot());
-  EstimatorManagerInput emi{emi_l, emi_g};
-
-  CHECK(emi.get_estimator_inputs().size() == n_opest_new_vmc_xml + n_opest_new_global_input_xml);
-
-  auto particle_pool = MinimalParticlePool::make_diamondC_1x1x1(comm);
-  auto wavefunction_pool =
-      MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& pset            = *(particle_pool.getParticleSet("e"));
-  auto hamiltonian_pool = MinimalHamiltonianPool::make_hamWithEE(comm, particle_pool, wavefunction_pool);
-  auto& twf             = *(wavefunction_pool.getWaveFunction("wavefunction"));
-  auto& ham             = *(hamiltonian_pool.getPrimary());
-  EstimatorManagerNew emn(ham, comm);
-  emn.constructEstimators(std::move(emi), pset, twf, ham, particle_pool.getPool());
-  EstimatorManagerNewTestAccess emnta(emn);
-  auto operator_estimators = emnta.getOperatorEstimators();
-  std::vector<std::string> names{"OneBodyDensityMatrices", "nofk", "EDcell", "sk1"};
-  auto it_names = names.begin();
-  for (OperatorEstBase& opest : operator_estimators)
-  {
-    CHECK(opest.getMyName() == *it_names);
-    ++it_names;
-  }
-}
-
-TEST_CASE("EstimatorManagerNew::collectMainEstimators", "[estimators]")
+TEST_CASE("EstimatorManagerNew", "[estimators]")
 {
   Communicate* c = OHMMS::Controller;
 
-  QMCHamiltonian ham;
-  testing::EstimatorManagerNewTest embt(ham, c, 1);
-  // by design we have done no averaging here
-  // the division by total weight happens only when a block is over and the
-  // accumulated data has been reduced down.  So here there should just be simple sums.
+  testing::EstimatorManagerNewTest embt(c, 1);
 
-  REQUIRE(embt.testReplaceMainEstimator());
+  REQUIRE(embt.em.size() == 0);
 
-  embt.fakeMainScalarSamples();
-  embt.collectMainEstimators();
-  double correct_value = 5.0;
-  CHECK(embt.em.get_AverageCache()[0] == Approx(correct_value));
-  correct_value = 8.0;
-  CHECK(embt.em.get_AverageCache()[1] == Approx(correct_value));
-  correct_value = 11.0;
-  CHECK(embt.em.get_AverageCache()[2] == Approx(correct_value));
-  correct_value = 14.0;
-  CHECK(embt.em.get_AverageCache()[3] == Approx(correct_value));
+  REQUIRE(embt.testAddGetEstimator());
 }
 
 TEST_CASE("EstimatorManagerNew::collectScalarEstimators", "[estimators]")
 {
   Communicate* c = OHMMS::Controller;
 
-  QMCHamiltonian ham;
-  testing::EstimatorManagerNewTest embt(ham, c, 1);
+  testing::EstimatorManagerNewTest embt(c, 1);
   // by design we have done no averaging here
   // the division by total weight happens only when a block is over and the
   // accumulated data has been reduced down.  So here there should just be simple sums.
 
-  embt.fakeScalarSamplesAndCollect();
-  double correct_value = 11.0;
-  CHECK(embt.em.get_AverageCache()[0] == Approx(correct_value));
-  correct_value = 20.0;
-  CHECK(embt.em.get_AverageCache()[1] == Approx(correct_value));
-  correct_value = 29.0;
-  CHECK(embt.em.get_AverageCache()[2] == Approx(correct_value));
-  correct_value = 38.0;
-  CHECK(embt.em.get_AverageCache()[3] == Approx(correct_value));
+  embt.fakeSomeScalarSamples();
+  embt.collectScalarEstimators();
+  double correct_value = 5.0;  
+  REQUIRE(embt.em.get_AverageCache()[0] == Approx(correct_value));
+  correct_value = 8.0;  
+  REQUIRE(embt.em.get_AverageCache()[1] == Approx(correct_value));
+  correct_value = 11.0;  
+  REQUIRE(embt.em.get_AverageCache()[2] == Approx(correct_value));
+  correct_value = 14.0;  
+  REQUIRE(embt.em.get_AverageCache()[3] == Approx(correct_value));
+
 }
+
+
+TEST_CASE("EstimatorManagerNew::collectOperatorEstimators", "[estimators]")
+{
+  Communicate* c = OHMMS::Controller;
+
+  testing::EstimatorManagerNewTest embt(c, 1);
+  // by design we have done no averaging here
+  // the division by total weight happens only when a block is over and the
+  // accumulated data has been reduced down.  So here there should just be simple sums.
+
+}
+
 
 TEST_CASE("EstimatorManagerNew adhoc addVector operator", "[estimators]")
 {

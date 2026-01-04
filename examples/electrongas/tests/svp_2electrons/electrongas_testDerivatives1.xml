@@ -1,0 +1,109 @@
+<?xml version="1.0"?>
+<simulation>
+  <project id="EG" series="0"/>
+  <random seed="493"/>
+  <qmcsystem>
+  <simulationcell>
+    <parameter name="rs" pol="0" condition="14">6.5</parameter>
+    <parameter name="bconds">p p p</parameter>
+    <parameter name="LR_dim_cutoff">15</parameter>
+  </simulationcell>
+  </qmcsystem>
+  <particleset name="e" random="yes">
+    <group name="u" size="2">
+      <parameter name="charge">-1</parameter>
+      <parameter name="mass">1</parameter>
+    </group>
+    <!--group name="d" size="11">
+      <parameter name="charge">-1</parameter>
+      <parameter name="mass">1</parameter>
+    </group-->
+    <!--group name="ut" size="11">
+      <parameter name="charge">-1</parameter>
+      <parameter name="mass">1</parameter>
+    </group-->
+    <!--group name="dt" size="11">
+      <parameter name="charge">-1</parameter>
+      <parameter name="mass">1</parameter>
+    </group-->
+  </particleset>
+  <wavefunction name="psi0" target="e">
+   
+<sposet_builder type="heg">
+  <sposet name="spo-u" size="2" twist="0 0 0"/>
+  <!--sposet name="spo-d" size="11" twist="0 0 0"/-->
+</sposet_builder>
+
+<determinantset>
+
+ <backflow>
+ <transformation name="eeB" type="e-e" function="Bspline" >
+  <!--correlation cusp="0.0" size="4" type="shortrange" init="no" speciesA="u" speciesB="u">
+        <coefficients id="uuB1" type="Array" optimize="yes"> 0.0 0.000 0.0 0.0 </coefficients>
+    </correlation-->
+  <correlation cusp="0.0" size="4" type="shortrange" init="no" speciesA="u" speciesB="u">
+        <coefficients id="uuB1" type="Array" optimize="yes"> 0.1 0.2 0.30001 0.4 </coefficients>
+    </correlation>
+    <!--correlation cusp="0.0" size="7" type="shortrange" init="no" speciesA="d" speciesB="u">
+        <coefficients id="udB1" type="Array" optimize="yes"> 1.561635206 0.4468142195 0.1157538774 0.006698303511 -0.0345567121 -0.02087674992 -0.006065495124</coefficients>
+    </correlation-->
+</transformation>
+     </backflow>
+
+  <slaterdeterminant>
+    <determinant id="u-det" sposet="spo-u"/>
+    <!--determinant id="d-det" sposet="spo-d"/-->
+  </slaterdeterminant>
+</determinantset>
+
+    <!--jastrow name="J2" type="Two-Body" function="Bspline" print="yes"-->
+     <!--correlation speciesA="u" speciesB="u" size="22" cusp="0"> 
+        <coefficients id="uu" type="Array" optimize="yes"> -0.1229777294 3.994766608 2.401871281 1.188716998 0.4702094801 0.1481004589 0.0167215358 -0.5567619518 -0.01474040734 0.04087241936 0.15052858 0.1677164755 0.1237772108 0.05450142926 1.553485306 -0.1417892704 -0.2244856177 -0.05438791592 0.01570831712 0.04043582373 0.02013668175 1.484658729</coefficients>
+      </correlation-->
+      <!--correlation speciesA="d" speciesB="d" size="22" cusp="0">
+        <coefficients id="dd" type="Array" optimize="no"> 0.8652307357 2.675012801 1.277743828 0.7171435985 0.356769832 0.1718987335 0.0513181203 1.508601234 0.7768413553 0.5044042816 0.2800438596 0.1497590768 0.09264218878 0.03608471237 -0.6279034315 0.6964332263 0.3390548152 0.1279419698 0.03780642697 0.008839481504 -0.002345671216 1.437890464</coefficients>
+      </correlation-->
+      <!--correlation speciesA="u" speciesB="d" size="22" cusp="0">
+        <coefficients id="ud" type="Array" optimize="no"> 7.459965752 4.605767695 2.162293632 0.8654140353 0.181998047 -0.02772584608 -0.03956494915 2.22636151 -0.02257513919 0.03787756855 0.1117964517 0.1848666757 0.1341555844 0.05998340064 3.051654831 0.7057985338 0.5290143429 0.4338267735 0.3549679081 0.2205147784 0.09151363312 1.413845681</coefficients>
+      </correlation-->
+    <!--/jastrow-->
+  </wavefunction>
+  <hamiltonian name="h0" target="e">
+ <pairpot name="ElecElec" type="coulomb" source="e" target="e" physical="true"/>
+  </hamiltonian>
+
+    <loop max="1">
+    <qmc method="linear" move="pbyp" checkpoint="-1" gpu="no">
+    <parameter name="walkers">     1  </parameter>
+    <parameter name="blocks">     1  </parameter>
+      <parameter name="warmupsteps"> 0 </parameter>
+      <parameter name="steps"> 2 </parameter>
+      <parameter name="substeps"> 1 </parameter>
+      <parameter name="timestep"> 20 </parameter>
+      <parameter name="samples">  2 </parameter>
+      <cost name="energy">                   1.0 </cost>
+      <cost name="unreweightedvariance">     0.0 </cost>
+      <cost name="reweightedvariance">       0.0 </cost>
+      <parameter name="useDrift">  no </parameter>
+      <parameter name="bigchange">10.0</parameter>
+      <estimator name="LocalEnergy" hdf5="no"/>
+      <parameter name="nonlocalpp"> no </parameter>
+      <parameter name="MinMethod">quartic</parameter>
+      <parameter name="minwalkers"> 1e-4 </parameter>
+      <parameter name="exp0">-6</parameter>
+      <parameter name="alloweddifference"> 1.0e-5 </parameter>
+      <parameter name="stepsize">  0.04 </parameter>
+      <parameter name="nstabilizers"> 1 </parameter>
+    </qmc>
+  </loop>
+
+  <!--qmc method="vmc" target="e">
+    <parameter name="blocks">50</parameter>
+    <parameter name="steps">10</parameter>
+    <parameter name="warmupsteps">100</parameter>
+    <parameter name="timestep">0.1</parameter>
+  </qmc-->
+
+
+
+</simulation>

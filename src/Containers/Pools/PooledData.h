@@ -2,20 +2,19 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2025 QMCPACK developers.
+// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
 //
 // File developed by: Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Ye Luo, yeluo@anl.gov, Argonne National Laboratory
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
-//                    Peter W. Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/** @file Pools/PooledData.h
+/** @file PooledData.h
  * @brief Define a serialized buffer to store anonymous data
  *
  * JK: Remove iterator version on 2016-01-04
@@ -26,19 +25,12 @@
 #include <complex>
 #include <limits>
 #include <iterator>
-#include <cassert>
-#include "type_traits/complex_help.hpp"
 
-/** Dynamically pack data into a buffer of type T.
-
-    Somehow callers must ensure that the order of add and get commands
-    is the same or
-    This class is defined to allow dynamically */
 template<class T>
 struct PooledData
 {
-  using value_type = T;
-  using size_type  = typename std::vector<T>::size_type;
+  typedef T value_type;
+  typedef typename std::vector<T>::size_type size_type;
 
   size_type Current;
   std::vector<T> myData;
@@ -95,7 +87,6 @@ struct PooledData
 
   inline void add(T& x)
   {
-    static_assert(!qmcplusplus::IsComplex_t<T>::value);
     Current++;
     myData.push_back(x);
   }
@@ -110,7 +101,6 @@ struct PooledData
   template<class T1>
   inline void add(T1& x)
   {
-    static_assert(!qmcplusplus::IsComplex_t<T1>::value);
     Current++;
     myData.push_back(static_cast<T>(x));
   }
@@ -122,12 +112,21 @@ struct PooledData
     myData.insert(myData.end(), first, last);
   }
 
-  void add(std::complex<T>* first, std::complex<T>* last);
-
-  void add(const std::complex<T>* first, const std::complex<T>* last);
+  template<typename T1>
+  inline void add(T1* first, T1* last)
+  {
+    Current += last - first;
+    myData.insert(myData.end(), first, last);
+  }
 
   template<typename T1>
-  void add(std::complex<T1>* first, std::complex<T1>* last);
+  inline void add(std::complex<T1>* first, std::complex<T1>* last)
+  {
+    size_type dn = 2 * (last - first);
+    T1* t        = reinterpret_cast<T1*>(first);
+    myData.insert(myData.end(), t, t + dn);
+    Current += dn;
+  }
 
   inline void get(T& x) { x = myData[Current++]; }
 
@@ -151,17 +150,23 @@ struct PooledData
     copy(myData.begin() + now, myData.begin() + Current, first);
   }
 
-  void get(std::complex<T>* first, std::complex<T>* last);
-
-  template<typename T1>
-  void get(std::complex<T1>* first, std::complex<T1>* last);
-
   template<typename T1>
   inline void get(T1* first, T1* last)
   {
     size_type now = Current;
     Current += last - first;
     std::copy(myData.begin() + now, myData.begin() + Current, first);
+  }
+
+  template<typename T1>
+  inline void get(std::complex<T1>* first, std::complex<T1>* last)
+  {
+    while (first != last)
+    {
+      (*first) = std::complex<T1>(myData[Current], myData[Current + 1]);
+      ++first;
+      Current += 2;
+    }
   }
 
   inline void put(T& x) { myData[Current++] = x; }
@@ -204,34 +209,30 @@ struct PooledData
   }
 
   /** return the address of the first element **/
-  inline T* data() { return myData.data(); }
+  inline T* data() { return &(myData[0]); }
 
   inline void print(std::ostream& os) { copy(myData.begin(), myData.end(), std::ostream_iterator<T>(os, " ")); }
 
   template<class Msg>
   inline Msg& putMessage(Msg& m)
   {
-    m.Pack(myData.data(), myData.size());
+    m.Pack(&(myData[0]), myData.size());
     return m;
   }
 
   template<class Msg>
   inline Msg& getMessage(Msg& m)
   {
-    m.Unpack(myData.data(), myData.size());
+    m.Unpack(&(myData[0]), myData.size());
     return m;
   }
 
-  /** Accumulate element wise values into this from other
-   */
-  inline PooledData<T>& operator+=(const PooledData<T>& other)
+  inline PooledData<T>& operator+=(const PooledData<T>& s)
   {
-    assert(myData.size() >= other.size());
     for (int i = 0; i < myData.size(); ++i)
-      myData[i] += other[i];
+      myData[i] += s[i];
     return *this;
   }
-
   inline PooledData<T>& operator*=(T scale)
   {
     for (int i = 0; i < myData.size(); ++i)
@@ -269,10 +270,4 @@ bool operator!=(const PooledData<T>& a, const PooledData<T>& b)
   }
   return false;
 }
-
-extern template struct PooledData<float>;
-extern template struct PooledData<double>;
-extern template void PooledData<double>::add<float>(std::complex<float>* first, std::complex<float>* last);
-extern template void PooledData<double>::get<float>(std::complex<float>* first, std::complex<float>* last);
-
 #endif

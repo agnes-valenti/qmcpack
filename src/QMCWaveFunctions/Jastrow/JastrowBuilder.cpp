@@ -26,7 +26,7 @@
 
 namespace qmcplusplus
 {
-JastrowBuilder::JastrowBuilder(Communicate* comm, ParticleSet& p, const PSetMap& psets)
+JastrowBuilder::JastrowBuilder(Communicate* comm, ParticleSet& p, PtclPoolType& psets)
     : WaveFunctionComponentBuilder(comm, p), ptclPool(psets)
 {
   resetOptions();
@@ -86,27 +86,37 @@ std::unique_ptr<WaveFunctionComponent> JastrowBuilder::buildComponent(xmlNodePtr
 
 std::unique_ptr<WaveFunctionComponent> JastrowBuilder::buildCounting(xmlNodePtr cur)
 {
+#if OHMMS_DIM == 3
   ReportEngine PRE(ClassName, "addCounting(xmlNodePtr)");
+
   std::unique_ptr<CountingJastrowBuilder> cjb;
-  auto pa_it(ptclPool.find(sourceOpt));
+  std::map<std::string, ParticleSet*>::iterator pa_it(ptclPool.find(sourceOpt));
   if (pa_it != ptclPool.end() && sourceOpt != targetPtcl.getName()) // source is not target
-    cjb = std::make_unique<CountingJastrowBuilder>(myComm, targetPtcl, *pa_it->second);
+  {
+    ParticleSet* sourcePtcl = (*pa_it).second;
+    cjb                     = std::make_unique<CountingJastrowBuilder>(myComm, targetPtcl, *sourcePtcl);
+  }
   else
     cjb = std::make_unique<CountingJastrowBuilder>(myComm, targetPtcl);
   return cjb->buildComponent(cur);
+#else
+  APP_ABORT("  CountingJastrowBuilder is not valid for OHMMS_DIM != 3 ");
+  return nullptr;
+#endif
 }
 
 std::unique_ptr<WaveFunctionComponent> JastrowBuilder::buildkSpace(xmlNodePtr cur)
 {
   app_log() << "  JastrowBuilder::buildkSpace(xmlNodePtr)" << std::endl;
-  auto pa_it(ptclPool.find(sourceOpt));
+  std::map<std::string, ParticleSet*>::iterator pa_it(ptclPool.find(sourceOpt));
   if (pa_it == ptclPool.end())
   {
     app_warning() << "  JastrowBuilder::buildkSpace failed. " << sourceOpt << " does not exist" << std::endl;
     return nullptr;
   }
+  ParticleSet* sourcePtcl = (*pa_it).second;
   app_log() << "\n  Using kSpaceJastrowBuilder for reciprocal-space Jastrows" << std::endl;
-  kSpaceJastrowBuilder sBuilder(myComm, targetPtcl, *pa_it->second);
+  kSpaceJastrowBuilder sBuilder(myComm, targetPtcl, *sourcePtcl);
   return sBuilder.buildComponent(cur);
 }
 
@@ -119,14 +129,15 @@ std::unique_ptr<WaveFunctionComponent> JastrowBuilder::buildOneBody(xmlNodePtr c
               "\nExit JastrowBuilder::buildOneBody.\n");
     return nullptr;
   }
-  auto pa_it(ptclPool.find(sourceOpt));
+  std::map<std::string, ParticleSet*>::iterator pa_it(ptclPool.find(sourceOpt));
   if (pa_it == ptclPool.end())
   {
     PRE.error("JastrowBuilder::buildOneBody failed. " + sourceOpt + " does not exist.");
     return nullptr;
   }
+  ParticleSet* sourcePtcl = (*pa_it).second;
   //use lowercase, to be handled by parser later
-  RadialJastrowBuilder rb(myComm, targetPtcl, *pa_it->second);
+  RadialJastrowBuilder rb(myComm, targetPtcl, *sourcePtcl);
   return rb.buildComponent(cur);
 }
 
@@ -134,7 +145,7 @@ std::unique_ptr<WaveFunctionComponent> JastrowBuilder::build_eeI(xmlNodePtr cur)
 {
 #if OHMMS_DIM == 3
   ReportEngine PRE(ClassName, "add_eeI(xmlNodePtr)");
-  auto pit(ptclPool.find(sourceOpt));
+  PtclPoolType::iterator pit(ptclPool.find(sourceOpt));
   if (pit == ptclPool.end())
   {
     app_error() << "     JastrowBuilder::build_eeI requires a source attribute. " << sourceOpt << " is invalid "

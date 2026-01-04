@@ -14,7 +14,7 @@
 #ifndef QMCPLUSPLUS_WALKER_INPUT_MANAGER_H
 #define QMCPLUSPLUS_WALKER_INPUT_MANAGER_H
 
-#include "Particle/WalkerConfigurations.h"
+#include "Particle/MCWalkerConfiguration.h"
 #include <queue>
 
 class Communicate;
@@ -23,20 +23,19 @@ namespace qmcplusplus
 {
 class HDFWalkerInputManager
 {
-  /// reference to the list of walker configurations to be read from file
-  WalkerConfigurations& wc_list_;
-  /// number of particles
-  const size_t num_ptcls_;
+  MCWalkerConfiguration& targetW;
   Communicate* myComm;
   std::string CurrentFileRoot;
 
 public:
-  HDFWalkerInputManager(WalkerConfigurations& w, size_t num_ptcls, Communicate* c);
+  HDFWalkerInputManager(MCWalkerConfiguration& w, Communicate* c);
   ~HDFWalkerInputManager();
   bool put(xmlNodePtr cur);
   //bool put(std::vector<xmlNodePtr>& mset, int pid);
   //bool put(std::vector<xmlNodePtr>& mset, Communicate* comm);
   std::string getFileRoot() { return CurrentFileRoot; }
+
+  void rewind(const std::string& h5root, int blocks);
 };
 } // namespace qmcplusplus
 

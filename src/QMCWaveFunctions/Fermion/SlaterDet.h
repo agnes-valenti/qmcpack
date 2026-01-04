@@ -18,56 +18,59 @@
 #ifndef QMCPLUSPLUS_SLATERDETERMINANT_WITHBASE_H
 #define QMCPLUSPLUS_SLATERDETERMINANT_WITHBASE_H
 #include "QMCWaveFunctions/Fermion/DiracDeterminantBase.h"
+#include <map>
 
 namespace qmcplusplus
 {
-class TWFFastDerivWrapper;
+// NOTE NOTE NOTE
+// template<bool backflow>
+//  class SlaterDet: public WaveFunctionComponent {}
+//     then change SlaterDet to SlaterDet<false>
+//     and SlaterDeterminantWithBackflow to SlaterDet<true>
+//     and remove all virtuals and inline them
 
 class SlaterDet : public WaveFunctionComponent
 {
 public:
   using Determinant_t = DiracDeterminantBase;
+  ///container for the DiracDeterminants
+  const std::vector<std::unique_ptr<Determinant_t>> Dets;
 
   /**  constructor
    * @param targetPtcl target Particleset
    */
-  SlaterDet(ParticleSet& targetPtcl,
-            std::vector<std::unique_ptr<SPOSet>>&& sposets,
-            std::vector<std::unique_ptr<Determinant_t>>&& dets,
-            const std::string& class_name = "SlaterDet");
+  SlaterDet(ParticleSet& targetPtcl, std::vector<std::unique_ptr<Determinant_t>> dets, const std::string& class_name = "SlaterDet");
 
   ///destructor
   ~SlaterDet() override;
 
-  std::string getClassName() const override { return "SlaterDet"; }
-
-  bool isFermionic() const final { return true; }
-  bool isOptimizable() const override;
-
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override;
+  void checkInVariables(opt_variables_type& active) override;
 
   void checkOutVariables(const opt_variables_type& active) override;
 
-  void registerTWFFastDerivWrapper(const ParticleSet& P, TWFFastDerivWrapper& twf) const override;
+  ///reset all the Dirac determinants, Optimizable is true
+  void resetParameters(const opt_variables_type& optVariables) override;
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+  void reportStatus(std::ostream& os) override;
+
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
   void mw_evaluateLog(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                       const RefVectorWithLeader<ParticleSet>& p_list,
-                      const RefVector<ParticleSet::ParticleGradient>& G_list,
-                      const RefVector<ParticleSet::ParticleLaplacian>& L_list) const override;
+                      const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                      const RefVector<ParticleSet::ParticleLaplacian_t>& L_list) const override;
 
-  LogValue evaluateGL(const ParticleSet& P,
-                      ParticleSet::ParticleGradient& G,
-                      ParticleSet::ParticleLaplacian& L,
-                      bool fromscratch) override;
+  LogValueType evaluateGL(const ParticleSet& P,
+                          ParticleSet::ParticleGradient_t& G,
+                          ParticleSet::ParticleLaplacian_t& L,
+                          bool fromscratch) override;
 
   void mw_evaluateGL(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                      const RefVectorWithLeader<ParticleSet>& p_list,
-                     const RefVector<ParticleSet::ParticleGradient>& G_list,
-                     const RefVector<ParticleSet::ParticleLaplacian>& L_list,
+                     const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                     const RefVector<ParticleSet::ParticleLaplacian_t>& L_list,
                      bool fromscratch) const override;
 
   void recompute(const ParticleSet& P) override;
@@ -76,44 +79,27 @@ public:
                     const RefVectorWithLeader<ParticleSet>& p_list,
                     const std::vector<bool>& recompute) const override;
 
-  void evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi) override;
+  void evaluateHessian(ParticleSet& P, HessVector_t& grad_grad_psi) override;
+
+  ///return the total number of Dirac determinants
+  inline int size() const { return Dets.size(); }
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
 
   void createResource(ResourceCollection& collection) const override;
 
-  void acquireResource(ResourceCollection& collection,
-                       const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const override;
+  void acquireResource(ResourceCollection& collection, const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const override;
 
-  void releaseResource(ResourceCollection& collection,
-                       const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const override;
+  void releaseResource(ResourceCollection& collection, const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const override;
 
   inline void evaluateRatios(const VirtualParticleSet& VP, std::vector<ValueType>& ratios) override
   {
     return Dets[getDetID(VP.refPtcl)]->evaluateRatios(VP, ratios);
   }
-
-  inline void evaluateSpinorRatios(const VirtualParticleSet& VP,
-                                   const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                                   std::vector<ValueType>& ratios) override
-  {
-    return Dets[getDetID(VP.refPtcl)]->evaluateSpinorRatios(VP, spinor_multiplier, ratios);
-  }
-
-  void evaluateDerivRatios(const VirtualParticleSet& VP,
-                           const opt_variables_type& optvars,
-                           std::vector<ValueType>& ratios,
-                           Matrix<ValueType>& dratios) override;
-
-  void evaluateSpinorDerivRatios(const VirtualParticleSet& VP,
-                                 const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                                 const opt_variables_type& optvars,
-                                 std::vector<ValueType>& ratios,
-                                 Matrix<ValueType>& dratios) override;
 
   inline void mw_evaluateRatios(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                                 const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
@@ -127,36 +113,15 @@ public:
     }
   }
 
-  inline void mw_evaluateSpinorRatios(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                                      const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
-                                      const RefVector<std::pair<ValueVector, ValueVector>>& spinor_multiplier_list,
-                                      std::vector<std::vector<ValueType>>& ratios) const final
-  {
-    if (wfc_list.size())
-    {
-      // assuming all the VP.refPtcl are identical
-      const int det_id = getDetID(vp_list[0].refPtcl);
-      Dets[det_id]->mw_evaluateSpinorRatios(extract_DetRef_list(wfc_list, det_id), vp_list, spinor_multiplier_list,
-                                            ratios);
-    }
-  }
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
-
-  PsiValue ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad_iat) override;
+  PsiValueType ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad_iat) override;
 
   void mw_ratioGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                     const RefVectorWithLeader<ParticleSet>& p_list,
                     int iat,
-                    std::vector<PsiValue>& ratios,
+                    std::vector<PsiValueType>& ratios,
                     std::vector<GradType>& grad_now) const override;
-
-  void mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                            const RefVectorWithLeader<ParticleSet>& p_list,
-                            int iat,
-                            std::vector<PsiValue>& ratios,
-                            std::vector<GradType>& grad_now,
-                            std::vector<ComplexType>& spingrad_now) const override;
 
   GradType evalGrad(ParticleSet& P, int iat) override { return Dets[getDetID(iat)]->evalGrad(P, iat); }
 
@@ -174,16 +139,10 @@ public:
     Dets[det_id]->mw_evalGrad(extract_DetRef_list(wfc_list, det_id), p_list, iat, grad_now);
   }
 
-  void mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                           const RefVectorWithLeader<ParticleSet>& p_list,
-                           int iat,
-                           std::vector<GradType>& grad_now,
-                           std::vector<ComplexType>& spingrad_now) const override;
-
   GradType evalGradSource(ParticleSet& P, ParticleSet& src, int iat) override
   {
     GradType G = GradType();
-    for (int iz = 0; iz < Dets.size(); iz++)
+    for (int iz = 0; iz < size(); iz++)
       G += Dets[iz]->evalGradSource(P, src, iat);
     return G;
   }
@@ -191,11 +150,11 @@ public:
   GradType evalGradSource(ParticleSet& P,
                           ParticleSet& src,
                           int iat,
-                          TinyVector<ParticleSet::ParticleGradient, OHMMS_DIM>& grad_grad,
-                          TinyVector<ParticleSet::ParticleLaplacian, OHMMS_DIM>& lapl_grad) override
+                          TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
+                          TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override
   {
     GradType G = GradType();
-    for (int iz = 0; iz < Dets.size(); iz++)
+    for (int iz = 0; iz < size(); iz++)
       G += Dets[iz]->evalGradSource(P, src, iat, grad_grad, lapl_grad);
     return G;
   }
@@ -204,11 +163,13 @@ public:
 
   inline void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override
   {
+    //std::cout<<"AV entering acceptMove SlaterDet"<<std::endl;
     Dets[getDetID(iat)]->acceptMove(P, iat, safe_to_delay);
 
     log_value_ = 0.0;
     for (int i = 0; i < Dets.size(); ++i)
       log_value_ += Dets[i]->get_log_value();
+    //std::cout<<"AV exiting acceptMove SlaterDet"<<std::endl<<std::endl;
   }
 
   void mw_accept_rejectMove(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
@@ -217,7 +178,7 @@ public:
                             const std::vector<bool>& isAccepted,
                             bool safe_to_delay = false) const override
   {
-    constexpr LogValue czero(0);
+    constexpr LogValueType czero(0);
 
     // This log_value_ is in the slater determinant, it's still around but not consistent anymore with the
     // sum of the log_values in its determinants.  Caching the state seems like a bad call, but the wfc base class
@@ -251,12 +212,14 @@ public:
       Dets[i]->mw_completeUpdates(extract_DetRef_list(wfc_list, i));
   }
 
-  inline PsiValue ratio(ParticleSet& P, int iat) override { return Dets[getDetID(iat)]->ratio(P, iat); }
+  inline PsiValueType ratio(ParticleSet& P, int iat) override { 
+   //std::cout<<"AV slaterdet ratio (calls another ratio function!)"<<std::endl;
+   return Dets[getDetID(iat)]->ratio(P, iat); }
 
   void mw_calcRatio(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                     const RefVectorWithLeader<ParticleSet>& p_list,
                     int iat,
-                    std::vector<PsiValue>& ratios) const override
+                    std::vector<PsiValueType>& ratios) const override
   {
     const int det_id = getDetID(iat);
     Dets[det_id]->mw_calcRatio(extract_DetRef_list(wfc_list, det_id), p_list, iat, ratios);
@@ -264,31 +227,140 @@ public:
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
 
+  virtual SPOSetPtr getPhi(int i = 0) { return Dets[i]->getPhi(); }
+
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios) override;
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& active,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override
   {
+    // First zero out values, since each determinant only adds on
+    // its contribution (i.e. +=) , rather than setting the value
+    // (i.e. =)
+    for (int k = 0; k < myVars.size(); ++k)  //AV: size=0, no parameters (could be prefactor from multideterminant??)
+    {
+      int kk = myVars.where(k);
+      if (kk >= 0)
+        dlogpsi[kk] = dhpsioverpsi[kk] = 0.0;
+    }
     // Now add on contribution from each determinant to the derivatives
     for (int i = 0; i < Dets.size(); i++)
-      Dets[i]->evaluateDerivatives(P, active, dlogpsi, dhpsioverpsi);
+      Dets[i]->evaluateDerivatives(P, active, dlogpsi, dhpsioverpsi);  //AV: return empty for SPOSet::evaluateDerivatives
   }
 
-  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) override
+  void evaluateGradDerivatives(const ParticleSet::ParticleGradient_t& G_in,
+                               std::vector<ValueType>& dgradlogpsi) override
   {
-    // Now add on contribution from each determinant to the derivatives
     for (int i = 0; i < Dets.size(); i++)
-      Dets[i]->evaluateDerivativesWF(P, active, dlogpsi);
+      Dets[i]->evaluateGradDerivatives(G_in, dgradlogpsi);
   }
 
-  ///return the total number of Dirac determinants
-  inline int getNumDets() const { return Dets.size(); }
-  ///return the i-th determinant
-  inline auto& getDet(const int i) { return *Dets[i]; }
-  ///return the sposet of the i-th determinant
-  SPOSet& getPhi(int i = 0) { return Dets[i]->getPhi(); }
+#ifdef QMC_CUDA
+  /////////////////////////////////////////////////////
+  // Functions for vectorized evaluation and updates //
+  /////////////////////////////////////////////////////
+  void recompute(MCWalkerConfiguration& W, bool firstTime) override
+  {
+    for (int id = 0; id < Dets.size(); id++)
+      Dets[id]->recompute(W, firstTime);
+  }
+
+  void reserve(PointerPool<gpu::device_vector<CTS::ValueType>>& pool, int kblocksize = 1) override
+  {
+    for (int id = 0; id < Dets.size(); id++)
+      Dets[id]->reserve(pool, kblocksize);
+  }
+
+  void addLog(MCWalkerConfiguration& W, std::vector<RealType>& logPsi) override
+  {
+    for (int id = 0; id < Dets.size(); id++)
+      Dets[id]->addLog(W, logPsi);
+  }
+
+  void ratio(MCWalkerConfiguration& W,
+             int iat,
+             std::vector<ValueType>& psi_ratios,
+             std::vector<GradType>& grad,
+             std::vector<ValueType>& lapl) override
+  {
+    Dets[getDetID(iat)]->ratio(W, iat, psi_ratios, grad, lapl);
+  }
+
+  void det_lookahead(MCWalkerConfiguration& W,
+                     std::vector<ValueType>& psi_ratios,
+                     std::vector<GradType>& grad,
+                     std::vector<ValueType>& lapl,
+                     int iat,
+                     int k,
+                     int kd,
+                     int nw) override
+  {
+    Dets[getDetID(iat)]->det_lookahead(W, psi_ratios, grad, lapl, iat, k, kd, nw);
+  }
+  void calcRatio(MCWalkerConfiguration& W,
+                 int iat,
+                 std::vector<ValueType>& psi_ratios,
+                 std::vector<GradType>& grad,
+                 std::vector<ValueType>& lapl) override
+  {
+    Dets[getDetID(iat)]->calcRatio(W, iat, psi_ratios, grad, lapl);
+  }
+
+  void addRatio(MCWalkerConfiguration& W,
+                int iat,
+                int k,
+                std::vector<ValueType>& psi_ratios,
+                std::vector<GradType>& grad,
+                std::vector<ValueType>& lapl) override
+  {
+    Dets[getDetID(iat)]->addRatio(W, iat, k, psi_ratios, grad, lapl);
+  }
+
+  void ratio(std::vector<Walker_t*>& walkers,
+             std::vector<int>& iatList,
+             std::vector<PosType>& rNew,
+             std::vector<ValueType>& psi_ratios,
+             std::vector<GradType>& grad,
+             std::vector<ValueType>& lapl) override;
+
+  void calcGradient(MCWalkerConfiguration& W, int iat, int k, std::vector<GradType>& grad) override
+  {
+    Dets[getDetID(iat)]->calcGradient(W, iat, k, grad);
+  }
+
+  void addGradient(MCWalkerConfiguration& W, int iat, std::vector<GradType>& grad) override
+  {
+    Dets[getDetID(iat)]->addGradient(W, iat, grad);
+  }
+
+  void update(MCWalkerConfiguration* W,
+              std::vector<Walker_t*>& walkers,
+              int iat,
+              std::vector<bool>* acc,
+              int k) override
+  {
+    Dets[getDetID(iat)]->update(W, walkers, iat, acc, k);
+  }
+
+  void update(const std::vector<Walker_t*>& walkers, const std::vector<int>& iatList) override;
+
+  void gradLapl(MCWalkerConfiguration& W, GradMatrix_t& grads, ValueMatrix_t& lapl) override
+  {
+    for (int id = 0; id < Dets.size(); id++)
+      Dets[id]->gradLapl(W, grads, lapl);
+  }
+
+  void NLratios(MCWalkerConfiguration& W,
+                std::vector<NLjob>& jobList,
+                std::vector<PosType>& quadPoints,
+                std::vector<ValueType>& psi_ratios) override
+  {
+    for (int id = 0; id < Dets.size(); id++)
+      Dets[id]->NLratios(W, jobList, quadPoints, psi_ratios);
+  }
+#endif
 
 private:
   //get Det ID
@@ -314,12 +386,6 @@ private:
 
   ///the last particle of each group
   std::vector<int> Last;
-
-  ///container for the unique SPOSets
-  const std::vector<std::unique_ptr<SPOSet>> sposets_;
-
-  ///container for the DiracDeterminants
-  const std::vector<std::unique_ptr<Determinant_t>> Dets;
 };
 } // namespace qmcplusplus
 #endif

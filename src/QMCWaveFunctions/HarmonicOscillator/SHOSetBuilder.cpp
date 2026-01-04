@@ -16,7 +16,7 @@
 #include "OhmmsData/AttributeSet.h"
 #include "Utilities/IteratorUtility.h"
 #include "Utilities/string_utils.h"
-#include "CPU/math.hpp"
+
 
 namespace qmcplusplus
 {
@@ -42,7 +42,7 @@ void SHOSetBuilder::reset()
 }
 
 
-std::unique_ptr<SPOSet> SHOSetBuilder::createSPOSetFromXML(xmlNodePtr cur)
+std::unique_ptr<SPOSet> SHOSetBuilder::createSPOSetFromXML(xmlNodePtr cur, int particletype)
 {
   APP_ABORT("SHOSetBuilder::createSPOSetFromXML  SHOSetBuilder should not use legacy interface");
 
@@ -104,7 +104,7 @@ std::unique_ptr<SPOSet> SHOSetBuilder::createSPOSet(xmlNodePtr cur, SPOSetInputI
     sho_states.push_back(basis_states[indices[i]]);
 
   // make the sposet
-  auto sho = std::make_unique<SHOSet>(spo_name, length, center, sho_states);
+  auto sho = std::make_unique<SHOSet>(length, center, sho_states);
 
   sho->report("  ");
   //sho->test_derivatives();

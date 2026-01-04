@@ -11,6 +11,7 @@
 
 message(VERBOSE "Adding AFQMC numerics unit tests")
 
+
 set(SRC_DIR afqmc_numerics)
 set(UTEST_EXE test_${SRC_DIR})
 set(UTEST_NAME deterministic-unit_test_${SRC_DIR})

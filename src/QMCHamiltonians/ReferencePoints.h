@@ -25,8 +25,8 @@ namespace qmcplusplus
 class ReferencePoints : public QMCTraits
 {
 public:
-  using Point    = TinyVector<RealType, DIM>;
-  using Tensor_t = Tensor<RealType, DIM>;
+  typedef TinyVector<RealType, DIM> Point;
+  typedef Tensor<RealType, DIM> Tensor_t;
 
   std::map<std::string, Point> points;
   Tensor_t axes;
@@ -34,7 +34,7 @@ public:
   bool put(xmlNodePtr cur, ParticleSet& P, std::vector<ParticleSet*>& Pref);
   bool put(ParticleSet& P, std::vector<ParticleSet*>& Pref);
   void write_description(std::ostream& os, std::string& indent);
-  void save(std::vector<ObservableHelper>& h5desc, const hdf_path& enclosing_path, hdf_archive& file) const;
+  void save(std::vector<ObservableHelper>& h5desc, hid_t gid) const;
 
 private:
   enum Coordinate

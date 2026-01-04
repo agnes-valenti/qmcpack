@@ -15,16 +15,13 @@
 
 #include "VMCUpdateAll.h"
 #include "QMCDrivers/DriftOperators.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 
 namespace qmcplusplus
 {
 using WP = WalkerProperties::Indexes;
 
-VMCUpdateAll::VMCUpdateAll(MCWalkerConfiguration& w,
-                           TrialWaveFunction& psi,
-                           QMCHamiltonian& h,
-                           RandomBase<FullPrecRealType>& rg)
+VMCUpdateAll::VMCUpdateAll(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg)
 {
   UpdatePbyP = false;
@@ -34,6 +31,8 @@ VMCUpdateAll::~VMCUpdateAll() {}
 
 void VMCUpdateAll::advanceWalker(Walker_t& thisWalker, bool recompute)
 {
+  std::cout<<"AV VMCUpdateAll AdvanceWalker (only one)"<<std::endl;
+  std::flush(std::cout);
   /* thisWalker.R will track the last accepted configuration
    * W.R will track the proposed configuration 
    *
@@ -109,10 +108,9 @@ void VMCUpdateAll::advanceWalker(Walker_t& thisWalker, bool recompute)
   RealType eloc = H.evaluate(
       W); // calculate local energy; W.SK must be up-to-date if Coulomb interaction is used with periodic boundary. W.SK is used to calculate the long-range part of the Coulomb potential.
   W.saveWalker(thisWalker);
-  thisWalker.resetProperty(logpsi_old, Psi.getPhase(),
-                           eloc);               // update thisWalker::Properties[WP::LOGPSI,WP::SIGN,WP::LOCALENERGY]
-  H.auxHevaluate(W, thisWalker);                // update auxiliary observables, i.e. fill H::Observables
-  H.saveProperty(thisWalker.getPropertyBase()); // copy H::Observables to thisWalker::Properties
+  thisWalker.resetProperty(logpsi_old, Psi.getPhase(), eloc); // update thisWalker::Properties[WP::LOGPSI,WP::SIGN,WP::LOCALENERGY]
+  H.auxHevaluate(W, thisWalker);                              // update auxiliary observables, i.e. fill H::Observables
+  H.saveProperty(thisWalker.getPropertyBase());               // copy H::Observables to thisWalker::Properties
 }
 
 } // namespace qmcplusplus

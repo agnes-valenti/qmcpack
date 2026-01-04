@@ -58,7 +58,7 @@ inline void eval_e2iphi(int n, const float* restrict phi, std::complex<float>* r
 }
 #else /* generic case */
 template<typename T>
-inline void eval_e2iphi(int n, const T* restrict phi, T* restrict phase_r, T* restrict phase_i)
+inline void eval_e2iphi(int n, const T* restrict phi, T* restrict phase_r, T* restrict phase_i) //AV here
 {
   for (int i = 0; i < n; i++)
     qmcplusplus::sincos(phi[i], phase_i + i, phase_r + i);

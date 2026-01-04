@@ -16,7 +16,6 @@
 
 #include <stdio.h>
 #include <string>
-#include <iostream>
 
 using std::string;
 
@@ -27,20 +26,20 @@ namespace qmcplusplus
 template<unsigned int D>
 void test_tiny_vector()
 {
-  using vec_t = TinyVector<double, D>;
+  typedef TinyVector<double, D> vec_t;
 
   vec_t v1;
   // default constructor sets elements to zero
   for (int i = 0; i < D; i++)
   {
-    CHECK(v1[i] == Approx(0.0));
+    REQUIRE(v1[i] == Approx(0.0));
   }
 
   vec_t v2(1.0);
   // single constructor sets all the elements to that value
   for (int i = 0; i < D; i++)
   {
-    CHECK(v2[i] == Approx(1.0));
+    REQUIRE(v2[i] == Approx(1.0));
   }
 
   // TODO: add optional bounds checks to element access methods
@@ -54,7 +53,7 @@ void test_tiny_vector()
 
   // Dot product
   double dotp = dot(v2, v4);
-  CHECK(sum == Approx(dotp));
+  REQUIRE(sum == Approx(dotp));
 
   // Multiply add
   v1 += 2.0 * v4;
@@ -64,10 +63,10 @@ void test_tiny_vector()
 template<unsigned int D>
 void test_tiny_vector_size_two()
 {
-  using vec_t = TinyVector<double, D>;
+  typedef TinyVector<double, D> vec_t;
   vec_t v3(1.0, 2.0);
-  CHECK(v3[0] == Approx(1.0));
-  CHECK(v3[1] == Approx(2.0));
+  REQUIRE(v3[0] == Approx(1.0));
+  REQUIRE(v3[1] == Approx(2.0));
   // problem: elements past those explicitly set are undefined
   // in this case, vectors with D > 2 will have undefined elements.
 }
@@ -81,15 +80,6 @@ TEST_CASE("tiny vector", "[OhmmsPETE]")
   test_tiny_vector_size_two<2>();
   test_tiny_vector_size_two<3>();
   test_tiny_vector_size_two<4>();
-}
-
-TEST_CASE("tiny vector operator out", "[OhmmsPETE]")
-{
-  TinyVector<double, 3> point{0.0, -0.0, 1.0};
-  std::ostringstream ostr;
-  ostr << point;
-  std::string expected{"                 0                 0                 1"};
-  CHECK(expected == ostr.str());
 }
 
 } // namespace qmcplusplus

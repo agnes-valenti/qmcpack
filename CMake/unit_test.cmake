@@ -20,25 +20,12 @@ function(ADD_UNIT_TEST TESTNAME PROCS THREADS TEST_BINARY)
   if(TEST_ADDED)
     set_tests_properties(${TESTNAME} PROPERTIES PROCESSORS ${TOT_PROCS} ENVIRONMENT OMP_NUM_THREADS=${THREADS}
                                                 PROCESSOR_AFFINITY TRUE)
-    if("asan" IN_LIST ENABLE_SANITIZER)
-      set_property(
-        TEST ${TESTNAME}
-        APPEND
-        PROPERTY ENVIRONMENT LSAN_OPTIONS=${LSAN_OPTIONS})
-    endif()
 
-    if(ENABLE_CUDA
+    if(QMC_CUDA
+       OR ENABLE_CUDA
        OR ENABLE_ROCM
-       OR ENABLE_SYCL
        OR ENABLE_OFFLOAD)
       set_tests_properties(${TESTNAME} PROPERTIES RESOURCE_LOCK exclusively_owned_gpus)
-    endif()
-
-    if(ENABLE_OFFLOAD)
-      set_property(
-        TEST ${TESTNAME}
-        APPEND
-        PROPERTY ENVIRONMENT "OMP_TARGET_OFFLOAD=mandatory")
     endif()
   endif()
 
@@ -48,22 +35,4 @@ function(ADD_UNIT_TEST TESTNAME PROCS THREADS TEST_BINARY)
     TEST ${TESTNAME}
     APPEND
     PROPERTY LABELS "unit")
-endfunction()
-
-# Add a test to see if the target output exists in the desired location in the build directory.
-function(add_test_target_in_output_location TARGET_NAME_TO_TEST EXE_DIR_RELATIVE_TO_BUILD)
-
-  # obtain BASE_NAME
-  get_target_property(BASE_NAME ${TARGET_NAME_TO_TEST} OUTPUT_NAME)
-  if(NOT BASE_NAME)
-    set(BASE_NAME ${TARGET_NAME_TO_TEST})
-  endif()
-
-  set(TESTNAME build_output_${TARGET_NAME_TO_TEST}_exists)
-  add_test(NAME ${TESTNAME} COMMAND ls ${qmcpack_BINARY_DIR}/bin/${BASE_NAME})
-
-  set_property(
-    TEST ${TESTNAME}
-    APPEND
-    PROPERTY LABELS "unit;deterministic")
 endfunction()

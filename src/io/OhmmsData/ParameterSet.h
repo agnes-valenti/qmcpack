@@ -17,12 +17,11 @@
 
 #include <map>
 #include <string>
-#include <complex>
 #include "OhmmsData/OhmmsParameter.h"
-#include "string_utils.h"
-#include "OhmmsPETE/TinyVector.h"
 
 /** class to handle a set of parameters
+ *
+ *This may become an inherited class from OhmmsElementBase.
  */
 struct ParameterSet : public OhmmsElementBase
 {
@@ -50,7 +49,43 @@ struct ParameterSet : public OhmmsElementBase
    * - <parameter name="aname"> value </parameter>
    * aname is converted into lower cases.
    */
-  bool put(xmlNodePtr cur) override;
+  inline bool put(xmlNodePtr cur) override
+  { 
+    //std::cout<<"AV entering ParameterSet::put"<<std::endl;
+    if (cur == NULL)
+      return true; //handle empty node
+    cur            = cur->xmlChildrenNode;
+    bool something = false;
+    while (cur != NULL)
+    {
+      std::string cname((const char*)(cur->name));
+      tolower(cname);
+      if (auto it_tag = m_param.find(cname); it_tag == m_param.end())
+      {
+        if (cname == myName)
+        {
+          XMLAttrString aname(cur, "name");
+          if (!aname.empty())
+          {
+            tolower(aname);
+            if (auto it = m_param.find(aname); it != m_param.end())
+            {
+              something = true;
+              it->second->put(cur);
+            }
+          }
+        }
+      }
+      else
+      {
+        something = true;
+        it_tag->second->put(cur);
+      }
+      cur = cur->next;
+    }
+    //std::cout<<"AV exiting ParameterSet::put"<<std::endl;
+    return something;
+  }
 
   inline void reset() override {}
 
@@ -61,40 +96,28 @@ struct ParameterSet : public OhmmsElementBase
    *@param status Tag status, See OhmmsParameter.h for more details
    */
   template<class PDT>
-  void add(PDT& aparam,
-           const std::string& aname_in,
-           std::vector<PDT> candidate_values = {},
-           TagStatus status                  = TagStatus::OPTIONAL);
+  inline void add(PDT& aparam,
+                  const std::string& aname_in,
+                  std::vector<PDT>&& candidate_values = {},
+                  TagStatus status                    = TagStatus::OPTIONAL)
+  {
+    std::string aname(aname_in);
+    tolower(aname);
+    if (auto it = m_param.find(aname); it == m_param.end())
+    {
+      m_param[aname] = std::make_unique<OhmmsParameter<PDT>>(aparam, aname, std::move(candidate_values), status);
+    }
+  }
 
   template<class PDT>
-  void setValue(const std::string& aname_in, PDT aval);
+  inline void setValue(const std::string& aname_in, PDT aval)
+  {
+    std::string aname(aname_in);
+    tolower(aname);
+    if (auto it = m_param.find(aname); it != m_param.end())
+    {
+      (dynamic_cast<OhmmsParameter<PDT>&>(*it->second)).setValue(aval);
+    }
+  }
 };
-
-extern template void ParameterSet::add<std::string>(std::string&,
-                                                    const std::string&,
-                                                    std::vector<std::string>,
-                                                    TagStatus);
-extern template void ParameterSet::add<qmcplusplus::astring>(qmcplusplus::astring&,
-                                                             const std::string&,
-                                                             std::vector<qmcplusplus::astring>,
-                                                             TagStatus);
-extern template void ParameterSet::add<bool>(bool&, const std::string&, std::vector<bool>, TagStatus);
-extern template void ParameterSet::add<int>(int&, const std::string&, std::vector<int>, TagStatus);
-extern template void ParameterSet::add<double>(double&, const std::string&, std::vector<double>, TagStatus);
-extern template void ParameterSet::add<float>(float&, const std::string&, std::vector<float>, TagStatus);
-extern template void ParameterSet::add<std::complex<double>>(std::complex<double>&,
-                                                             const std::string&,
-                                                             std::vector<std::complex<double>>,
-                                                             TagStatus);
-extern template void ParameterSet::add<std::complex<float>>(std::complex<float>&,
-                                                            const std::string&,
-                                                            std::vector<std::complex<float>>,
-                                                            TagStatus);
-extern template void ParameterSet::add<qmcplusplus::TinyVector<int, 3u>>(qmcplusplus::TinyVector<int, 3u>&,
-                                                                         const std::string&,
-                                                                         std::vector<qmcplusplus::TinyVector<int, 3u>>,
-                                                                         TagStatus);
-
-extern template void ParameterSet::setValue<int>(const std::string& aname_in, int aval);
-
 #endif /*OHMMS_OHMMSPARAMETERSET_H*/

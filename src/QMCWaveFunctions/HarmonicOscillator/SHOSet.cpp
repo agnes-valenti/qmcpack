@@ -16,8 +16,7 @@
 
 namespace qmcplusplus
 {
-SHOSet::SHOSet(const std::string& my_name, RealType l, PosType c, const std::vector<SHOState*>& sho_states)
-    : SPOSet(my_name), length(l), center(c)
+SHOSet::SHOSet(RealType l, PosType c, const std::vector<SHOState*>& sho_states) : length(l), center(c)
 {
   state_info.resize(sho_states.size());
   for (int s = 0; s < sho_states.size(); ++s)
@@ -29,6 +28,8 @@ SHOSet::SHOSet(const std::string& my_name, RealType l, PosType c, const std::vec
 void SHOSet::initialize()
 {
   using std::sqrt;
+
+  className = "SHOSet";
 
   OrbitalSetSize = state_info.size();
 
@@ -81,20 +82,20 @@ void SHOSet::report(const std::string& pad) const
 }
 
 
-void SHOSet::evaluateValue(const ParticleSet& P, int iat, ValueVector& psi)
+void SHOSet::evaluateValue(const ParticleSet& P, int iat, ValueVector_t& psi)
 {
   const PosType& r(P.activeR(iat));
-  ValueVector p(&psi[0], size());
+  ValueVector_t p(&psi[0], size());
   evaluate_v(r, p);
 }
 
 
-void SHOSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi)
+void SHOSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi)
 {
   const PosType& r(P.activeR(iat));
-  ValueVector p(&psi[0], size());
-  GradVector dp(&dpsi[0], size());
-  ValueVector d2p(&d2psi[0], size());
+  ValueVector_t p(&psi[0], size());
+  GradVector_t dp(&dpsi[0], size());
+  ValueVector_t d2p(&d2psi[0], size());
   evaluate_vgl(r, p, dp, d2p);
 }
 
@@ -102,21 +103,21 @@ void SHOSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector& psi, GradVe
 void SHOSet::evaluate_notranspose(const ParticleSet& P,
                                   int first,
                                   int last,
-                                  ValueMatrix& logdet,
-                                  GradMatrix& dlogdet,
-                                  ValueMatrix& d2logdet)
+                                  ValueMatrix_t& logdet,
+                                  GradMatrix_t& dlogdet,
+                                  ValueMatrix_t& d2logdet)
 {
   for (int iat = first, i = 0; iat < last; ++iat, ++i)
   {
-    ValueVector p(logdet[i], size());
-    GradVector dp(dlogdet[i], size());
-    ValueVector d2p(d2logdet[i], size());
+    ValueVector_t p(logdet[i], size());
+    GradVector_t dp(dlogdet[i], size());
+    ValueVector_t d2p(d2logdet[i], size());
     evaluate_vgl(P.R[iat], p, dp, d2p);
   }
 }
 
 
-void SHOSet::evaluate_v(PosType r, ValueVector& psi)
+void SHOSet::evaluate_v(PosType r, ValueVector_t& psi)
 {
   PosType x = (r - center) / length;
   evaluate_hermite(x);
@@ -124,7 +125,7 @@ void SHOSet::evaluate_v(PosType r, ValueVector& psi)
 }
 
 
-void SHOSet::evaluate_vgl(PosType r, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi)
+void SHOSet::evaluate_vgl(PosType r, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi)
 {
   PosType x = (r - center) / length;
   evaluate_hermite(x);
@@ -136,101 +137,111 @@ void SHOSet::evaluate_vgl(PosType r, ValueVector& psi, GradVector& dpsi, ValueVe
 
 void SHOSet::evaluate_hermite(const PosType& xpos)
 {
-  for (int d = 0; d < DIM; ++d)
+  int shift = 0;
+  for (int d = 0; d < DIM; ++d, shift += nmax)
   {
     int nh = qn_max[d];
     if (nh > 0)
     {
-      RealType x    = xpos[d];
-      hermite(d, 0) = 1.0;
-      RealType Hnm2 = 0.0;
-      RealType Hnm1 = 1.0;
+      RealType x         = xpos[d];
+      hermite(0 + shift) = 1.0;
+      RealType Hnm2      = 0.0;
+      RealType Hnm1      = 1.0;
       for (int n = 1; n < nh; ++n)
       {
-        RealType Hn   = 2 * (x * Hnm1 - (n - 1) * Hnm2);
-        hermite(d, n) = Hn;
-        Hnm2          = Hnm1;
-        Hnm1          = Hn;
+        RealType Hn        = 2 * (x * Hnm1 - (n - 1) * Hnm2);
+        hermite(n + shift) = Hn;
+        Hnm2               = Hnm1;
+        Hnm1               = Hn;
       }
     }
   }
 }
 
 
-void SHOSet::evaluate_d0(const PosType& xpos, ValueVector& psi)
+void SHOSet::evaluate_d0(const PosType& xpos, ValueVector_t& psi)
 {
   using std::exp;
-  for (int d = 0; d < DIM; ++d)
+  int shift = 0;
+  for (int d = 0; d < DIM; ++d, shift += nmax)
   {
     RealType x = xpos[d];
     RealType g = exp(-.5 * x * x);
     for (int n = 0; n < qn_max[d]; ++n)
     {
-      bvalues(d, n) = prefactors[n] * g * hermite(d, n);
+      int ns      = n + shift;
+      bvalues(ns) = prefactors[n] * g * hermite(ns);
     }
   }
   for (int s = 0; s < state_info.size(); ++s)
   {
     const SHOState& state = state_info[s];
     RealType phi          = 1.0;
-    for (int d = 0; d < DIM; ++d)
-      phi *= bvalues(d, state.quantum_number[d]);
+    int shift             = 0;
+    for (int d = 0; d < DIM; ++d, shift += nmax)
+      phi *= bvalues(shift + state.quantum_number[d]);
     psi[s] = phi;
   }
 }
 
 
-void SHOSet::evaluate_d1(const PosType& xpos, ValueVector& psi, GradVector& dpsi)
+void SHOSet::evaluate_d1(const PosType& xpos, ValueVector_t& psi, GradVector_t& dpsi)
 {
   RealType ol = 1.0 / length;
-  for (int d = 0; d < DIM; ++d)
+  int shift   = 0;
+  for (int d = 0; d < DIM; ++d, shift += nmax)
   {
     RealType x    = xpos[d];
     RealType Hnm1 = 0.0;
     for (int n = 0; n < qn_max[d]; ++n)
     {
-      RealType Hn   = hermite(d, n);
-      bvalues(d, n) = (-x + 2 * n * Hnm1 / Hn) * ol;
-      Hnm1          = Hn;
+      int ns      = n + shift;
+      RealType Hn = hermite(ns);
+      bvalues(ns) = (-x + 2 * n * Hnm1 / Hn) * ol;
+      Hnm1 = Hn;
     }
   }
   for (int s = 0; s < state_info.size(); ++s)
   {
     const SHOState& state = state_info[s];
     TinyVector<ValueType, DIM> dphi;
-    for (int d = 0; d < DIM; ++d)
-      dphi[d] = bvalues(d, state.quantum_number[d]);
+    int shift = 0;
+    for (int d = 0; d < DIM; ++d, shift += nmax)
+      dphi[d] = bvalues(shift + state.quantum_number[d]);
     dphi *= psi[s];
     dpsi[s] = dphi;
   }
 }
 
 
-void SHOSet::evaluate_d2(const PosType& xpos, ValueVector& psi, ValueVector& d2psi)
+void SHOSet::evaluate_d2(const PosType& xpos, ValueVector_t& psi, ValueVector_t& d2psi)
 {
   RealType ol2 = 1.0 / (length * length);
-  for (int d = 0; d < DIM; ++d)
+  int shift    = 0;
+  for (int d = 0; d < DIM; ++d, shift += nmax)
   {
     RealType x  = xpos[d];
     RealType x2 = x * x;
     for (int n = 0; n < qn_max[d]; ++n)
     {
-      bvalues(d, n) = (-1.0 + x2 - 2 * n) * ol2;
+      int ns      = n + shift;
+      bvalues(ns) = (-1.0 + x2 - 2 * n) * ol2;
     }
   }
   for (int s = 0; s < state_info.size(); ++s)
   {
     const SHOState& state = state_info[s];
     ValueType d2phi       = 0.0;
-    for (int d = 0; d < DIM; ++d)
-      d2phi += bvalues(d, state.quantum_number[d]);
+    int shift             = 0;
+    for (int d = 0; d < DIM; ++d, shift += nmax)
+      d2phi += bvalues(shift + state.quantum_number[d]);
     d2phi *= psi[s];
     d2psi[s] = d2phi;
   }
 }
 
 
-void SHOSet::evaluate_check(PosType r, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi)
+void SHOSet::evaluate_check(PosType r, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi)
 {
   using std::exp;
   using std::sqrt;
@@ -314,9 +325,9 @@ void SHOSet::test_derivatives()
 
   PosType o2dr, odr2;
 
-  ValueVector vpsi, vpsitmp;
-  GradVector vdpsi, vdpsin;
-  ValueVector vd2psi, vd2psin;
+  ValueVector_t vpsi, vpsitmp;
+  GradVector_t vdpsi, vdpsin;
+  ValueVector_t vd2psi, vd2psin;
 
 
   vpsi.resize(nphi);
@@ -328,13 +339,13 @@ void SHOSet::test_derivatives()
   vd2psin.resize(nphi);
 
 
-  ValueVector psi(&vpsi[0], size());
-  GradVector dpsi(&vdpsi[0], size());
-  ValueVector d2psi(&vd2psi[0], size());
+  ValueVector_t psi(&vpsi[0], size());
+  GradVector_t dpsi(&vdpsi[0], size());
+  ValueVector_t d2psi(&vd2psi[0], size());
 
-  ValueVector psitmp(&vpsitmp[0], size());
-  GradVector dpsin(&vdpsin[0], size());
-  ValueVector d2psin(&vd2psin[0], size());
+  ValueVector_t psitmp(&vpsitmp[0], size());
+  GradVector_t dpsin(&vdpsin[0], size());
+  ValueVector_t d2psin(&vd2psin[0], size());
 
 
   app_log() << " loading dr" << std::endl;
@@ -350,8 +361,7 @@ void SHOSet::test_derivatives()
 
   app_log() << "SHOSet::test_derivatives" << std::endl;
 
-  const SimulationCell simulation_cell;
-  ParticleSet Ps(simulation_cell);
+  ParticleSet Ps;
 
   int p = 0;
   PosType r, rtmp;
@@ -410,22 +420,22 @@ void SHOSet::test_derivatives()
             qn += int2string(state_info[m].quantum_number[d]) + " ";
           app_log() << "    " << qn;
           for (int d = 0; d < DIM; ++d)
-            app_log() << std::real(dpsi[m][d]) << " ";
+            app_log() << real(dpsi[m][d]) << " ";
           app_log() << std::endl;
           app_log() << "    " << qn;
           for (int d = 0; d < DIM; ++d)
-            app_log() << std::real(dpsin[m][d]) << " ";
+            app_log() << real(dpsin[m][d]) << " ";
           app_log() << std::endl;
         }
         app_log() << "    laplacians" << std::endl;
-        PosType x = r / length;
+        PosType x   = r / length;
         for (int m = 0; m < nphi; ++m)
         {
           std::string qn = "";
           for (int d = 0; d < DIM; ++d)
             qn += int2string(state_info[m].quantum_number[d]) + " ";
-          app_log() << "    " << qn << std::real(d2psi[m] / psi[m]) << std::endl;
-          app_log() << "    " << qn << std::real(d2psin[m] / psi[m]) << std::endl;
+          app_log() << "    " << qn << real(d2psi[m] / psi[m]) << std::endl;
+          app_log() << "    " << qn << real(d2psin[m] / psi[m]) << std::endl;
         }
         p++;
       }
@@ -451,9 +461,9 @@ void SHOSet::test_overlap()
 
   app_log() << "  1d overlap" << std::endl;
 
-  ValueVector vpsi;
+  ValueVector_t vpsi;
   vpsi.resize(size());
-  ValueVector psi(&vpsi[0], size());
+  ValueVector_t psi(&vpsi[0], size());
 
   double xmax = 4.0;
   double dx   = .1;
@@ -522,7 +532,10 @@ void SHOSet::test_overlap()
 }
 
 
-void SHOSet::evaluateThirdDeriv(const ParticleSet& P, int first, int last, GGGMatrix& grad_grad_grad_logdet)
+//methods to be implemented later
+void SHOSet::resetParameters(const opt_variables_type& optVariables) { not_implemented("resetParameters"); }
+
+void SHOSet::evaluateThirdDeriv(const ParticleSet& P, int first, int last, GGGMatrix_t& grad_grad_grad_logdet)
 {
   not_implemented("evaluateThirdDeriv(P,first,last,dddlogdet)");
 }
@@ -530,9 +543,9 @@ void SHOSet::evaluateThirdDeriv(const ParticleSet& P, int first, int last, GGGMa
 void SHOSet::evaluate_notranspose(const ParticleSet& P,
                                   int first,
                                   int last,
-                                  ValueMatrix& logdet,
-                                  GradMatrix& dlogdet,
-                                  HessMatrix& grad_grad_logdet)
+                                  ValueMatrix_t& logdet,
+                                  GradMatrix_t& dlogdet,
+                                  HessMatrix_t& grad_grad_logdet)
 {
   not_implemented("evaluate_notranspose(P,first,last,logdet,dlogdet,ddlogdet)");
 }
@@ -540,10 +553,10 @@ void SHOSet::evaluate_notranspose(const ParticleSet& P,
 void SHOSet::evaluate_notranspose(const ParticleSet& P,
                                   int first,
                                   int last,
-                                  ValueMatrix& logdet,
-                                  GradMatrix& dlogdet,
-                                  HessMatrix& grad_grad_logdet,
-                                  GGGMatrix& grad_grad_grad_logdet)
+                                  ValueMatrix_t& logdet,
+                                  GradMatrix_t& dlogdet,
+                                  HessMatrix_t& grad_grad_logdet,
+                                  GGGMatrix_t& grad_grad_grad_logdet)
 {
   not_implemented("evaluate_notranspose(P,first,last,logdet,dlogdet,ddlogdet,dddlogdet)");
 }
@@ -553,7 +566,7 @@ void SHOSet::evaluateGradSource(const ParticleSet& P,
                                 int last,
                                 const ParticleSet& source,
                                 int iat_src,
-                                GradMatrix& gradphi)
+                                GradMatrix_t& gradphi)
 {
   not_implemented("evaluateGradSource(P,first,last,source,iat,dphi)");
 }
@@ -563,9 +576,9 @@ void SHOSet::evaluateGradSource(const ParticleSet& P,
                                 int last,
                                 const ParticleSet& source,
                                 int iat_src,
-                                GradMatrix& grad_phi,
-                                HessMatrix& grad_grad_phi,
-                                GradMatrix& grad_lapl_phi)
+                                GradMatrix_t& grad_phi,
+                                HessMatrix_t& grad_grad_phi,
+                                GradMatrix_t& grad_lapl_phi)
 {
   not_implemented("evaluateGradSource(P,first,last,source,iat,dphi,ddphi,dd2phi)");
 }

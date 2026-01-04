@@ -56,7 +56,7 @@ the script are shown below:
     
     run_project()
 
-The overall flow of the script should be familiar from the Quantum ESPRESSO 
+The overall flow of the script should be familiar from the Quantum Espresso 
 examples presented earlier.  If it is not, please revisit these examples before 
 proceeding.
 

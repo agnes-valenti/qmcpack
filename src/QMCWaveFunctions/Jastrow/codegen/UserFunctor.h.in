@@ -100,12 +100,22 @@ $evaluate_func_3rd_derivative
 
   inline real_type f(real_type r) { return evaluate(r); }
 
+  inline real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
+
   inline real_type df(real_type r)
   {
     real_type dudr, d2udr2;
     real_type res = evaluate(r, dudr, d2udr2);
     return dudr;
   }
+  
+  inline real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
 
 // inline bool evaluateDerivatives(real_type r, std::vector<TinyVector<real_type, 3>>& derivs)
 $evaluate_all_parameter_derivatives

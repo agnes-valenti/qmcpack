@@ -13,6 +13,9 @@
 #include "catch.hpp"
 
 #include "OhmmsData/Libxml2Doc.h"
+#include "OhmmsData/AttributeSet.h"
+#include "OhmmsData/ParameterSet.h"
+#include <stdio.h>
 #include <string>
 #include <vector>
 
@@ -31,9 +34,9 @@ TEST_CASE("read_file", "[xml]")
 
 TEST_CASE("parseString", "[xml]")
 {
-  string s1(R"(<?xml version="1.0"?>
-    <simulation></simulation>
-    )");
+  string s1("<?xml version=\"1.0\"?> \
+<simulation> \
+</simulation> ");
 
   Libxml2Document doc;
   bool okay = doc.parseFromString(s1);
@@ -44,16 +47,18 @@ TEST_CASE("parseString", "[xml]")
 
   REQUIRE((char*)root->name == string("simulation"));
 
-  std::string root_name(getNodeName(root));
+  string root_name;
+  getNodeName(root_name, root);
 
   REQUIRE(root_name == "simulation");
 }
 
 TEST_CASE("XMLParsingString", "[xml]")
 {
-  string s1(R"(<?xml version="1.0"?>
-    <simulation name="qmc"> aa </simulation>
-    )");
+  string s1("<?xml version=\"1.0\"?> \
+<simulation name=\"qmc\"> \
+aa \
+</simulation> ");
 
   Libxml2Document doc;
   bool okay = doc.parseFromString(s1);
@@ -65,24 +70,20 @@ TEST_CASE("XMLParsingString", "[xml]")
   const XMLNodeString node_string(root);
   REQUIRE(node_string == " aa ");
 
-  const std::string attr_string(getXMLAttributeValue(root, "name"));
+  const XMLAttrString attr_string(root, "name");
   REQUIRE(attr_string == "qmc");
-
-  const std::string attr_string_missing(getXMLAttributeValue(root, "not_here"));
-  REQUIRE(attr_string_missing.empty());
 }
 
 TEST_CASE("putContent", "[xml]")
 {
-  string s1(R"(<?xml version="1.0"?>
-    <simulation>
-      <item1>2</item1>
-      <item2>3.5</item2>
-      <item3>4.0</item3>
-      <item4>4.0 5.1</item4>
-      <item5>4.0 5.1,</item5>
-    </simulation>
-    )");
+  string s1("<?xml version=\"1.0\"?> \
+<simulation> \
+  <item1>2</item1> \
+  <item2>3.5</item2> \
+  <item3>4.0</item3> \
+  <item4>4.0 5.1</item4> \
+  <item5>4.0 5.1,</item5> \
+</simulation>");
 
   Libxml2Document doc;
   bool okay = doc.parseFromString(s1);
@@ -104,7 +105,7 @@ TEST_CASE("putContent", "[xml]")
 
   float c;
   putContent(c, item);
-  CHECK(c == Approx(3.5));
+  REQUIRE(c == Approx(3.5));
 
   vector<double> d;
   item = xmlNextElementSibling(item);
@@ -125,6 +126,65 @@ TEST_CASE("putContent", "[xml]")
   //REQUIRE(f.size() == 2);
 }
 
+TEST_CASE("AttributeSet", "[xml]")
+{
+  const char* content = " \
+<simulation name=\"here\" deprecated_tag=\"lmn\"> \
+</simulation>";
+  Libxml2Document doc;
+  bool okay = doc.parseFromString(content);
+  REQUIRE(okay == true);
+
+  xmlNodePtr root = doc.getRoot();
+  OhmmsAttributeSet pattrib;
+  string name  = "default_name";
+  string other = "default";
+  string deprecated_tag;
+  pattrib.add(name, "name");
+  pattrib.add(other, "other");
+  pattrib.add(deprecated_tag, "deprecated_tag", {"abc", "def"}, TagStatus::DEPRECATED);
+  try
+  {
+    pattrib.put(root);
+  }
+  catch(std::runtime_error& exception)
+  {
+    std::cout << "Caught exception : " << exception.what() << std::endl;
+    REQUIRE(std::string(exception.what()).find("is not valid") != std::string::npos);
+  }
+
+  REQUIRE(name == "here");
+  REQUIRE(other == "default");
+  REQUIRE(deprecated_tag == "lmn");
+}
+
+
+TEST_CASE("ParameterSet", "[xml]")
+{
+  const char* content = " \
+<simulation> \
+   <parameter name=\"p1\">1</parameter> \
+   <p2>2</p2> \
+</simulation>";
+  Libxml2Document doc;
+  bool okay = doc.parseFromString(content);
+  REQUIRE(okay == true);
+
+  xmlNodePtr root = doc.getRoot();
+  ParameterSet param;
+  int p1_val = 0;
+  int p2_val = 0;
+  int p3_val = 0;
+  param.add(p1_val, "p1");
+  param.add(p2_val, "p2");
+  param.add(p3_val, "p3");
+  param.put(root);
+
+  REQUIRE(p1_val == 1);
+  REQUIRE(p2_val == 2);
+  REQUIRE(p3_val == 0);
+}
+
 TEST_CASE("write_file", "[xml]")
 {
   Libxml2Document doc;
@@ -140,12 +200,11 @@ TEST_CASE("write_file", "[xml]")
 
 TEST_CASE("XPathObject", "[xml]")
 {
-  const char* content = R"(
-    <simulation>
-      <parameter name="p1">1</parameter>
-      <p2>2</p2>
-    </simulation>
-    )";
+  const char* content = " \
+<simulation> \
+   <parameter name=\"p1\">1</parameter> \
+   <p2>2</p2> \
+</simulation>";
   Libxml2Document doc;
   bool okay = doc.parseFromString(content);
   REQUIRE(okay == true);

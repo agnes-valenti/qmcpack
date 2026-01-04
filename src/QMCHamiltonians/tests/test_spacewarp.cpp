@@ -43,24 +43,26 @@ TEST_CASE("SpaceWarp", "[hamiltonian]")
   bool okay = doc.parse("Na2.structure.xml");
   REQUIRE(okay);
   xmlNodePtr root = doc.getRoot();
+  Tensor<int, 3> tmat;
+  tmat(0, 0) = 1;
+  tmat(1, 1) = 1;
+  tmat(2, 2) = 1;
 
-  const SimulationCell simulation_cell;
-
-  ParticleSet ions(simulation_cell);
-  XMLParticleParser parse_ions(ions);
+  ParticleSet ions;
+  XMLParticleParser parse_ions(ions, tmat);
   OhmmsXPathObject particleset_ion("//particleset[@name='ion0']", doc.getXPathContext());
   REQUIRE(particleset_ion.size() == 1);
-  parse_ions.readXML(particleset_ion[0]);
+  parse_ions.put(particleset_ion[0]);
 
   REQUIRE(ions.groups() == 1);
   REQUIRE(ions.R.size() == 2);
   ions.update();
 
-  ParticleSet elec(simulation_cell);
-  XMLParticleParser parse_elec(elec);
+  ParticleSet elec;
+  XMLParticleParser parse_elec(elec, tmat);
   OhmmsXPathObject particleset_elec("//particleset[@name='e']", doc.getXPathContext());
   REQUIRE(particleset_elec.size() == 1);
-  parse_elec.readXML(particleset_elec[0]);
+  parse_elec.put(particleset_elec[0]);
 
   REQUIRE(elec.groups() == 2);
   REQUIRE(elec.R.size() == 2);
@@ -71,7 +73,7 @@ TEST_CASE("SpaceWarp", "[hamiltonian]")
   //Now build the wavefunction.  This will be needed to test \Nabla_i E_L and \Nabla_i logPsi contributions.
   //For now, just take them from a reference calculation.
 
-  using Force_t = ParticleSet::ParticlePos;
+  using Force_t = ParticleSet::ParticlePos_t;
   Force_t dE_L;
   Force_t el_contribution;
   Force_t psi_contribution;
@@ -97,28 +99,28 @@ TEST_CASE("SpaceWarp", "[hamiltonian]")
   SpaceWarpTransformation swt(elec, ions);
   swt.setPow(3.0);
 
-  CHECK(swt.f(2.0) == Approx(0.125));
-  CHECK(swt.df(2.0) == Approx(-0.1875));
+  REQUIRE(swt.f(2.0) == Approx(0.125));
+  REQUIRE(swt.df(2.0) == Approx(-0.1875));
 
   swt.setPow(4.0);
-  CHECK(swt.f(2.0) == Approx(0.0625));
-  CHECK(swt.df(2.0) == Approx(-0.125));
+  REQUIRE(swt.f(2.0) == Approx(0.0625));
+  REQUIRE(swt.df(2.0) == Approx(-0.125));
 
   swt.computeSWT(elec, ions, dE_L, elec.G, el_contribution, psi_contribution);
   app_log() << "EL_Contribution:  " << el_contribution << std::endl;
   app_log() << "PSi_Contribution: " << psi_contribution << std::endl;
-  CHECK(el_contribution[0][0] == Approx(-0.0326934696861));
-  CHECK(el_contribution[0][1] == Approx(-0.0826080664130));
-  CHECK(el_contribution[0][2] == Approx(0.0988243408507));
-  CHECK(el_contribution[1][0] == Approx(-0.0142002578379));
-  CHECK(el_contribution[1][1] == Approx(0.0583466121520));
-  CHECK(el_contribution[1][2] == Approx(-0.0613282484677));
+  REQUIRE(el_contribution[0][0] == Approx(-0.0326934696861));
+  REQUIRE(el_contribution[0][1] == Approx(-0.0826080664130));
+  REQUIRE(el_contribution[0][2] == Approx(0.0988243408507));
+  REQUIRE(el_contribution[1][0] == Approx(-0.0142002578379));
+  REQUIRE(el_contribution[1][1] == Approx(0.0583466121520));
+  REQUIRE(el_contribution[1][2] == Approx(-0.0613282484677));
 
-  CHECK(psi_contribution[0][0] == Approx(0.4051467191368));
-  CHECK(psi_contribution[0][1] == Approx(0.2757724717133));
-  CHECK(psi_contribution[0][2] == Approx(-0.3334287440127));
-  CHECK(psi_contribution[1][0] == Approx(-0.2829794189868));
-  CHECK(psi_contribution[1][1] == Approx(-0.3485464326533));
-  CHECK(psi_contribution[1][2] == Approx(0.3615981197327));
+  REQUIRE(psi_contribution[0][0] == Approx(0.4051467191368));
+  REQUIRE(psi_contribution[0][1] == Approx(0.2757724717133));
+  REQUIRE(psi_contribution[0][2] == Approx(-0.3334287440127));
+  REQUIRE(psi_contribution[1][0] == Approx(-0.2829794189868));
+  REQUIRE(psi_contribution[1][1] == Approx(-0.3485464326533));
+  REQUIRE(psi_contribution[1][2] == Approx(0.3615981197327));
 }
 } //namespace qmcplusplus

@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2023 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -16,18 +16,11 @@
 namespace qmcplusplus
 {
 
-template bool InputSection::setIfInInput<qmcplusplus::OneBodyDensityMatricesInput::Integrator>(
-    qmcplusplus::OneBodyDensityMatricesInput::Integrator& var,
-    const std::string& tag);
-
-
 OneBodyDensityMatricesInput::OneBodyDensityMatricesInput(xmlNodePtr cur)
 {
   // This results in checkParticularValidity being called on OneBodyDensityMatrixInputSection
   input_section_.readXML(cur);
-  auto setIfInInput = LAMBDA_setIfInInput;
-  setIfInInput(name_, "name");
-  setIfInInput(name_, "type");
+  auto setIfInInput = [&](auto& var, const std::string& tag) -> bool { return input_section_.setIfInInput(var, tag); };
   setIfInInput(energy_matrix_, "energy_matrix");
   setIfInInput(use_drift_, "use_drift");
   setIfInInput(normalized_, "normalized");
@@ -48,7 +41,7 @@ OneBodyDensityMatricesInput::OneBodyDensityMatricesInput(xmlNodePtr cur)
   setIfInInput(basis_sets_, "basis");
 }
 
-void OneBodyDensityMatricesInput::OneBodyDensityMatricesInputSection::checkParticularValidity()
+void OneBodyDensityMatricesInput::OneBodyDensityMatrixInputSection::checkParticularValidity()
 {
   using namespace estimatorinput;
   const std::string error_tag{"OneBodyDensityMatrices input: "};
@@ -78,7 +71,7 @@ void OneBodyDensityMatricesInput::OneBodyDensityMatricesInputSection::checkParti
   }
 }
 
-std::any OneBodyDensityMatricesInput::OneBodyDensityMatricesInputSection::assignAnyEnum(const std::string& name) const
+std::any OneBodyDensityMatricesInput::OneBodyDensityMatrixInputSection::assignAnyEnum(const std::string& name) const
 {
   return lookupAnyEnum(name, get<std::string>(name), lookup_input_enum_value);
 }

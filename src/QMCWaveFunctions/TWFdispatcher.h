@@ -14,10 +14,10 @@
 #define QMCPLUSPLUS_TWFDISPATCH_H
 
 #include "TrialWaveFunction.h"
-#include "TWFGrads.hpp"
 
 namespace qmcplusplus
 {
+
 /** Wrappers for dispatching to TrialWaveFunction single walker APIs or mw_ APIs.
  * This should be only used by QMC drivers.
  * member function names must match mw_ APIs in TrialWaveFunction
@@ -25,11 +25,10 @@ namespace qmcplusplus
 class TWFdispatcher
 {
 public:
-  using PsiValue    = TrialWaveFunction::PsiValue;
-  using ComputeType = TrialWaveFunction::ComputeType;
-  using ValueType   = TrialWaveFunction::ValueType;
-  using GradType    = TrialWaveFunction::GradType;
-  using Complex     = TrialWaveFunction::ComplexType;
+  using PsiValueType = TrialWaveFunction::PsiValueType;
+  using ComputeType  = TrialWaveFunction::ComputeType;
+  using ValueType    = TrialWaveFunction::ValueType;
+  using GradType     = TrialWaveFunction::GradType;
 
   TWFdispatcher(bool use_batch);
 
@@ -43,25 +42,23 @@ public:
   void flex_calcRatio(const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                       const RefVectorWithLeader<ParticleSet>& p_list,
                       int iat,
-                      std::vector<PsiValue>& ratios,
+                      std::vector<PsiValueType>& ratios,
                       ComputeType ct = ComputeType::ALL) const;
 
   void flex_prepareGroup(const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                          const RefVectorWithLeader<ParticleSet>& p_list,
                          int ig) const;
 
-  template<CoordsType CT>
   void flex_evalGrad(const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                      const RefVectorWithLeader<ParticleSet>& p_list,
                      int iat,
-                     TWFGrads<CT>& grads) const;
+                     std::vector<GradType>& grad_now) const;
 
-  template<CoordsType CT>
   void flex_calcRatioGrad(const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                           const RefVectorWithLeader<ParticleSet>& p_list,
                           int iat,
-                          std::vector<PsiValue>& ratios,
-                          TWFGrads<CT>& grads) const;
+                          std::vector<PsiValueType>& ratios,
+                          std::vector<GradType>& grad_new) const;
 
   void flex_accept_rejectMove(const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                               const RefVectorWithLeader<ParticleSet>& p_list,

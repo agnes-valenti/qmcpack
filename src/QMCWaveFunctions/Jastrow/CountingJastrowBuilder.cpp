@@ -126,8 +126,8 @@ std::unique_ptr<WaveFunctionComponent> CountingJastrowBuilder::createCJ(xmlNodeP
           bool opt_g = opt_C && (i != 0);
           os.str("");
           os << "g" << i;
-          std::string fid = os.str();
-          auto func       = std::make_unique<FunctorType>(fid, alpha, gr, opt_g);
+          std::string fid   = os.str();
+          auto func         = std::make_unique<FunctorType>(fid, alpha, gr, opt_g);
           C->addFunc(std::move(func), fid);
         }
         // set default F value to all zeroes with appropriate dimension
@@ -203,9 +203,11 @@ std::unique_ptr<WaveFunctionComponent> CountingJastrowBuilder::createCJ(xmlNodeP
     }
     cur = cur->next;
   }
-  auto CJ = std::make_unique<CJOrbitalType>(targetPtcl, std::move(C), F, opt_C, opt_F);
+  auto CJ = std::make_unique<CJOrbitalType>(targetPtcl, std::move(C), F);
 
   CJ->addDebug(debug_flag, seqlen, period);
+  CJ->addOpt(opt_C, opt_F);
+  CJ->setOptimizable(opt_C || opt_F);
   CJ->initialize();
   CJ->reportStatus(app_log());
 

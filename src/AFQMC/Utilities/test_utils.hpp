@@ -38,7 +38,11 @@ inline std::tuple<int, int, int> read_info_from_hdf(std::string fileName)
     std::cerr << " Error opening integral file in SparseGeneralHamiltonian. \n";
     APP_ABORT("");
   }
-  dump.push("Hamiltonian", false);
+  if (!dump.push("Hamiltonian", false))
+  {
+    std::cerr << " Error in HamiltonianFactory::fromHDF5(): Group not Hamiltonian found. \n";
+    APP_ABORT("");
+  }
 
   std::vector<int> Idata(8);
   if (!dump.readEntry(Idata, "dims"))
@@ -60,8 +64,16 @@ inline std::tuple<int, int, int> read_info_from_wfn(std::string fileName, std::s
     std::cerr << " Error opening wavefunction file in read_info_from_wfn. \n";
     APP_ABORT("");
   }
-  dump.push("Wavefunction", false);
-  dump.push(type, false);
+  if (!dump.push("Wavefunction", false))
+  {
+    std::cerr << " Error in read_info_from_wfn(): Group not Wavefunction found. \n";
+    APP_ABORT("");
+  }
+  if (!dump.push(type, false))
+  {
+    std::cerr << " Error in read_info_from_wfn(): Group " << type << " not found. \n";
+    APP_ABORT("");
+  }
 
   std::vector<int> Idata(5);
   if (!dump.readEntry(Idata, "dims"))
@@ -84,7 +96,11 @@ TEST_DATA<T> read_test_results_from_hdf(std::string fileName, std::string wfn_ty
     std::cerr << " Error opening integral file in SparseGeneralHamiltonian. \n";
     APP_ABORT("");
   }
-  dump.push("Hamiltonian", false);
+  if (!dump.push("Hamiltonian", false))
+  {
+    std::cerr << " Error in HamiltonianFactory::fromHDF5(): Group not Hamiltonian found. \n";
+    APP_ABORT("");
+  }
 
   std::vector<int> Idata(8);
   if (!dump.readEntry(Idata, "dims"))
@@ -96,9 +112,8 @@ TEST_DATA<T> read_test_results_from_hdf(std::string fileName, std::string wfn_ty
 
   T E0(0), E1(0), E2(0), Xsum(0), Vsum(0);
 
-  try
+  if (dump.push("TEST_RESULTS", false))
   {
-    dump.push("TEST_RESULTS", false);
     dump.read(E0, wfn_type + "_E0");
     dump.read(E1, wfn_type + "_E1");
     dump.read(E2, wfn_type + "_E2");
@@ -106,8 +121,6 @@ TEST_DATA<T> read_test_results_from_hdf(std::string fileName, std::string wfn_ty
     dump.read(Vsum, wfn_type + "_Vsum");
     dump.pop();
   }
-  catch (...)
-  {}
 
   return TEST_DATA<T>{Idata[3], Idata[4], Idata[5], E0, E1, E2, Xsum, Vsum};
 }

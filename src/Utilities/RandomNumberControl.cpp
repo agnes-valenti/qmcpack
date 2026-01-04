@@ -15,47 +15,40 @@
 
 
 #include <Configuration.h>
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 #include "OhmmsData/AttributeSet.h"
 #include "RandomNumberControl.h"
 #include "Utilities/Timer.h"
 #include "hdf/HDFVersion.h"
 #include "hdf/hdf_archive.h"
 #include "mpi/collectives.h"
+#if defined(HAVE_LIBBOOST)
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
+#include <boost/foreach.hpp>
+#include <string>
+#include <set>
+#include <exception>
+#include <iostream>
+#include <memory>
+#endif
 #include "Utilities/SimpleParser.h"
 #include "OhmmsData/Libxml2Doc.h"
+//#include <boost/random.hpp>
+//#include <boost/random/random_device.hpp>
+//#include <random>
 
 namespace qmcplusplus
 {
 ///initialize the static data members
-PrimeNumberSet<RandomNumberControl::uint_type> RandomNumberControl::PrimeNumbers;
-UPtrVector<RandomNumberControl::Generator> RandomNumberControl::Children;
-RandomBase<QMCTraits::FullPrecRealType>::uint_type RandomNumberControl::Offset = 11u;
+PrimeNumberSet<RandomGenerator_t::uint_type> RandomNumberControl::PrimeNumbers;
+std::vector<std::unique_ptr<RandomGenerator_t>> RandomNumberControl::Children;
+RandomGenerator_t::uint_type RandomNumberControl::Offset = 11u;
 
 /// constructors and destructors
 RandomNumberControl::RandomNumberControl(const char* aname)
     : OhmmsElementBase(aname), NeverBeenInitialized(true), myCur(NULL) //, Offset(5)
 {}
-
-UPtrVector<RandomNumberControl::Generator>& RandomNumberControl::getChildren()
-{
-  if (Children.size() == 0)
-  {
-    app_warning() << "  Initializing global RandomNumberControl! "
-                  << "This message should not be seen in production code but only in unit tests." << std::endl;
-    make_seeds();
-  }
-  return Children;
-}
-
-RefVector<RandomNumberControl::Generator> RandomNumberControl::getChildrenRefs()
-{
-  auto& rngs_children = getChildren();
-  RefVector<Generator> rng_refs;
-  for (auto& child: rngs_children)
-    rng_refs.push_back(*child);
-  return rng_refs;
-}
 
 /// generic output
 bool RandomNumberControl::get(std::ostream& os) const
@@ -92,7 +85,7 @@ void RandomNumberControl::make_seeds()
   Offset = iseed;
   std::vector<uint_type> mySeeds;
   RandomNumberControl::PrimeNumbers.get(Offset, nprocs * (omp_get_max_threads() + 2), mySeeds);
-  Random.init(mySeeds[pid]);
+  Random.init(pid, nprocs, mySeeds[pid], Offset + pid);
   //change children as well
   make_children();
 }
@@ -103,7 +96,7 @@ void RandomNumberControl::make_children()
   int n        = nthreads - Children.size();
   while (n)
   {
-    Children.push_back(std::make_unique<RandomGenerator>());
+    Children.push_back(std::make_unique<RandomGenerator_t>());
     n--;
   }
   int rank       = OHMMS::Controller->rank();
@@ -112,7 +105,10 @@ void RandomNumberControl::make_children()
   std::vector<uint_type> myprimes;
   PrimeNumbers.get(baseoffset, nthreads, myprimes);
   for (int ip = 0; ip < nthreads; ip++)
-    Children[ip]->init(myprimes[ip]);
+  {
+    int offset = baseoffset + ip;
+    Children[ip]->init(rank, nprocs, myprimes[ip], offset);
+  }
 }
 
 xmlNodePtr RandomNumberControl::initialize(xmlXPathContextPtr acontext)
@@ -120,6 +116,49 @@ xmlNodePtr RandomNumberControl::initialize(xmlXPathContextPtr acontext)
   OhmmsXPathObject rg_request("//random", acontext);
   put(rg_request[0]);
   return myCur;
+}
+
+void RandomNumberControl::test()
+{
+  /* Add random number generator tester
+  */
+  int nthreads = omp_get_max_threads();
+  std::vector<double> avg(nthreads), avg2(nthreads);
+#pragma omp parallel for
+  for (int ip = 0; ip < nthreads; ++ip)
+  {
+    const int n = 1000000;
+    double sum = 0.0, sum2 = 0.0;
+    RandomGenerator_t& myrand(*Children[ip]);
+    for (int i = 0; i < n; ++i)
+    {
+      double r = myrand.rand();
+      sum += r;
+      sum2 += r * r;
+    }
+    avg[ip]  = sum / static_cast<double>(n);
+    avg2[ip] = sum2 / static_cast<double>(n);
+  }
+  std::vector<double> avg_tot(nthreads * OHMMS::Controller->size()), avg2_tot(nthreads * OHMMS::Controller->size());
+  mpi::gather(*OHMMS::Controller, avg, avg_tot);
+  mpi::gather(*OHMMS::Controller, avg2, avg2_tot);
+  double avg_g  = 0.0;
+  double avg2_g = 0.0;
+  for (int i = 0, ii = 0; i < OHMMS::Controller->size(); ++i)
+  {
+    for (int ip = 0; ip < nthreads; ++ip, ++ii)
+    {
+      app_log() << "RNGTest " << std::setw(4) << i << std::setw(4) << ip << std::setw(20) << avg_tot[ii]
+                << std::setw(20) << avg2_tot[ii] - avg_tot[ii] * avg_tot[ii] << std::endl;
+      avg_g += avg_tot[ii];
+      avg2_g += avg2_tot[ii];
+    }
+  }
+  avg_g /= static_cast<double>(nthreads * OHMMS::Controller->size());
+  avg2_g /= static_cast<double>(nthreads * OHMMS::Controller->size());
+  app_log() << "RNGTest " << std::setw(4) << OHMMS::Controller->size() << std::setw(4) << nthreads << std::setw(20)
+            << avg_g << std::setw(20) << avg2_g - avg_g * avg_g << std::endl;
+  app_log().flush();
 }
 
 bool RandomNumberControl::put(xmlNodePtr cur)
@@ -151,7 +190,14 @@ bool RandomNumberControl::put(xmlNodePtr cur)
     app_summary() << " -------------" << std::endl;
     if (offset_in < 0)
     {
-      offset_in = static_cast<int>(static_cast<uint_type>(std::time(0)) % 1024);
+      offset_in = static_cast<int>(static_cast<uint_type>(std::time(0)+std::rand()) % 1024);
+//#ifdef HAVE_LIBBOOST
+//#include <boost/random.hpp>
+//#include <boost/random/random_device.hpp>
+      //std::rand();  //random_device gen; //mt19937 blub; //random_device() gen;
+      //offset_in = static_cast<int>(static_cast<uint_type>(gen()) % 1024);
+
+//#endif
       app_summary() << "  Offset for the random number seeds based on time: " << offset_in << std::endl;
       mpi::bcast(*OHMMS::Controller, offset_in);
     }
@@ -165,7 +211,7 @@ bool RandomNumberControl::put(xmlNodePtr cur)
     std::vector<uint_type> mySeeds;
     //allocate twice of what is required
     PrimeNumbers.get(Offset, nprocs * (omp_get_max_threads() + 2), mySeeds);
-    Random.init(mySeeds[pid]);
+    Random.init(pid, nprocs, mySeeds[pid], Offset + pid);
     app_log() << "  Range of prime numbers to use as seeds over processors and threads = " << mySeeds[0] << "-"
               << mySeeds[nprocs * omp_get_max_threads()] << std::endl;
     app_log() << std::endl;
@@ -176,6 +222,144 @@ bool RandomNumberControl::put(xmlNodePtr cur)
   else
     reset();
   return true;
+}
+
+void RandomNumberControl::read_old(const std::string& fname, Communicate* comm)
+{
+  int nthreads = omp_get_max_threads();
+  std::vector<uint_type> vt_tot, vt;
+  std::vector<int> shape(2, 0), shape_now(2, 0);
+  shape_now[0] = comm->size() * nthreads;
+  shape_now[1] = Random.state_size();
+
+  if (comm->rank() == 0)
+  {
+#if defined(HAVE_LIBBOOST)
+    using boost::property_tree::ptree;
+    ptree pt;
+    std::string xname = fname + ".random.xml";
+    read_xml(xname, pt);
+    if (!pt.empty())
+    {
+      std::string engname = pt.get<std::string>("random.engine");
+      if (engname == Random.EngineName)
+      {
+        std::istringstream dims(pt.get<std::string>("random.dims"));
+        dims >> shape[0] >> shape[1];
+        if (shape[0] == shape_now[0] && shape[1] == shape_now[1])
+        {
+          vt_tot.resize(shape[0] * shape[1]);
+          std::istringstream v(pt.get<std::string>("random.states"));
+          for (int i = 0; i < vt_tot.size(); ++i)
+            v >> vt_tot[i];
+        }
+        else
+          shape[0] = shape[1] = 0;
+      }
+    }
+#else
+    TinyVector<hsize_t, 2> shape_t(0);
+    shape_t[1] = Random.state_size();
+    hyperslab_proxy<std::vector<uint_type>, 2> slab(vt_tot, shape_t);
+    std::string h5name = fname + ".random.h5";
+    hdf_archive hout(comm);
+    hout.open(h5name, H5F_ACC_RDONLY);
+    hout.push(hdf::main_state);
+    hout.push("random");
+    std::string engname;
+    hout.read(slab, Random.EngineName);
+    shape[0]           = static_cast<int>(slab.size(0));
+    shape[1]           = static_cast<int>(slab.size(1));
+#endif
+  }
+
+  mpi::bcast(*comm, shape);
+
+  if (shape[0] != shape_now[0] || shape[1] != shape_now[1])
+  {
+    app_log() << "Mismatched random number generators."
+              << "\n  Number of streams     : old=" << shape[0] << " new= " << comm->size() * nthreads
+              << "\n  State size per stream : old=" << shape[1] << " new= " << Random.state_size()
+              << "\n  Using the random streams generated at the initialization." << std::endl;
+    return;
+  }
+
+  app_log() << "  Restart from the random number streams from the previous configuration." << std::endl;
+  vt.resize(nthreads * Random.state_size());
+
+  if (comm->size() > 1)
+    mpi::scatter(*comm, vt_tot, vt);
+  else
+    copy(vt_tot.begin(), vt_tot.end(), vt.begin());
+
+  {
+    if (nthreads > 1)
+    {
+      std::vector<uint_type>::iterator vt_it(vt.begin());
+      for (int ip = 0; ip < nthreads; ip++, vt_it += shape[1])
+      {
+        std::vector<uint_type> c(vt_it, vt_it + shape[1]);
+        Children[ip]->load(c);
+      }
+    }
+    else
+      Random.load(vt);
+  }
+}
+
+void RandomNumberControl::write_old(const std::string& fname, Communicate* comm)
+{
+  int nthreads = omp_get_max_threads();
+  std::vector<uint_type> vt, vt_tot;
+  vt.reserve(nthreads * 1024);
+  if (nthreads > 1)
+    for (int ip = 0; ip < nthreads; ++ip)
+    {
+      std::vector<uint_type> c;
+      Children[ip]->save(c);
+      vt.insert(vt.end(), c.begin(), c.end());
+    }
+  else
+    Random.save(vt);
+  if (comm->size() > 1)
+  {
+    vt_tot.resize(vt.size() * comm->size());
+    mpi::gather(*comm, vt, vt_tot);
+  }
+  else
+    vt_tot = vt;
+
+  if (comm->rank() == 0)
+  {
+#if defined(HAVE_LIBBOOST)
+    using boost::property_tree::ptree;
+    ptree pt;
+    std::ostringstream dims, vt_o;
+    dims << comm->size() * nthreads << " " << Random.state_size();
+    std::vector<uint_type>::iterator v = vt_tot.begin();
+    for (int i = 0; i < comm->size() * nthreads; ++i)
+    {
+      copy(v, v + Random.state_size(), std::ostream_iterator<uint_type>(vt_o, " "));
+      vt_o << std::endl;
+      v += Random.state_size();
+    }
+    pt.put("random.engine", Random.EngineName);
+    pt.put("random.dims", dims.str());
+    pt.put("random.states", vt_o.str());
+    std::string xname = fname + ".random.xml";
+    write_xml(xname, pt);
+#else
+    std::string h5name = fname + ".random.h5";
+    hdf_archive hout(comm);
+    hout.create(h5name);
+    hout.push(hdf::main_state);
+    hout.push("random");
+    TinyVector<hsize_t, 2> shape(comm->size() * nthreads, Random.state_size());
+    hyperslab_proxy<std::vector<uint_type>, 2> slab(vt_tot, shape);
+    hout.write(slab, Random.EngineName);
+    hout.close();
+#endif
+  }
 }
 
 /*New functions past this point*/
@@ -191,21 +375,16 @@ void RandomNumberControl::read(const std::string& fname, Communicate* comm)
     read_rank_0(hin, comm);
 }
 
-void RandomNumberControl::write(const std::string& fname, Communicate* comm)
-{
-  write(convertUPtrToRefVector(Children), fname, comm);
-}
-
 //switch between write functions
-void RandomNumberControl::write(const RefVector<Generator>& rng, const std::string& fname, Communicate* comm)
+void RandomNumberControl::write(const std::string& fname, Communicate* comm)
 {
   std::string h5name = fname + ".random.h5";
   hdf_archive hout(comm, true); //attempt to write in parallel
   hout.create(h5name);
   if (hout.is_parallel())
-    write_parallel(rng, hout, comm);
+    write_parallel(hout, comm);
   else
-    write_rank_0(rng, hout, comm);
+    write_rank_0(hout, comm);
 }
 
 //Parallel read
@@ -266,7 +445,7 @@ void RandomNumberControl::read_parallel(hdf_archive& hin, Communicate* comm)
 }
 
 //Parallel write
-void RandomNumberControl::write_parallel(const RefVector<Generator>& rng, hdf_archive& hout, Communicate* comm)
+void RandomNumberControl::write_parallel(hdf_archive& hout, Communicate* comm)
 {
   // cast integer to size_t
   const size_t nthreads  = static_cast<size_t>(omp_get_max_threads());
@@ -278,10 +457,10 @@ void RandomNumberControl::write_parallel(const RefVector<Generator>& rng, hdf_ar
   vt.reserve(nthreads * Random.state_size()); //buffer for random numbers from children[ip] of each thread
   mt.reserve(Random.state_size());            //buffer for random numbers from single Random object
 
-  std::vector<uint_type> c;
   for (int ip = 0; ip < nthreads; ++ip)
   {
-    rng[ip].get().save(c);
+    std::vector<uint_type> c;
+    Children[ip]->save(c);
     vt.insert(vt.end(), c.begin(), c.end()); //get nums from each thread into buffer
   }
   Random.save(mt); //get nums for single random object (no threads)
@@ -379,7 +558,7 @@ void RandomNumberControl::read_rank_0(hdf_archive& hin, Communicate* comm)
 }
 
 //scatter write
-void RandomNumberControl::write_rank_0(const RefVector<Generator>& rng, hdf_archive& hout, Communicate* comm)
+void RandomNumberControl::write_rank_0(hdf_archive& hout, Communicate* comm)
 {
   // cast integer to size_t
   const size_t nthreads  = static_cast<size_t>(omp_get_max_threads());
@@ -395,7 +574,7 @@ void RandomNumberControl::write_rank_0(const RefVector<Generator>& rng, hdf_arch
   for (int i = 0; i < nthreads; ++i)
   {
     std::vector<uint_type> c;
-    rng[i].get().save(c);
+    Children[i]->save(c);
     vt.insert(vt.end(), c.begin(), c.end()); //copy children[nthreads] seeds to buffer
   }
   Random.save(mt); //copy random_th seeds to buffer

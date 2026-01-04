@@ -35,7 +35,7 @@
  *The base class is written to be able to handle DTD or Schema in
  *future.  Current implementation assumes that each OhmmsElementBase
  *object handles a node and its child nodes. However, it does not
- *specify how the derived classes hanlde the child nodes.
+ *specify how the derived classes handle the child nodes.
  */
 class OhmmsElementBase
 {
@@ -98,5 +98,14 @@ protected:
   ///the name of the node, corresponds to the xml tag
   std::string myName;
 };
+
+//add tolower function here
+
+inline void tolower(std::string& s)
+{
+  for (int i = 0; i < s.size(); ++i)
+    s[i] = tolower(s[i]);
+  //std::transform(s.begin(), s.end(), s.begin(), std::tolower);
+}
 
 #endif

@@ -18,7 +18,7 @@
 
 namespace qmcplusplus
 {
-using pRealType = qmcplusplus::LRHandlerBase::pRealType;
+using mycomplex = qmcplusplus::LRHandlerBase::pComplexType;
 
 struct CoulombF2
 {
@@ -29,41 +29,41 @@ struct CoulombF2
  */
 TEST_CASE("dummy", "[lrhandler]")
 {
-  Lattice lattice;
-  lattice.BoxBConds     = true;
-  lattice.LR_dim_cutoff = 30.;
-  lattice.R.diagonal(5.0);
-  lattice.reset();
-  CHECK(lattice.Volume == Approx(125));
-  lattice.SetLRCutoffs(lattice.Rv);
-  //lattice.printCutoffs(app_log());
-  CHECK(lattice.LR_rc == Approx(2.5));
-  CHECK(lattice.LR_kc == Approx(12));
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
+  Lattice.BoxBConds     = true;
+  Lattice.LR_dim_cutoff = 30.;
+  Lattice.R.diagonal(5.0);
+  Lattice.reset();
+  REQUIRE(Lattice.Volume == Approx(125));
+  Lattice.SetLRCutoffs(Lattice.Rv);
+  //Lattice.printCutoffs(app_log());
+  REQUIRE(Lattice.LR_rc == Approx(2.5));
+  REQUIRE(Lattice.LR_kc == Approx(12));
 
-  const SimulationCell simulation_cell(lattice);
-  ParticleSet ref(simulation_cell);       // handler needs ref.getSimulationCell().getKLists()
+  ParticleSet ref;       // handler needs ref.SK.getKLists()
+  ref.Lattice = Lattice; // !!!! crucial for access to Volume
   ref.createSK();
-  DummyLRHandler<CoulombF2> handler(lattice.LR_kc);
+  DummyLRHandler<CoulombF2> handler(Lattice.LR_kc);
 
   handler.initBreakup(ref);
+  REQUIRE(handler.MaxKshell == 78);
+  REQUIRE(handler.LR_kc == Approx(12));
+  REQUIRE(handler.LR_rc == Approx(0));
 
-  std::cout << "handler.MaxKshell is " << handler.MaxKshell << std::endl;
-  CHECK( handler.MaxKshell == 78);
-  CHECK(handler.LR_kc == Approx(12));
-  CHECK(handler.LR_rc == Approx(0));
-
-  std::vector<pRealType> rhok1(handler.MaxKshell);
-  std::vector<pRealType> rhok2(handler.MaxKshell);
+  std::vector<mycomplex> rhok1(handler.MaxKshell);
+  std::vector<mycomplex> rhok2(handler.MaxKshell);
+  std::fill(rhok1.begin(), rhok1.end(), 1.0);
+  std::fill(rhok2.begin(), rhok2.end(), 1.0);
   CoulombF2 fk;
-  double norm = 4 * M_PI / lattice.Volume;
+  double norm = 4 * M_PI / Lattice.Volume;
   // no actual LR breakup happened in DummyLRHandler,
   //  the full Coulomb potential should be retained in kspace
   for (int ish = 0; ish < handler.MaxKshell; ish++)
   {
-    int ik           = ref.getSimulationCell().getKLists().getKShell()[ish];
-    double k2        = ref.getSimulationCell().getKLists().getKSQWorking()[ik];
+    int ik           = ref.SK->getKLists().kshell[ish];
+    double k2        = ref.SK->getKLists().ksq[ik];
     double fk_expect = fk(k2);
-    CHECK(handler.Fk_symm[ish] == Approx(norm * fk_expect));
+    REQUIRE(handler.Fk_symm[ish] == Approx(norm * fk_expect));
   }
   // ?? cannot access base class method, too many overloads?
   // handler.evaluate(SK->getKLists().kshell, rhok1.data(), rhok2.data());

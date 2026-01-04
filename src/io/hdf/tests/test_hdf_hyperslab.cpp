@@ -18,6 +18,7 @@
 #include "OhmmsPETE/OhmmsVector.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
 #include "OhmmsPETE/OhmmsArray.h"
+#include "type_traits/container_traits_ohmms.h"
 #include "hdf/hdf_archive.h"
 
 using namespace qmcplusplus;
@@ -37,15 +38,13 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   {
     for (int j = 0; j < 4; j++)
     {
-      allData(i, j)      = i + j * 0.1;
-      allData_cplx(i, j) = std::complex<float>(i, j * 0.1);
+      allData(i, j) = i + j * 0.1;
+      allData_cplx(i, j) = std::complex<float>(i,j * 0.1);
     }
   }
 
   hd.write(allData, "matrix");
-
-  const auto& const_allData_cplx = allData_cplx;
-  hd.write(const_allData_cplx, "matrix_cplx_float");
+  hd.write(allData_cplx, "matrix_cplx_float");
   hd.close();
 
   hdf_archive hd2;
@@ -94,7 +93,7 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   hd2.read(pxy1, "matrix");
   for (int i = 0; i < 4; i++)
   {
-    CHECK(outbuffer1(0, i) == Approx(allData(1, i)));
+    REQUIRE(outbuffer1(0, i) == Approx(allData(1, i)));
   }
 
   dims_local[0] = 3;
@@ -104,7 +103,7 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   hyperslab_proxy<Matrix<double>, 2> pxy2(outbuffer2, dims_unused, dims_local, offsets);
   hd2.read(pxy2, "matrix");
   for (int i = 0; i < 3; i++)
-    CHECK(outbuffer2(i, 0) == Approx(allData(i, 2)));
+    REQUIRE(outbuffer2(i, 0) == Approx(allData(i, 2)));
 
   // set dims_unused to sero and to be detect
   dims_unused[0] = 0;
@@ -116,7 +115,7 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   offsets[1]    = 0;
   hyperslab_proxy<Matrix<double>, 2> pxy3(outbuffer3, dims_unused, dims_local, offsets);
   hd2.read(pxy3, "matrix");
-  CHECK(outbuffer3(0, 0) == Approx(allData(2, 0)));
+  REQUIRE(outbuffer3(0, 0) == Approx(allData(2, 0)));
 
   // mostly the same as outbuffer2 but outbuffer4 resized by hyperslab_proxy
   dims_local[0] = 3;
@@ -128,7 +127,7 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   REQUIRE(outbuffer4.rows() == 3);
   REQUIRE(outbuffer4.cols() == 1);
   for (int i = 0; i < 3; i++)
-    CHECK(outbuffer2(i, 0) == Approx(allData(i, 2)));
+    REQUIRE(outbuffer2(i, 0) == Approx(allData(i, 2)));
 
   // method 2 here
   std::vector<double> locob1;
@@ -139,7 +138,7 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   REQUIRE(locob1.size() == 4);
   for (int i = 0; i < 4; i++)
   {
-    CHECK(locob1[i] == Approx(allData(1, i)));
+    REQUIRE(locob1[i] == Approx(allData(1, i)));
   }
 
   readSpec[0] = -1;
@@ -147,13 +146,13 @@ TEST_CASE("hdf_read_partial", "[hdf]")
   hd2.readSlabSelection(locob2, readSpec, "matrix");
   for (int i = 0; i < 3; i++)
   {
-    CHECK(locob2.data()[i] == Approx(allData(i, 2)));
-    CHECK(locob2(i) == Approx(allData(i, 2)));
+    REQUIRE(locob2.data()[i] == Approx(allData(i, 2)));
+    REQUIRE(locob2(i) == Approx(allData(i,2)));
   }
 
   readSpec[0] = 2;
   readSpec[1] = 0;
   hd2.readSlabSelection(locob3, readSpec, "matrix");
-  CHECK(locob3.data()[0] == Approx(allData(2, 0)));
+  REQUIRE(locob3.data()[0] == Approx(allData(2, 0)));
   hd2.close();
 }

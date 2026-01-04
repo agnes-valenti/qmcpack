@@ -27,7 +27,6 @@
 #include "QMCDrivers/BranchIO.h"
 #include "Particle/Reptile.h"
 #include "type_traits/template_types.hpp"
-#include "Message/UniformCommunicateError.h"
 
 namespace qmcplusplus
 {
@@ -114,12 +113,12 @@ void SimpleFixedNodeBranch::registerParameters()
   m_param.add(sParam[USETAUOPT], "useBareTau");
   m_param.add(sParam[MIXDMCOPT], "warmupByReconfiguration");
   m_param.add(branching_cutoff_scheme, "branching_cutoff_scheme");
-  m_param.add(debug_disable_branching_, "debug_disable_branching", {"no", "yes"});
 }
 
 void SimpleFixedNodeBranch::start(const std::string& froot, bool append)
 {
-  RootName = froot;
+  RootName              = froot;
+  MyEstimator->RootName = froot;
   MyEstimator->reset();
 }
 
@@ -147,6 +146,7 @@ int SimpleFixedNodeBranch::initWalkerController(MCWalkerConfiguration& walkers, 
       acomm->allreduce(nw);
       for (int ip = 0; ip < ncontexts; ++ip)
         nwoff[ip + 1] = nwoff[ip] + nw[ip];
+      walkers.setGlobalNumWalkers(nwoff[ncontexts]);
       walkers.setWalkerOffsets(nwoff);
       iParam[B_TARGETWALKERS] = nwoff[ncontexts];
     }
@@ -208,8 +208,6 @@ int SimpleFixedNodeBranch::initWalkerController(MCWalkerConfiguration& walkers, 
   app_log() << "  Max and minimum walkers per node= " << iParam[B_MAXWALKERS] << " " << iParam[B_MINWALKERS]
             << std::endl;
   app_log() << "  QMC Status (BranchMode) = " << BranchMode << std::endl;
-  if (debug_disable_branching_ == "yes")
-    app_log() << "  Disable branching for debugging as the user input request." << std::endl;
 
   return int(round(double(iParam[B_TARGETWALKERS]) / double(nwtot_now)));
 }
@@ -236,6 +234,7 @@ void SimpleFixedNodeBranch::initReptile(MCWalkerConfiguration& W)
     //   acomm->allreduce(nw);
     //    for(int ip=0; ip<ncontexts; ++ip)
     //      nwoff[ip+1]=nwoff[ip]+nw[ip];
+    //    W.setGlobalNumWalkers(nwoff[ncontexts]);
     //    W.setWalkerOffsets(nwoff);
     //    iParam[B_TARGETWALKERS]=nwoff[ncontexts];
     //  }
@@ -283,7 +282,7 @@ void SimpleFixedNodeBranch::branch(int iter, MCWalkerConfiguration& walkers)
   //collect the total weights and redistribute the walkers accordingly, using a fixed tolerance
 
   FullPrecRealType pop_now;
-  if (debug_disable_branching_ == "no" && (BranchMode[B_DMCSTAGE] || iter))
+  if (BranchMode[B_DMCSTAGE] || iter)
     pop_now = WalkerController->branch(iter, walkers, 0.1);
   else
     pop_now = WalkerController->doNotBranch(iter, walkers); //do not branch for the first step of a warmup
@@ -520,9 +519,17 @@ void SimpleFixedNodeBranch::reset()
   }
 }
 
+void SimpleFixedNodeBranch::setRN(bool rn)
+{
+  RN = rn;
+  WalkerController->set_write_release_nodes(rn);
+  WalkerController->start();
+}
+
 int SimpleFixedNodeBranch::resetRun(xmlNodePtr cur)
 {
-  app_log() << "BRANCH resetRun" << std::endl;
+  //std::cout<<"AV entering SimpleFixedNodeBranch::resetRun"<<std::endl;
+  //std::cout << "BRANCH resetRun" << std::endl;
   //estimator is always reset
   MyEstimator->reset();
   MyEstimator->setCollectionMode(true);
@@ -559,10 +566,9 @@ int SimpleFixedNodeBranch::resetRun(xmlNodePtr cur)
     if (reconfig != "no" && reconfig != "runwhileincorrect")
     {
       // remove this once bug is fixed
-      throw std::runtime_error("Reconfiguration is currently broken and gives incorrect results. Use dynamic "
-                               "population control by setting reconfiguration=\"no\" or removing the reconfiguration "
-                               "option from the DMC input section. If accessing the broken reconfiguration code path "
-                               "is still desired, set reconfiguration to \"runwhileincorrect\" instead of \"yes\".");
+      APP_ABORT("Reconfiguration is currently broken and gives incorrect results. Set reconfiguration=\"no\" or remove "
+                "the reconfiguration option from the DMC input section. To run performance tests, please set "
+                "reconfiguration to \"runwhileincorrect\" instead of \"yes\" to restore consistent behaviour.")
     }
     same_wc = (reconfig == reconfig_prev);
   }
@@ -581,11 +587,11 @@ int SimpleFixedNodeBranch::resetRun(xmlNodePtr cur)
   //vmc does not need to do anything with WalkerController
   if (!BranchMode[B_DMC])
   {
-    app_log() << " iParam (old): " << iparam_old << std::endl;
-    app_log() << " iParam (new): " << iParam << std::endl;
-    app_log() << " vParam (old): " << vparam_old << std::endl;
-    app_log() << " vParam (new): " << vParam << std::endl;
-    app_log().flush();
+    //app_log() << " iParam (old): " << iparam_old << std::endl;
+    //app_log() << " iParam (new): " << iParam << std::endl;
+    //app_log() << " vParam (old): " << vparam_old << std::endl;
+    //app_log() << " vParam (new): " << vParam << std::endl;
+    //app_log().flush();
     return 1;
   }
 
@@ -620,22 +626,26 @@ int SimpleFixedNodeBranch::resetRun(xmlNodePtr cur)
   ToDoSteps = iParam[B_WARMUPSTEPS] = (iParam[B_WARMUPSTEPS]) ? iParam[B_WARMUPSTEPS] : 10;
   setBranchCutoff(vParam[SBVP::SIGMA2], WalkerController->get_target_sigma(), 10);
   WalkerController->reset();
+#ifdef QMC_CUDA
+  reset(); // needed. Ye
+#endif
   if (BackupWalkerController)
     BackupWalkerController->reset();
 
   iParam[B_MAXWALKERS] = WalkerController->get_n_max();
   iParam[B_MINWALKERS] = WalkerController->get_n_min();
 
-  app_log() << " iParam (old): " << iparam_old << std::endl;
-  app_log() << " iParam (new): " << iParam << std::endl;
-  app_log() << " vParam (old): " << vparam_old << std::endl;
-  app_log() << " vParam (new): " << vParam << std::endl;
+  //app_log() << " iParam (old): " << iparam_old << std::endl;
+  //app_log() << " iParam (new): " << iParam << std::endl;
+  //app_log() << " vParam (old): " << vparam_old << std::endl;
+  //app_log() << " vParam (new): " << vParam << std::endl;
 
-  app_log() << std::endl << " Using branching cutoff scheme " << branching_cutoff_scheme << std::endl;
+  //app_log() << std::endl << " Using branching cutoff scheme " << branching_cutoff_scheme << std::endl;
 
-  app_log().flush();
+  //app_log().flush();
 
   //  return static_cast<int>(iParam[B_TARGETWALKERS]*1.01/static_cast<double>(nw_target));
+  //std::cout<<"AV exiting SimpleFixedNodeBrach::ResetRun"<<std::endl<<std::endl;
   return static_cast<int>(round(static_cast<double>(iParam[B_TARGETWALKERS] / static_cast<double>(nw_target))));
 }
 
@@ -707,16 +717,17 @@ void SimpleFixedNodeBranch::finalize(MCWalkerConfiguration& w)
     EnergyHist(vParam[SBVP::EREF]);
     //add Eref to the DMCEnergyHistory
     //DMCEnergyHist(vParam[SBVP::EREF]);
-    o << "====================================================";
-    o << "\n  SimpleFixedNodeBranch::finalize after a VMC block";
-    o << "\n    QMC counter        = " << iParam[B_COUNTER];
-    o << "\n    time step          = " << vParam[SBVP::TAU];
-    o << "\n    reference energy   = " << vParam[SBVP::EREF];
-    o << "\n    reference variance = " << vParam[SBVP::SIGMA2];
-    o << "\n====================================================";
+    std::cout << "====================================================";
+    std::cout << "\n  SimpleFixedNodeBranch::finalize after a VMC block";
+    std::cout << "\n    QMC counter        = " << iParam[B_COUNTER];
+    std::cout << "\n    time step          = " << vParam[SBVP::TAU];
+    std::cout << "\n    reference energy   = " << vParam[SBVP::EREF];
+    std::cout << "\n    reference variance = " << vParam[SBVP::SIGMA2];
+    std::cout << "\n====================================================";
   }
   app_log() << o.str() << std::endl;
   write(RootName, true);
+  //std::cout<<"AV exiting SimpleFixedNodeBranch::finalize"<<std::endl<<std::endl;
 }
 
 /**  Parse the xml file for parameters
@@ -731,12 +742,14 @@ void SimpleFixedNodeBranch::finalize(MCWalkerConfiguration& w)
  */
 bool SimpleFixedNodeBranch::put(xmlNodePtr cur)
 {
+  //std::cout<<"AV entering SimpleFixedNodeBranch::put"<<std::endl;
   //save it
   myNode = cur;
   //check dmc/vmc and decide to create WalkerControllerBase
   m_param.put(cur);
   reset();
   MyEstimator->setCollectionMode(true); //always collect
+  //std::cout<<"AV exiting SimpleFixedNodeBranch::put"<<std::endl<<std::endl;
   return true;
 }
 

@@ -1,24 +1,25 @@
-#include <mpi3/communicator.hpp>
-#include <mpi3/main.hpp>
-#if not defined(EXAMPI)
-#include <mpi3/ostream.hpp>
+#if COMPILATION_INSTRUCTIONS
+mpic++ -O3 -std=c++14 -Wall -Wextra -Wfatal-errors $0 -o $0x.x && time mpirun -n 4 $0x.x $@ && rm -f $0x.x; exit
 #endif
+
+#include "../../mpi3/main.hpp"
+#include "../../mpi3/communicator.hpp"
+#include "../../mpi3/ostream.hpp"
 
 namespace mpi3 = boost::mpi3;
 
-auto mpi3::main(int /*argc*/, char** /*argv*/, mpi3::communicator world) -> int try {
+int mpi3::main(int, char*[], mpi3::communicator world){
 	assert(world.size() > 2);
 
-	std::vector<int> large(10);
-	if(world.root()) {
-		iota(large.begin(), large.end(), 0);
-	}
 
-#if not defined(EXAMPI)
 	mpi3::ostream wout(world);
-	wout << "before:" << std::endl;
-	std::copy(large.begin(), large.end(), std::ostream_iterator<int>(wout, " "));
 
+	std::vector<int> large(10);
+	if(world.root())
+		iota(large.begin(), large.end(), 0);
+
+	wout << "before:" << std::endl;
+	for(auto& e : large) wout << e << " ";
 	wout << std::endl;
 
 	{
@@ -28,9 +29,9 @@ auto mpi3::main(int /*argc*/, char** /*argv*/, mpi3::communicator world) -> int 
 	}
 
 	wout << "after:" << std::endl;
-	std::copy(large.begin(), large.end(), std::ostream_iterator<int>(wout, " "));
+	for(auto& e : large) wout << e << " ";
 	wout << std::endl;
-#endif
 
 	return 0;
-} catch(...) {return 1;}
+}
+

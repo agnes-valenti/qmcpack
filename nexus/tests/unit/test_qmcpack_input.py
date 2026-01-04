@@ -2,7 +2,7 @@
 import versions
 import testing
 from testing import divert_nexus_log,restore_nexus_log
-from testing import value_eq,object_eq,check_object_eq
+from testing import value_eq,object_eq
 
 associated_files = dict()
 
@@ -343,7 +343,6 @@ def generate_serial_references():
         #end if
     #end for
     #  generated initial jastrow rather than optimized one
-    ref['simulation/project/driver_version'] =  'legacy'
     ref['simulation/qmcsystem/wavefunctions/psi0/jastrows/J2/correlations/ud/coefficients/coeff'] = np.array([0.44140587,0.26944819,0.15547533,0.08413778,0.04227037,0.01951441,0.00820536,0.00312028])
     ref['simulation/qmcsystem/wavefunctions/psi0/jastrows/J2/correlations/ud/coefficients/id'] = 'ud'
     ref['simulation/qmcsystem/wavefunctions/psi0/jastrows/J2/correlations/ud/coefficients/type'] = 'Array'
@@ -385,14 +384,13 @@ def generate_serial_references():
 
     #   batched driver
     ref = ref.copy()
-    ref['simulation/project/driver_version'] =  'batched'
     for k in list(ref.keys()):
         if 'estimator' in k or 'calculations' in k or 'MPC' in k:
             del ref[k]
         #end if
     #end for
     ref['simulation/calculations/0/blocks'] = 70
-    ref['simulation/calculations/0/method'] = 'vmc'
+    ref['simulation/calculations/0/method'] = 'vmc_batch'
     ref['simulation/calculations/0/move'] = 'pbyp'
     ref['simulation/calculations/0/steps'] = 5
     ref['simulation/calculations/0/substeps'] = 2
@@ -401,7 +399,7 @@ def generate_serial_references():
     ref['simulation/calculations/0/walkers_per_rank'] = 64
     ref['simulation/calculations/0/warmupsteps'] = 20
     ref['simulation/calculations/1/blocks'] = 80
-    ref['simulation/calculations/1/method'] = 'dmc'
+    ref['simulation/calculations/1/method'] = 'dmc_batch'
     ref['simulation/calculations/1/move'] = 'pbyp'
     ref['simulation/calculations/1/nonlocalmoves'] = 'yes'
     ref['simulation/calculations/1/steps'] = 5
@@ -409,7 +407,7 @@ def generate_serial_references():
     ref['simulation/calculations/1/walkers_per_rank'] = 64
     ref['simulation/calculations/1/warmupsteps'] = 2
     ref['simulation/calculations/2/blocks'] = 600
-    ref['simulation/calculations/2/method'] = 'dmc'
+    ref['simulation/calculations/2/method'] = 'dmc_batch'
     ref['simulation/calculations/2/move'] = 'pbyp'
     ref['simulation/calculations/2/nonlocalmoves'] = 'yes'
     ref['simulation/calculations/2/steps'] = 5
@@ -517,24 +515,27 @@ def get_serial_references():
 
 
 def check_vs_serial_reference(qi,name):
-    from generic import obj
     sr = get_serial_references()[name]
     assert(len(sr)>0)
     sq = qi.serial()
-    def remove_metadata(s):
-        metadata_keys = []
-        for k in s.keys():
-            if k.startswith('_metadata'):
-                metadata_keys.append(k)
-            #end if
-        #end for
-        for k in metadata_keys:
-            del s[k]
-        #end for
-    #end def remove_metadata
-    remove_metadata(sq)
-    remove_metadata(sr)
-    assert check_object_eq(sq,obj(sr),bypass=True,verbose=True)
+    extra = set(sq.keys())-set(sr.keys())
+    for k in extra:
+        if not k.startswith('_metadata'):
+            print(k)
+        #end if
+        assert(k.startswith('_metadata'))
+    #end for
+    for k in sorted(sr.keys()):
+        if k not in sq:
+            print(k)
+        elif not value_eq(sq[k],sr[k]):
+            print(k)
+            print(sr[k])
+            print(sq[k])
+        #end if
+        assert(k in sq)
+        assert(value_eq(sq[k],sr[k]))
+    #end for
 #end def check_vs_serial_reference
 
 
@@ -1279,14 +1280,12 @@ def test_generate():
     # legacy drivers
     qi = generate_qmcpack_input(
         input_type      = 'basic',
-        driver          = 'legacy',
         system          = system,
         randomsrc       = False,
         pseudos         = ['V.opt.xml','O.opt.xml'],
         spin_polarized  = True,
         twistnum        = 0,
         orbitals_h5     = '../scf/pwscf_output/pwscf.pwscf.h5',
-        check_paths     = False,
         estimators      = [spindensity(grid=(72,44,44))],
         qmc = 'dmc',
         # vmc inputs
@@ -1325,7 +1324,6 @@ def test_generate():
         spin_polarized   = True,
         twistnum         = 0,
         orbitals_h5      = '../scf/pwscf_output/pwscf.pwscf.h5',
-        check_paths      = False,
         estimators       = [],
         corrections      = [],
         qmc              = 'dmc',
@@ -1399,17 +1397,12 @@ def test_read():
     assert(not qi_read.is_afqmc_input())
 
     # remove extraneous data members for purpose of comparison
-    m = qi_read._metadata
-    if 'spo_u' in m:
-        del m.spo_u
-    if 'spo_d' in m:
-        del m.spo_d
+    del qi_read._metadata.spo_u
+    del qi_read._metadata.spo_d
     spob = qi_read.simulation.qmcsystem.wavefunctions.psi0.sposet_builders
     sposets = spob.bspline.sposets
-    if 'spos' in sposets.spo_u:
-        del sposets.spo_u.spos
-    if 'spos' in sposets.spo_d:
-        del sposets.spo_d.spos
+    del sposets.spo_u.spos
+    del sposets.spo_d.spos
 
     check_vs_serial_reference(qi_read,'VO2_M1_afm.in.xml')
 
@@ -1470,17 +1463,12 @@ def test_write():
     qi_write.pluralize()
 
     # remove extraneous data members for purpose of comparison
-    m = qi_write._metadata
-    if 'spo_u' in m:
-        del m.spo_u
-    if 'spo_d' in m:
-        del m.spo_d
+    del qi_write._metadata.spo_u
+    del qi_write._metadata.spo_d
     spob = qi_write.simulation.qmcsystem.wavefunctions.psi0.sposet_builders
     sposets = spob.bspline.sposets
-    if 'spos' in sposets.spo_u:
-        del sposets.spo_u.spos
-    if 'spos' in sposets.spo_d:
-        del sposets.spo_d.spos
+    del sposets.spo_u.spos
+    del sposets.spo_d.spos
 
     check_vs_serial_reference(qi_write,ref_file)
 
@@ -1837,14 +1825,12 @@ def test_incorporate_system():
 
     qi = generate_qmcpack_input(
         input_type      = 'basic',
-        driver          = 'legacy',
         system          = system,
         pseudos         = ['V.opt.xml','O.opt.xml'],
         spin_polarized  = True,
         twistnum        = 0,
         orbitals_h5     = 'scf.pwscf.h5',
-        check_paths     = False,
-        qmc             = 'dmc',
+        qmc = 'dmc',
         )
 
     qi_ref = qi.copy()
@@ -1974,169 +1960,6 @@ def test_excited_state():
 #end def test_excited_state
 
 
-
-def test_magnetization_density():
-    """Test magnetization density estimator functionality"""
-    from qmcpack_input import QmcpackInput
-    from qmcpack_input import simulation, meta, section
-    from generic import obj
-    import numpy as np
-    # Helper function to find pattern in text allowing for flexible whitespace
-    def pattern_in_text(pattern, text):
-        """Check if pattern exists in text, allowing for flexible whitespace"""
-        # Convert multiple spaces to single space and strip
-        normalized_text = ' '.join(text.split())
-        normalized_pattern = ' '.join(pattern.split())
-        return normalized_pattern in normalized_text
-
-    # Test with grid specification
-    qi_grid = QmcpackInput(
-        simulation(
-            qmcsystem = section(
-                hamiltonian = section(
-                    name = 'h0',
-                    type = 'generic',
-                    estimators = [
-                        section(
-                            name       = 'magnetizationdensity',
-                            type       = 'magnetizationdensity',
-                            report     = 'yes',
-                            grid       = '16 16 16',
-                            center     = '0 0 0',
-                            corner     = '1 1 1',
-                            integrator = 'simpsons',
-                            samples    = 9,
-                        ),
-                    ],
-                ),
-            ),
-        ),
-    )
-    qi_grid.pluralize()
-
-    # Verify XML output structure for grid case
-    text = qi_grid.write()
-    expected_xml_patterns = [
-        '<estimator type="magnetizationdensity"',
-        'name="magnetizationdensity"',
-        'report="yes"',
-        '<parameter name="grid" > 16 16 16 </parameter>',
-        '<parameter name="center" > 0 0 0 </parameter>',
-        '<parameter name="corner" > 1 1 1 </parameter>',
-        '<parameter name="integrator" > simpsons </parameter>',
-        '<parameter name="samples" > 9 </parameter>',
-        '</estimator>'
-    ]
-    for pattern in expected_xml_patterns:
-        assert pattern_in_text(pattern, text), f"Missing or incorrect pattern: {pattern}"
-    assert 'name="dr"' not in text, "dr parameter should not be present"
-
-    # Test with dr specification
-    qi_dr = QmcpackInput(
-        simulation(
-            qmcsystem = section(
-                hamiltonian = section(
-                    name = 'h0',
-                    type = 'generic',
-                    estimators = [
-                        section(
-                            name       = 'magnetizationdensity',
-                            type       = 'magnetizationdensity',
-                            report     = 'yes',
-                            dr         = '0.1 0.1 0.1',
-                            center     = '0 0 0',
-                            corner     = '1 1 1',
-                            integrator = 'simpsons',
-                            samples    = 9,
-                        ),
-                    ],
-                ),
-            ),
-        ),
-    )
-    qi_dr.pluralize()
-
-    # Verify XML output structure for dr case
-    text = qi_dr.write()
-    expected_xml_patterns = [
-        '<estimator type="magnetizationdensity"',
-        'name="magnetizationdensity"',
-        'report="yes"',
-        '<parameter name="dr" > 0.1 0.1 0.1 </parameter>',
-        '<parameter name="center" > 0 0 0 </parameter>',
-        '<parameter name="corner" > 1 1 1 </parameter>',
-        '<parameter name="integrator" > simpsons </parameter>',
-        '<parameter name="samples" > 9 </parameter>',
-        '</estimator>'
-    ]
-    for pattern in expected_xml_patterns:
-        assert pattern_in_text(pattern, text), f"Missing or incorrect pattern: {pattern}"
-    assert 'name="grid"' not in text, "grid parameter should not be present"
-
-    # Test full system setup with grid
-    qi_full = QmcpackInput(
-        meta(
-            lattice  = obj(units='bohr'),
-            position = obj(condition='0', datatype='posArray'),
-        ),
-        simulation(
-            project = section(
-                id='qmc',
-                series=0,
-            ),
-            qmcsystem = section(
-                simulationcell = section(
-                    lattice = np.array([
-                        [10.0, 0.0, 0.0],
-                        [0.0, 10.0, 0.0],
-                        [0.0, 0.0, 10.0]
-                    ]),
-                    bconds = np.array(tuple('ppp')),
-                ),
-                hamiltonian = section(
-                    name = 'h0',
-                    type = 'generic',
-                    estimators = [
-                        section(
-                            name       = 'magnetizationdensity',
-                            type       = 'magnetizationdensity',
-                            report     = 'yes',
-                            grid       = '32 32 32',
-                            center     = '0 0 0',
-                            corner     = '1 1 1',
-                            integrator = 'simpsons',
-                            samples    = 9,
-                        ),
-                    ],
-                ),
-            ),
-        ),
-    )
-    qi_full.pluralize()
-
-    # Verify full system XML output
-    text = qi_full.write()
-    expected_xml_patterns = [
-        '<project id="qmc" series="0"',
-        '<simulationcell>',
-        '<parameter name="lattice" units="bohr"> 10.00000000 0.00000000 0.00000000 0.00000000 10.00000000 0.00000000 0.00000000 0.00000000 10.00000000 </parameter>',
-        '<parameter name="bconds"> p p p </parameter>',
-        '<hamiltonian name="h0" type="generic">',
-        '<estimator type="magnetizationdensity"',
-        'name="magnetizationdensity"',
-        'report="yes"',
-        '<parameter name="grid" > 32 32 32 </parameter>',
-        '<parameter name="center" > 0 0 0 </parameter>',
-        '<parameter name="corner" > 1 1 1 </parameter>',
-        '<parameter name="integrator" > simpsons </parameter>',
-        '<parameter name="samples" > 9 </parameter>',
-        '</estimator>',
-        '</hamiltonian>'
-    ]
-    for pattern in expected_xml_patterns:
-        assert pattern_in_text(pattern, text), f"Missing or incorrect pattern: {pattern}"
-    assert 'name="dr"' not in text, "dr parameter should not be present"
-#end def test_magnetization_density
 
 if versions.seekpath_available:
     def test_symbolic_excited_state():

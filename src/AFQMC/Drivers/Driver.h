@@ -18,11 +18,11 @@ namespace qmcplusplus
 class Driver : public MPIObjectBase, public AFQMCInfo
 {
 public:
-  using HamPtr  = HamiltonianBase*;
-  using WfnPtr  = WavefunctionHandler*;
-  using PropPtr = PropagatorBase*;
-  using WSetPtr = WalkerHandlerBase*;
-  using InfoPtr = AFQMCInfo*;
+  typedef HamiltonianBase* HamPtr;
+  typedef WavefunctionHandler* WfnPtr;
+  typedef PropagatorBase* PropPtr;
+  typedef WalkerHandlerBase* WSetPtr;
+  typedef AFQMCInfo* InfoPtr;
 
   Driver(Communicate* c)
       : MPIObjectBase(c),

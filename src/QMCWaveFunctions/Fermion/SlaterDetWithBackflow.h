@@ -31,18 +31,22 @@ public:
    * @param rn release node
    */
   SlaterDetWithBackflow(ParticleSet& targetPtcl,
-                        std::vector<std::unique_ptr<SPOSet>>&& sposets,
-                        std::unique_ptr<BackflowTransformation> BF,
-                        std::vector<std::unique_ptr<Determinant_t>>&& dets);
+                        std::vector<std::unique_ptr<Determinant_t>> dets,
+                        std::unique_ptr<BackflowTransformation> BF);
 
   ///destructor
   ~SlaterDetWithBackflow() override;
 
-  std::string getClassName() const override { return "SlaterDetWithBackflow"; }
-  bool isFermionic() const final { return true; }
-  bool isOptimizable() const override;
-
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override;
+  void checkInVariables(opt_variables_type& active) override
+  {
+    //if(Optimizable) {
+    if (BFTrans->isOptimizable())
+    {
+      BFTrans->checkInVariables(active);
+      for (int i = 0; i < Dets.size(); i++)
+        Dets[i]->checkInVariables(active);
+    }
+  }
 
   void checkOutVariables(const opt_variables_type& active) override
   {
@@ -55,19 +59,32 @@ public:
     }
   }
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+  ///reset all the Dirac determinants, Optimizable is true
+  void resetParameters(const opt_variables_type& active) override
+  {
+    //if(Optimizable) {
+    if (BFTrans->isOptimizable())
+    {
+      BFTrans->resetParameters(active);
+      for (int i = 0; i < Dets.size(); i++)
+        Dets[i]->resetParameters(active);
+    }
+  }
+
+  void reportStatus(std::ostream& os) override {}
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
 
-  inline PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override
+  inline PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override
   {
     BFTrans->evaluatePbyPWithGrad(P, iat);
     //BFTrans->evaluate(P);
-    PsiValue psi = 1.0;
+    PsiValueType psi = 1.0;
     for (int i = 0; i < Dets.size(); ++i)
       psi *= Dets[i]->ratioGrad(P, iat, grad_iat);
     return psi;
@@ -90,8 +107,8 @@ public:
   GradType evalGradSource(ParticleSet& P,
                           ParticleSet& src,
                           int iat,
-                          TinyVector<ParticleSet::ParticleGradient, OHMMS_DIM>& grad_grad,
-                          TinyVector<ParticleSet::ParticleLaplacian, OHMMS_DIM>& lapl_grad) override
+                          TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
+                          TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override
   {
     APP_ABORT("Need to implement SlaterDetWithBackflow::evalGradSource() \n");
     return GradType();
@@ -112,11 +129,13 @@ public:
   }
 
 
-  inline PsiValue ratio(ParticleSet& P, int iat) override
+  inline PsiValueType ratio(ParticleSet& P, int iat) override
   {
+    //BackflowTransformation.cpp:evaluatePbyP, calculate new quasi-particle coordinates after pbyp move
     BFTrans->evaluatePbyP(P, iat);
     //BFTrans->evaluate(P);
-    PsiValue ratio = 1.0;
+    
+    PsiValueType ratio = 1.0;
     for (int i = 0; i < Dets.size(); ++i)
       ratio *= Dets[i]->ratio(P, iat);
     return ratio;
@@ -124,26 +143,22 @@ public:
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
 
-  SPOSet& getPhi(int i = 0) { return Dets[i]->getPhi(); }
+  SPOSetPtr getPhi(int i = 0) const { return Dets[i]->getPhi(); }
 
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios) override;
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override;
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override;
 
   void testDerivGL(ParticleSet& P);
 
 private:
-  ///container for the unique SPOSets
-  const std::vector<std::unique_ptr<SPOSet>> sposets_;
-
-  /// backflow transformation
-  const std::unique_ptr<BackflowTransformation> BFTrans;
-
   ///container for the DiracDeterminants
   const std::vector<std::unique_ptr<Determinant_t>> Dets;
+  /// backflow transformation
+  const std::unique_ptr<BackflowTransformation> BFTrans;
 };
 } // namespace qmcplusplus
 #endif

@@ -20,81 +20,162 @@
 
 namespace qmcplusplus
 {
-ObservableHelper::ObservableHelper(hdf_path title) : group_name(std::move(title)) {}
+ObservableHelper::ObservableHelper(const std::string& title)
+    : data_id(-1), space1_id(-1), value1_id(-1), group_name(title), isopened(false)
+{}
 
-ObservableHelper::~ObservableHelper() = default;
+ObservableHelper::ObservableHelper(ObservableHelper&& in) noexcept
+    : lower_bound(in.lower_bound),
+      data_id(in.data_id),
+      space1_id(in.space1_id),
+      value1_id(in.value1_id),
+      mydims(in.mydims),
+      maxdims(in.maxdims),
+      curdims(in.curdims),
+      offsets(in.offsets),
+      group_name(in.group_name),
+      isopened(in.isopened)
+{
+  in.isopened = false;
+}
 
-void ObservableHelper::set_dimensions(const std::vector<int>& dims, int first)
+ObservableHelper& ObservableHelper::operator=(ObservableHelper&& in) noexcept
+{
+  if (this != &in)
+  {
+    *this       = std::move(in);
+    in.isopened = false;
+  }
+  return *this;
+}
+
+ObservableHelper::~ObservableHelper()
+{
+  if (isopened)
+  {
+    close();
+  }
+}
+
+void ObservableHelper::set_dimensions(std::vector<int>& dims, int first)
 {
   //rank is increased
   hsize_t rank = dims.size() + 1;
   mydims.resize(rank, 1);
   copy(dims.begin(), dims.end(), mydims.begin() + 1);
+  maxdims = mydims;
+  curdims = mydims;
   offsets.resize(rank, 0);
+  maxdims[0]  = H5S_UNLIMITED;
   lower_bound = first;
 }
 
-void ObservableHelper::addProperty(float& p, const std::string& pname, hdf_archive& file)
+void ObservableHelper::open(hid_t grp_id)
+{
+  data_id      = H5Gcreate(grp_id, group_name.c_str(), 0);
+  hsize_t rank = mydims.size();
+  if (rank)
+  {
+    //create empty data to write something
+    hsize_t nd = 1;
+    for (int i = 1; i < rank; ++i)
+    {
+      nd *= mydims[i];
+    }
+    std::vector<value_type> zeros(nd, 0.0);
+    hid_t p = H5Pcreate(H5P_DATASET_CREATE);
+    H5Pset_chunk(p, rank, &mydims[0]);
+    space1_id      = H5Screate_simple(rank, &mydims[0], &maxdims[0]);
+    value1_id      = H5Dcreate(data_id, "value", H5T_NATIVE_DOUBLE, space1_id, p);
+    hid_t memspace = H5Screate_simple(rank, &mydims[0], NULL);
+    herr_t ret     = H5Dwrite(value1_id, H5T_NATIVE_DOUBLE, memspace, space1_id, H5P_DEFAULT, &zeros[0]);
+    H5Sclose(memspace);
+    H5Pclose(p);
+  }
+  isopened = true;
+}
+
+void ObservableHelper::addProperty(float& p, const std::string& pname)
 {
   double p_DP(p);
-  file.push(group_name, true);
-  file.write(p_DP, pname);
-  file.pop();
+  HDFAttribIO<double> a(p_DP);
+  a.write(data_id, pname.c_str());
 }
 
-void ObservableHelper::addProperty(Tensor<float, OHMMS_DIM>& p, const std::string& pname, hdf_archive& file)
+void ObservableHelper::addProperty(Tensor<float, OHMMS_DIM>& p, const std::string& pname)
 {
-  Tensor<double, OHMMS_DIM> p_DP(p);
-  file.push(group_name, true);
-  file.write(p_DP, pname);
-  file.pop();
+  Tensor<double, OHMMS_DIM> p_DP;
+  p_DP = p;
+  HDFAttribIO<Tensor<double, OHMMS_DIM>> a(p_DP);
+  a.write(data_id, pname.c_str());
 }
 
-void ObservableHelper::addProperty(Matrix<float>& p, const std::string& pname, hdf_archive& file)
+void ObservableHelper::addProperty(Matrix<float>& p, const std::string& pname)
 {
   Matrix<double> p_DP;
   p_DP = p;
-  file.push(group_name, true);
-  file.write(p_DP, pname);
-  file.pop();
+  HDFAttribIO<Matrix<double>> a(p_DP);
+  a.write(data_id, pname.c_str());
 }
 
-void ObservableHelper::addProperty(TinyVector<float, OHMMS_DIM>& p, const std::string& pname, hdf_archive& file)
+void ObservableHelper::addProperty(TinyVector<float, OHMMS_DIM>& p, const std::string& pname)
 {
   TinyVector<double, OHMMS_DIM> p_DP(p);
-  file.push(group_name, true);
-  file.write(p_DP, pname);
-  file.pop();
+  HDFAttribIO<TinyVector<double, OHMMS_DIM>> a(p_DP);
+  a.write(data_id, pname.c_str());
 }
 
-void ObservableHelper::addProperty(std::vector<float>& p, const std::string& pname, hdf_archive& file)
+void ObservableHelper::addProperty(std::vector<float>& p, const std::string& pname)
 {
   std::vector<double> p_DP;
   p_DP.assign(p.begin(), p.end());
-  file.push(group_name, true);
-  file.write(p_DP, pname);
-  file.pop();
+  HDFAttribIO<std::vector<double>> a(p_DP);
+  a.write(data_id, pname.c_str());
 }
 
-void ObservableHelper::addProperty(std::vector<TinyVector<float, OHMMS_DIM>>& p,
-                                   const std::string& pname,
-                                   hdf_archive& file)
+void ObservableHelper::addProperty(std::vector<TinyVector<float, OHMMS_DIM>>& p, const std::string& pname)
 {
   std::vector<TinyVector<double, OHMMS_DIM>> p_DP;
   p_DP.assign(p.begin(), p.end());
-  file.push(group_name, true);
-  file.write(p_DP, pname);
-  file.pop();
+  HDFAttribIO<std::vector<TinyVector<double, OHMMS_DIM>>> a(p_DP);
+  a.write(data_id, pname.c_str());
 }
 
-void ObservableHelper::write(const value_type* const first_v, hdf_archive& file)
+void ObservableHelper::write(const value_type* first_v, const value_type* /*first_vv*/)
 {
   hsize_t rank = mydims.size();
   if (rank)
   {
-    file.push(group_name, true);
-    h5d_append(file.top(), "value", current, rank, mydims.data(), first_v + lower_bound);
-    file.pop();
+    H5Sset_extent_simple(space1_id, rank, &curdims[0], &maxdims[0]);
+    H5Sselect_hyperslab(space1_id, H5S_SELECT_SET, &offsets[0], NULL, &mydims[0], NULL);
+    H5Dextend(value1_id, &curdims[0]);
+    hid_t memspace = H5Screate_simple(rank, &mydims[0], NULL);
+    herr_t ret     = H5Dwrite(value1_id, H5T_NATIVE_DOUBLE, memspace, space1_id, H5P_DEFAULT, first_v + lower_bound);
+    H5Sclose(memspace);
+    curdims[0]++;
+    offsets[0]++;
+  }
+}
+
+bool ObservableHelper::isOpened() const noexcept { return isopened; }
+
+// PRIVATE functions
+
+void ObservableHelper::close()
+{
+  if (isopened)
+  {
+    if (space1_id > -1)
+    {
+      H5Sclose(space1_id);
+      space1_id = -1;
+    }
+    if (data_id > -1)
+    {
+      H5Gclose(data_id);
+      data_id = -1;
+    }
+    isopened = false;
   }
 }
 

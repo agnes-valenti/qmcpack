@@ -14,7 +14,6 @@
 #include "FillData.h"
 // Input data and gold data for fillFromText test
 #include "diamond_fill_data.h"
-#include "Utilities/RuntimeOptions.h"
 
 
 namespace qmcplusplus
@@ -40,11 +39,6 @@ TEST_CASE("compute_batch_parameters", "[drivers]")
   compute_batch_parameters(sample_size, batch_size, num_batches, final_batch_size);
   CHECK(num_batches == 3);
   CHECK(final_batch_size == 3);
-
-  batch_size = 0;
-  compute_batch_parameters(sample_size, batch_size, num_batches, final_batch_size);
-  CHECK(num_batches == 0);
-  CHECK(final_batch_size == 0);
 }
 
 namespace testing
@@ -55,20 +49,18 @@ public:
   int numSamples;
   int numParam;
   SampleStack samples;
-  const SimulationCell simulation_cell;
   MCWalkerConfiguration w;
   QMCHamiltonian h;
-  RuntimeOptions runtime_options_;
-  TrialWaveFunction psi = TrialWaveFunction(runtime_options_);
+  TrialWaveFunction psi;
   QMCCostFunctionBatched costFn;
 
-  LinearMethodTestSupport(const std::vector<int>& walkers_per_crowd, Communicate* comm)
-      : w(simulation_cell), costFn(w, psi, h, samples, walkers_per_crowd, comm)
+  LinearMethodTestSupport(int num_opt_crowds, int crowd_size, Communicate* comm)
+      : costFn(w, psi, h, samples, num_opt_crowds, crowd_size, comm)
   {}
 
   std::vector<QMCCostFunctionBase::Return_rt>& getSumValue() { return costFn.SumValue; }
   Matrix<QMCCostFunctionBase::Return_rt>& getRecordsOnNode() { return costFn.RecordsOnNode_; }
-  Matrix<QMCCostFunctionBase::Return_t>& getDerivRecords() { return costFn.DerivRecords_; }
+  Matrix<QMCCostFunctionBase::Return_rt>& getDerivRecords() { return costFn.DerivRecords_; }
   Matrix<QMCCostFunctionBase::Return_rt>& getHDerivRecords() { return costFn.HDerivRecords_; }
 
   void set_samples_and_param(int nsamples, int nparam)
@@ -96,13 +88,14 @@ public:
 
 TEST_CASE("fillOverlapAndHamiltonianMatrices", "[drivers]")
 {
-  std::vector<int> walkers_per_crowd{1};
+  int num_opt_crowds = 1;
+  int crowd_size     = 1;
 
   using Return_rt = qmcplusplus::QMCTraits::RealType;
 
   Communicate* comm = OHMMS::Controller;
 
-  testing::LinearMethodTestSupport lin(walkers_per_crowd, comm);
+  testing::LinearMethodTestSupport lin(num_opt_crowds, crowd_size, comm);
 
   int numSamples = 1;
   int numParam   = 1;
@@ -146,13 +139,14 @@ TEST_CASE("fillOverlapAndHamiltonianMatrices", "[drivers]")
 // the input/gold data (from a file created by convert_hdf_to_cpp.py)
 void fill_from_text(int num_opt_crowds, FillData& fd)
 {
-  std::vector<int> walkers_per_crowd(num_opt_crowds, 1);
+  // Not used in the function under test
+  int crowd_size = 1;
 
   using Return_rt = qmcplusplus::QMCTraits::RealType;
 
   Communicate* comm = OHMMS::Controller;
 
-  testing::LinearMethodTestSupport lin(walkers_per_crowd, comm);
+  testing::LinearMethodTestSupport lin(num_opt_crowds, crowd_size, comm);
 
   int numSamples = fd.numSamples;
   int numParam   = fd.numParam;

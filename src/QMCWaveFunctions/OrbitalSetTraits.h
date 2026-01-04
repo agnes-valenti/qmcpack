@@ -21,6 +21,7 @@
 
 #include "Configuration.h"
 #include "type_traits/complex_help.hpp"
+#include "VariableSet.h"
 #include "OhmmsSoA/VectorSoaContainer.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
 
@@ -34,7 +35,7 @@ struct DummyGrid
   DummyGrid* makeClone() const { return new DummyGrid; }
 };
 
-using QuantumNumberType = TinyVector<int, 4>;
+typedef TinyVector<int, 4> QuantumNumberType;
 
 enum
 {
@@ -53,25 +54,30 @@ struct OrbitalSetTraits //: public OrbitalTraits<T>
   {
     DIM = OHMMS_DIM
   };
-  using RealType       = RealAlias<T>;
-  using ValueType      = T;
-  using IndexType      = int;
-  using PosType        = TinyVector<RealType, DIM>;
-  using GradType       = TinyVector<ValueType, DIM>;
-  using HessType       = Tensor<ValueType, DIM>;
-  using TensorType     = Tensor<ValueType, DIM>;
-  using GradHessType   = TinyVector<Tensor<ValueType, DIM>, DIM>;
-  using IndexVector    = Vector<IndexType>;
-  using ValueVector    = Vector<ValueType>;
-  using ValueMatrix    = Matrix<ValueType>;
-  using GradVector     = Vector<GradType>;
-  using GradMatrix     = Matrix<GradType>;
-  using HessVector     = Vector<HessType>;
-  using HessMatrix     = Matrix<HessType>;
-  using GradHessVector = Vector<GradHessType>;
-  using GradHessMatrix = Matrix<GradHessType>;
-  using VGLVector      = VectorSoaContainer<ValueType, DIM + 2>;
+  using RealType = RealAlias<T>;
+  using ValueType = T;
+  typedef int IndexType;
+  typedef TinyVector<RealType, DIM> PosType;
+  typedef TinyVector<ValueType, DIM> GradType;
+  typedef Tensor<ValueType, DIM> HessType;
+  typedef Tensor<ValueType, DIM> TensorType;
+  typedef TinyVector<Tensor<ValueType, DIM>, DIM> GradHessType;
+  typedef Vector<IndexType> IndexVector_t;
+  typedef Vector<ValueType> ValueVector_t;
+  typedef Matrix<ValueType> ValueMatrix_t;
+  typedef Vector<GradType> GradVector_t;
+  typedef Matrix<GradType> GradMatrix_t;
+  typedef Vector<HessType> HessVector_t;
+  typedef Matrix<HessType> HessMatrix_t;
+  typedef Vector<GradHessType> GradHessVector_t;
+  typedef Matrix<GradHessType> GradHessMatrix_t;
+  typedef VectorSoaContainer<ValueType, DIM + 2> VGLVector_t;
 };
+
+///typedef for a set of variables that are varied during an optimization
+using opt_variables_type = optimize::VariableSet;
+///typedef for a set of variables that can be varied
+using variable_map_type = optimize::VariableSet::variable_map_type;
 
 /** evaluate log(psi) as log(|psi|) and phase
  * @param psi real/complex value
@@ -119,7 +125,10 @@ struct LogToValue<std::complex<T>>
     return std::exp(tmp);
   }
 
-  inline static std::complex<T> convert(const std::complex<T>& logpsi) { return std::exp(logpsi); }
+  inline static std::complex<T> convert(const std::complex<T>& logpsi)
+  {
+    return std::exp(logpsi);
+  }
 };
 
 } // namespace qmcplusplus

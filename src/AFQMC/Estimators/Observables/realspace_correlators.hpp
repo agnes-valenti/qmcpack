@@ -121,8 +121,11 @@ public:
         app_error() << " Error opening orbitals file for realspace_correlators estimator. \n";
         APP_ABORT("");
       }
-      dump.push("OrbsR", false);
-
+      if (!dump.push("OrbsR", false))
+      {
+        app_error() << " Error in realspace_correlators: Group OrbsR not found." << std::endl;
+        APP_ABORT("");
+      }
       // read one orbital to check size and later corroborate all orbitals have same size
       stdCVector orb(iextensions<1u>{1});
       if (!dump.readEntry(orb, "kp0_b0"))
@@ -130,7 +133,7 @@ public:
         app_error() << " Error in realspace_correlators: Problems reading orbital: 0  0" << std::endl;
         APP_ABORT("");
       }
-      npoints = orb.size();
+      npoints = orb.size(0);
       if (npoints < 1)
       {
         app_error() << " Error in realspace_correlators: npoints < 1. " << std::endl;
@@ -165,7 +168,7 @@ public:
             app_error() << " Error in realspace_correlators: Problems reading orbital: " << k << " " << i << std::endl;
             APP_ABORT("");
           }
-          if (orb.size() != npoints)
+          if (orb.size(0) != npoints)
           {
             app_error() << " Error in realspace_correlators: Inconsistent orbital size: " << k << " " << i << std::endl;
             APP_ABORT("");
@@ -223,14 +226,12 @@ public:
     using std::copy_n;
     using std::fill_n;
     // assumes G[nwalk][spin][M][M]
-    int nw(G.size());
-
-    using std::get;
-    int npts(get<1>(Orbitals.sizes()));
-    assert(G.size() == wgt.size());
-    assert(wgt.size() == nw);
-    assert(Xw.size() == nw);
-    assert(ovlp.size() >= nw);
+    int nw(G.size(0));
+    int npts(Orbitals.size(1));
+    assert(G.size(0) == wgt.size(0));
+    assert(wgt.size(0) == nw);
+    assert(Xw.size(0) == nw);
+    assert(ovlp.size(0) >= nw);
     assert(G.num_elements() == G_host.num_elements());
     assert(G.extensions() == G_host.extensions());
 
@@ -243,15 +244,15 @@ public:
     // check structure dimensions
     if (iref == 0)
     {
-      if (denom.size() != nw)
+      if (denom.size(0) != nw)
       {
         denom = mpi3CVector(iextensions<1u>{nw}, shared_allocator<ComplexType>{TG.TG_local()});
       }
-      if (get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != 3 || get<2>(DMWork.sizes()) != dm_size)
+      if (DMWork.size(0) != nw || DMWork.size(1) != 3 || DMWork.size(2) != dm_size)
       {
         DMWork = mpi3CTensor({nw, 3, dm_size}, shared_allocator<ComplexType>{TG.TG_local()});
       }
-      if (get<0>(Gr_host.sizes()) != nw || get<1>(Gr_host.sizes()) != nsp || get<2>(Gr_host.sizes()) != npts || get<3>(Gr_host.sizes()) != npts)
+      if (Gr_host.size(0) != nw || Gr_host.size(1) != nsp || Gr_host.size(2) != npts || Gr_host.size(3) != npts)
       {
         Gr_host = mpi3C4Tensor({nw, nsp, npts, npts}, shared_allocator<ComplexType>{TG.TG_local()});
       }
@@ -260,9 +261,9 @@ public:
     }
     else
     {
-      if (get<0>(denom.sizes()) != nw || get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != 3 || get<2>(DMWork.sizes()) != dm_size ||
-          get<0>(Gr_host.sizes()) != nw || get<1>(Gr_host.sizes()) != nsp || get<2>(Gr_host.sizes()) != npts || get<3>(Gr_host.sizes()) != npts ||
-          get<0>(DMAverage.sizes()) != nave || get<1>(DMAverage.sizes()) != 3 || get<2>(DMAverage.sizes()) != dm_size)
+      if (denom.size(0) != nw || DMWork.size(0) != nw || DMWork.size(1) != 3 || DMWork.size(2) != dm_size ||
+          Gr_host.size(0) != nw || Gr_host.size(1) != nsp || Gr_host.size(2) != npts || Gr_host.size(3) != npts ||
+          DMAverage.size(0) != nave || DMAverage.size(1) != 3 || DMAverage.size(2) != dm_size)
         APP_ABORT(" Error: Invalid state in accumulate_reference. \n\n\n");
     }
 
@@ -279,7 +280,7 @@ public:
 
       // T1[iw][ispin][i][r] = sum_j G[iw][ispin][i][j] * Psi(j,r)
       int i0, iN;
-      std::tie(i0, iN) = FairDivideBoundary(TG.TG_local().rank(), int(get<0>(G2D.sizes())), TG.TG_local().size());
+      std::tie(i0, iN) = FairDivideBoundary(TG.TG_local().rank(), int(G2D.size(0)), TG.TG_local().size());
       ma::product(G2D.sliced(i0, iN), Orbitals, T.sliced(i0, iN));
       TG.TG_local().barrier();
 
@@ -385,7 +386,7 @@ public:
   template<class HostCVec>
   void accumulate_block(int iav, HostCVec&& wgt, bool impsamp)
   {
-    int nw(denom.size());
+    int nw(denom.size(0));
     TG.TG_local().barrier();
     // this is meant to be small, so serializing
     if (TG.TG_local().root())

@@ -28,7 +28,7 @@
 #include "Estimators/ScalarEstimatorBase.h"
 #include "Particle/Walker.h"
 #include "OhmmsPETE/OhmmsVector.h"
-#include "io/hdf/hdf_archive.h"
+#include "OhmmsData/HDFAttribIO.h"
 #include <bitset>
 
 namespace qmcplusplus
@@ -47,13 +47,23 @@ class EstimatorManagerBaseTest;
 class EstimatorManagerBase
 {
 public:
-  using RealType         = QMCTraits::FullPrecRealType;
+  typedef QMCTraits::FullPrecRealType RealType;
   using FullPrecRealType = QMCTraits::FullPrecRealType;
 
-  using EstimatorType = ScalarEstimatorBase;
-  using BufferType    = std::vector<RealType>;
-  using MCPWalker     = Walker<QMCTraits, PtclOnLatticeTraits>;
+  typedef ScalarEstimatorBase EstimatorType;
+  typedef std::vector<RealType> BufferType;
+  using MCPWalker = Walker<QMCTraits, PtclOnLatticeTraits>;
 
+  //enum { WEIGHT_INDEX=0, BLOCK_CPU_INDEX, ACCEPT_RATIO_INDEX, TOTAL_INDEX};
+
+  ///name of the primary estimator name
+  std::string MainEstimatorName;
+  ///the root file name
+  std::string RootName;
+  ///energy
+  TinyVector<RealType, 4> RefEnergy;
+  // //Cummulative energy, weight and variance
+  // TinyVector<RealType,4>  EPSum;
   ///default constructor
   EstimatorManagerBase(Communicate* c = 0);
   ///copy constructor
@@ -110,7 +120,7 @@ public:
    * @param newestimator New Estimator
    * @return locator of newestimator
    */
-  int add(std::unique_ptr<EstimatorType> newestimator) { return add(std::move(newestimator), main_estimator_name_); }
+  int add(std::unique_ptr<EstimatorType> newestimator) { return add(std::move(newestimator), MainEstimatorName); }
 
   ///return a pointer to the estimator aname
   EstimatorType* getEstimator(const std::string& a);
@@ -203,15 +213,13 @@ protected:
   ///index for the acceptance rate PropertyCache(acceptInd)
   int acceptInd;
   ///hdf5 handler
-  hdf_archive h_file;
+  hid_t h_file;
   ///total weight accumulated in a block
   RealType BlockWeight;
   ///file handler to write data
-  std::unique_ptr<std::ofstream> Archive;
-#if defined(DEBUG_ESTIMATOR_ARCHIVE)
+  std::ofstream* Archive;
   ///file handler to write data for debugging
-  std::unique_ptr<std::ofstream> DebugArchive;
-#endif
+  std::ofstream* DebugArchive;
   ///communicator to handle communication
   Communicate* myComm;
   /** pointer to the primary ScalarEstimatorBase
@@ -248,7 +256,7 @@ protected:
   ///column map
   std::map<std::string, int> EstimatorMap;
   ///estimators of simple scalars
-  UPtrVector<EstimatorType> Estimators;
+  std::vector<std::unique_ptr<EstimatorType>> Estimators;
   ///convenient descriptors for hdf5
   std::vector<ObservableHelper> h5desc;
   /////estimators of composite data
@@ -257,23 +265,15 @@ protected:
   Timer MyTimer;
 
 private:
-  ///name of the primary estimator name
-  std::string main_estimator_name_;
-
   ///number of maximum data for a scalar.dat
-  int max_output_scalar_dat_;
-
+  int max4ascii;
   //Data for communication
   std::vector<std::unique_ptr<BufferType>> RemoteData;
-
   ///collect data and write
   void collectBlockAverages();
-
   ///add header to an std::ostream
   void addHeader(std::ostream& o);
-
-  ///largest name in BlockAverages adding 2 characters
-  size_t max_block_avg_name_;
+  size_t FieldWidth;
 
   friend class qmcplusplus::testing::EstimatorManagerBaseTest;
 };

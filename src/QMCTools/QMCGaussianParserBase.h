@@ -26,14 +26,15 @@
 #include "OhmmsData/OhmmsElementBase.h"
 #include "Utilities/SimpleParser.h"
 #include "Particle/ParticleSet.h"
+#include "Numerics/HDFSTLAttrib.h"
 #include "hdf/hdf_archive.h"
 
 using namespace qmcplusplus;
 
 struct QMCGaussianParserBase
 {
-  using value_type        = double;
-  using SingleParticlePos = ParticleSet::SingleParticlePos;
+  typedef double value_type;
+  typedef ParticleSet::SingleParticlePos_t SingleParticlePos_t;
 
   bool multideterminant;
   bool multidetH5;
@@ -90,8 +91,6 @@ struct QMCGaussianParserBase
   std::string multih5file;
   std::string WFS_name;
   std::string CodeName;
-
-  const SimulationCell simulation_cell;
   ParticleSet IonSystem;
 
 

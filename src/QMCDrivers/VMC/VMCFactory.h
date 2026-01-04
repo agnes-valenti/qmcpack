@@ -29,12 +29,11 @@ private:
 public:
   VMCFactory(unsigned long vmode, xmlNodePtr cur) : VMCMode(vmode), myNode(cur) {}
 
-  std::unique_ptr<QMCDriverInterface> create(const ProjectData& project_data,
-                                             MCWalkerConfiguration& w,
-                                             TrialWaveFunction& psi,
-                                             QMCHamiltonian& h,
-                                             Communicate* comm,
-                                             bool enable_profiling);
+  QMCDriverInterface* create(MCWalkerConfiguration& w,
+                             TrialWaveFunction& psi,
+                             QMCHamiltonian& h,
+                             Communicate* comm,
+                             bool enable_profiling);
 };
 } // namespace qmcplusplus
 

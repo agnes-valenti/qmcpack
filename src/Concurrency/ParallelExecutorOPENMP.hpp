@@ -19,10 +19,10 @@
 
 #include <stdexcept>
 #include <string>
-#include <iostream>
+#include <omp.h>
 
 #include "Concurrency/ParallelExecutor.hpp"
-#include "Concurrency/OpenMP.h"
+#include "Platforms/Host/OutputManager.h"
 
 namespace qmcplusplus
 {
@@ -48,13 +48,13 @@ void ParallelExecutor<Executor::OPENMP>::operator()(int num_tasks, F&& f, Args&&
     {
       f(task_id, std::forward<Args>(args)...);
     }
-    catch (const std::exception& re)
+    catch (const std::runtime_error& re)
     {
       if (nesting_error == re.what())
         ++nested_throw_count;
       else
       {
-        std::cerr << re.what() << std::flush;
+        app_error() << re.what() << std::flush;
         ++throw_count;
       }
     }

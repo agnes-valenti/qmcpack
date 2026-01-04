@@ -28,7 +28,7 @@ bool ReferencePoints::put(xmlNodePtr cur, ParticleSet& P, std::vector<ParticleSe
   ra.put(cur);
   for (int i = 0; i < DIM; i++)
     for (int d = 0; d < DIM; d++)
-      axes(d, i) = P.getLattice().a(i)[d];
+      axes(d, i) = P.Lattice.a(i)[d];
   Tensor_t crd;
   if (coord == "cell")
   {
@@ -82,11 +82,11 @@ bool ReferencePoints::put(xmlNodePtr cur, ParticleSet& P, std::vector<ParticleSe
 bool ReferencePoints::put(ParticleSet& P, std::vector<ParticleSet*>& Psets)
 {
   //get axes and origin information from the ParticleSet
-  points["zero"] = 0 * P.getLattice().a(0);
-  points["a1"]   = P.getLattice().a(0);
-  points["a2"]   = P.getLattice().a(1);
-  points["a3"]   = P.getLattice().a(2);
-  //points["center"]= .5*(P.getLattice().a(0)+P.getLattice().a(1)+P.Lattice.a(2))
+  points["zero"] = 0 * P.Lattice.a(0);
+  points["a1"]   = P.Lattice.a(0);
+  points["a2"]   = P.Lattice.a(1);
+  points["a3"]   = P.Lattice.a(2);
+  //points["center"]= .5*(P.Lattice.a(0)+P.Lattice.a(1)+P.Lattice.a(2))
   //set points on face centers
   points["f1p"] = points["zero"] + .5 * points["a1"];
   points["f1m"] = points["zero"] - .5 * points["a1"];
@@ -122,23 +122,24 @@ bool ReferencePoints::put(ParticleSet& P, std::vector<ParticleSet*>& Psets)
 void ReferencePoints::write_description(std::ostream& os, std::string& indent)
 {
   os << indent + "reference_points" << std::endl;
-  for (const auto& [name, point] : points)
+  std::map<std::string, Point>::const_iterator it, end = points.end();
+  for (it = points.begin(); it != end; ++it)
   {
-    os << indent + "  " << name << ": " << point << std::endl;
+    os << indent + "  " << it->first << ": " << it->second << std::endl;
   }
   os << indent + "end reference_points" << std::endl;
   return;
 }
 
-void ReferencePoints::save(std::vector<ObservableHelper>& h5desc,
-                           const hdf_path& enclosing_path,
-                           hdf_archive& file) const
+void ReferencePoints::save(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
-  h5desc.emplace_back(enclosing_path / "reference_points");
+  h5desc.emplace_back("reference_points");
   auto& oh = h5desc.back();
-  for (auto it = points.cbegin(); it != points.cend(); ++it)
+  oh.open(gid);
+  std::map<std::string, Point>::const_iterator it;
+  for (it = points.begin(); it != points.end(); ++it)
   {
-    oh.addProperty(const_cast<Point&>(it->second), it->first, file);
+    oh.addProperty(const_cast<Point&>(it->second), it->first);
   }
   return;
 }

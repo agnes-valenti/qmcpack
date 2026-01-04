@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
 //
 // File developed by: D. Das, University of Illinois at Urbana-Champaign
 //                    John R. Gergely,  University of Illinois at Urbana-Champaign
@@ -11,13 +11,12 @@
 //                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jaron T. Krogel, krogeljt@ornl.gov, Oak Ridge National Laboratory
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
-//                    Peter W. Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/**@file
+/**@file OperatorBase.h
  *@brief Declaration of OperatorBase
  */
 #ifndef QMCPLUSPLUS_HAMILTONIANBASE_H
@@ -28,11 +27,9 @@
 #include "Utilities/RandomGenerator.h"
 #include "QMCHamiltonians/ObservableHelper.h"
 #include "Containers/MinimalContainers/RecordArray.hpp"
-#include "QMCWaveFunctions/TWFFastDerivWrapper.h"
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #endif
-#include "QMCHamiltonians/Listener.hpp"
 #include "QMCWaveFunctions/OrbitalSetTraits.h"
 #include <bitset>
 #include <memory> // std::unique_ptr
@@ -48,7 +45,6 @@ class MCWalkerConfiguration;
 class TrialWaveFunction;
 class QMCHamiltonian;
 class ResourceCollection;
-class NonLocalTOperator;
 struct NonLocalData;
 
 /** @ingroup hamiltonian
@@ -64,11 +60,6 @@ public:
    */
   using Return_t = FullPrecRealType;
 
-  /** For fast derivative evaluation
-   */
-  using ValueMatrix = SPOSet::ValueMatrix;
-  using GradMatrix  = SPOSet::GradMatrix;
-
   /** typedef for the serialized buffer
    *
    * PooledData<RealType> is used to serialized an anonymous buffer
@@ -79,10 +70,7 @@ public:
   using Walker_t = ParticleSet::Walker_t;
 
   ///typedef for the ParticleScalar
-  using ParticleScalar = ParticleSet::Scalar_t;
-
-  ///typedef for SPOMap
-  using SPOMap = SPOSet::SPOMap;
+  using ParticleScalar_t = ParticleSet::Scalar_t;
 
   ///enum to denote energy domain of operators
   enum EnergyDomains
@@ -121,9 +109,6 @@ public:
 
   virtual ~OperatorBase() = default;
 
-  /// return true if this operator depends on a wavefunction
-  virtual bool dependsOnWaveFunction() const { return false; }
-
   //////// GETTER AND SETTER FUNCTIONS ////////////////
 
   /**
@@ -146,9 +131,6 @@ public:
    * @return std::string copy of my_name_ member
    */
   std::string getName() const noexcept;
-
-  /// return class name
-  virtual std::string getClassName() const = 0;
 
   /**
    * @brief Set my_name member, uses small string optimization (pass by value)
@@ -204,7 +186,7 @@ public:
    * @param h5desc contains a set of hdf5 descriptors for a scalar observable
    * @param gid hdf5 group to which the observables belong
    */
-  virtual void registerObservables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const;
+  virtual void registerObservables(std::vector<ObservableHelper>& h5desc, hid_t gid) const;
 
   /*** 
    * @brief add to collectables descriptor for hdf5
@@ -214,7 +196,7 @@ public:
    * @param h5desc contains a set of hdf5 descriptors for a scalar observable
    * @param gid hdf5 group to which the observables belong
    */
-  virtual void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const;
+  virtual void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const;
 
   /** 
    * @brief Set the values evaluated by this object to plist
@@ -256,22 +238,6 @@ public:
                            const RefVectorWithLeader<ParticleSet>& p_list) const;
 
   /**
-   * @brief Evaluate the contribution of this component of multiple walkers per particle and report
-   * to registerd listeners from objects in Estimators
-   *
-   * Base class implementation decays to the mw_evaluate so if not overridden the estimator doesn't
-   * hear from this operator.
-   *
-   * specialized versions of this should take advantage of multiwalker resources
-   * to reduce the resource cost of collecting these values. 
-   */
-  virtual void mw_evaluatePerParticle(const RefVectorWithLeader<OperatorBase>& o_list,
-                                      const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-                                      const RefVectorWithLeader<ParticleSet>& p_list,
-                                      const std::vector<ListenerVector<RealType>>& listeners,
-                                      const std::vector<ListenerVector<RealType>>& listeners_ions) const;
-
-  /**
    * @brief TODO: add docs
 
    * @param o_list 
@@ -283,7 +249,7 @@ public:
   virtual void mw_evaluateWithParameterDerivatives(const RefVectorWithLeader<OperatorBase>& o_list,
                                                    const RefVectorWithLeader<ParticleSet>& p_list,
                                                    const opt_variables_type& optvars,
-                                                   const RecordArray<ValueType>& dlogpsi,
+                                                   RecordArray<ValueType>& dlogpsi,
                                                    RecordArray<ValueType>& dhpsioverpsi) const;
 
   /**
@@ -314,22 +280,6 @@ public:
                                         const RefVectorWithLeader<ParticleSet>& p_list) const;
 
   /**
-   * @brief Evaluate the contribution of this component of multiple walkers per particle and report
-   * to registerd listeners from objects in Estimators
-   *
-   * default implementation decays to the mw_evaluatePerParticle.
-   *
-   * specialized versions of this should take advantage of multiwalker resources
-   * to reduce the resource cost of collecting these values. 
-   */
-  virtual void mw_evaluatePerParticleWithToperator(const RefVectorWithLeader<OperatorBase>& o_list,
-                                                   const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-                                                   const RefVectorWithLeader<ParticleSet>& p_list,
-                                                   const std::vector<ListenerVector<RealType>>& listeners,
-                                                   const std::vector<ListenerVector<RealType>>& listeners_ions) const;
-
-
-  /**
    * @brief Evaluate value and derivatives wrt the optimizables. Default uses evaluate.
 
    * @param P 
@@ -340,12 +290,28 @@ public:
    */
   virtual Return_t evaluateValueAndDerivatives(ParticleSet& P,
                                                const opt_variables_type& optvars,
-                                               const Vector<ValueType>& dlogpsi,
-                                               Vector<ValueType>& dhpsioverpsi);
+                                               const std::vector<ValueType>& dlogpsi,
+                                               std::vector<ValueType>& dhpsioverpsi);
+
+  /** 
+   * @brief Evaluate contribution to local energy  and derivatives w.r.t ionic coordinates from OperatorBase.  
+
+   * @param P target particle set (electrons)
+   * @param ions source particle set (ions)
+   * @param psi Trial wave function
+   * @param hf_terms  Adds OperatorBase's contribution to Re [(dH)Psi]/Psi
+   * @param pulay_terms Adds OperatorBase's contribution to Re [(H-E_L)dPsi]/Psi 
+   * @return Contribution of OperatorBase to Local Energy.
+   */
+  virtual Return_t evaluateWithIonDerivs(ParticleSet& P,
+                                         ParticleSet& ions,
+                                         TrialWaveFunction& psi,
+                                         ParticleSet::ParticlePos_t& hf_term,
+                                         ParticleSet::ParticlePos_t& pulay_term);
 
   /** 
    * @brief Evaluate contribution to local energy  and derivatives w.r.t ionic coordinates from OperatorBase.
-   * If there's no stochastic component, defaults to evaluateIonDerivs.
+   * If there's no stochastic component, defaults to evaluateWithIonDerivs.
    * If not otherwise specified, this defaults to evaluate().
 
    * @param P target particle set (electrons)
@@ -353,48 +319,13 @@ public:
    * @param psi Trial wave function
    * @param hf_terms  Adds OperatorBase's contribution to Re [(dH)Psi]/Psi
    * @param pulay_terms Adds OperatorBase's contribution to Re [(H-E_L)dPsi]/Psi 
+   * @return Contribution of OperatorBase to Local Energy.
    */
-  virtual void evaluateIonDerivs(ParticleSet& P,
-                                 ParticleSet& ions,
-                                 TrialWaveFunction& psi,
-                                 ParticleSet::ParticlePos& hf_term,
-                                 ParticleSet::ParticlePos& pulay_term);
-
-  /** 
-   * @brief Evaluate "B" matrix for observable.  Filippi scheme for computing fast derivatives.
-
-   * @param[in] P target particle set (electrons)
-   * @param[in] psi, Trial Wavefunction wrapper for fast derivatives.
-   * @param[in,out] B.  List of B matrices for each species.  
-   * @return Void
-   */
-  inline virtual void evaluateOneBodyOpMatrix(ParticleSet& P,
-                                              const TWFFastDerivWrapper& psi,
-                                              std::vector<ValueMatrix>& B)
-  {}
-
-  /** 
-   * @brief Evaluate "dB/dR" matrices for observable.  Filippi scheme for computing fast derivatives.
-
-   * @param[in] P, target particle set (electrons)
-   * @param[in] source, ion particle set 
-   * @param[in] psi, Trial Wavefunction wrapper for fast derivatives.
-   * @param[in] iat, 
-   * @param[in,out] dB/dR. Specifically, [ dB/dx_iat, dB/dy_iat, dB/dz_iat ], B is defined above.
-   * @return Void
-   */
-  inline virtual void evaluateOneBodyOpMatrixForceDeriv(ParticleSet& P,
-                                                        ParticleSet& source,
-                                                        const TWFFastDerivWrapper& psi,
-                                                        const int iat,
-                                                        std::vector<std::vector<ValueMatrix>>& Bforce)
-  {}
-
-  /** make non local moves with particle-by-particle moves
-   * @param P particle set
-   * @return the number of accepted moves
-   */
-  virtual int makeNonLocalMovesPbyP(ParticleSet& P, NonLocalTOperator& move_op) { return 0; }
+  virtual Return_t evaluateWithIonDerivsDeterministic(ParticleSet& P,
+                                                      ParticleSet& ions,
+                                                      TrialWaveFunction& psi,
+                                                      ParticleSet::ParticlePos_t& hf_term,
+                                                      ParticleSet::ParticlePos_t& pulay_term);
 
   /** 
    * @brief Update data associated with a particleset.
@@ -437,7 +368,7 @@ public:
    * TODO: add docs
    * @param rng 
    */
-  virtual void setRandomGenerator(RandomBase<FullPrecRealType>* rng);
+  virtual void setRandomGenerator(RandomGenerator_t* rng);
 
   /**
    * @brief TODO: add docs
@@ -459,7 +390,11 @@ public:
 
   // TODO: add docs
 
-  virtual void informOfPerParticleListener() { has_listener_ = true; }
+  virtual void addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy);
+
+  virtual void addEnergy(MCWalkerConfiguration& W,
+                         std::vector<RealType>& LocalEnergy,
+                         std::vector<std::vector<NonLocalData>>& Txy);
 
   bool isClassical() const noexcept;
   bool isQuantum() const noexcept;
@@ -481,7 +416,7 @@ public:
    */
   bool isNonLocal() const noexcept;
 
-  bool hasListener() const noexcept;
+
 #if !defined(REMOVE_TRACEMANAGER)
 
   /**
@@ -560,6 +495,8 @@ protected:
   virtual void deleteParticleQuantities();
 #endif
 
+  virtual void setComputeForces(bool compute);
+
   /**
    * @brief Set the Energy Domain
    * 
@@ -594,11 +531,6 @@ private:
   ///array to store sample value
   Array<RealType, 1>* value_sample_;
 #endif
-
-  /** Is there a per particle listener
-   *  sadly this is necessary due to state machines
-   */
-  bool has_listener_ = false;
 
   ///quantum_domain_ of the (particle) operator, default = no_quantum_domain
   QuantumDomains quantum_domain_;

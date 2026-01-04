@@ -92,7 +92,6 @@ conv = generate_pw2qmcpack(
     )
 
 opt = generate_qmcpack(
-    driver         = 'legacy',
     det_format     = 'old',
     identifier     = 'opt',
     path           = 'opt',
@@ -120,7 +119,6 @@ opt = generate_qmcpack(
     )
 
 qmc_ground = generate_qmcpack(
-    driver         = 'legacy',
     det_format     = 'old',
     identifier     = 'vmc',
     path           = 'vmc_ground',
@@ -144,7 +142,6 @@ qmc_ground = generate_qmcpack(
     )
 
 qmc_optical = generate_qmcpack(
-    driver         = 'legacy',
     det_format     = 'old',
     identifier     = 'vmc',
     path           = 'vmc_optical',

@@ -17,7 +17,8 @@
 #include "Numerics/MatrixOperators.h"
 #include "Utilities/IteratorUtility.h"
 #include "Utilities/string_utils.h"
-#include "CPU/math.hpp"
+#include "QMCWaveFunctions/WaveFunctionFactory.h"
+
 
 namespace qmcplusplus
 {
@@ -25,45 +26,25 @@ using MatrixOperators::diag_product;
 using MatrixOperators::product;
 using MatrixOperators::product_AtB;
 
-enum DMTimers
-{
-  DM_eval,
-  DM_gen_samples,
-  DM_gen_sample_basis,
-  DM_gen_sample_ratios,
-  DM_gen_particle_basis,
-  DM_matrix_products,
-  DM_accumulate,
-};
 
-static const TimerNameList_t<DMTimers> DMTimerNames =
-    {{DM_eval, "DensityMatrices1B::evaluate"},
-     {DM_gen_samples, "DensityMatrices1B::generate_samples"},
-     {DM_gen_sample_basis, "DensityMatrices1B::generate_sample_basis"},
-     {DM_gen_sample_ratios, "DensityMatrices1B::generate_sample_ratios"},
-     {DM_gen_particle_basis, "DensityMatrices1B::generate_particle_basis"},
-     {DM_matrix_products, "DensityMatrices1B::evaluate_matrix_products"},
-     {DM_accumulate, "DensityMatrices1B::evaluate_matrix_accum"}};
-
-DensityMatrices1B::DensityMatrices1B(ParticleSet& P, TrialWaveFunction& psi, ParticleSet* Pcl)
-    : timers(getGlobalTimerManager(), DMTimerNames, timer_level_fine),
-      basis_functions("DensityMatrices1B::basis"),
-      lattice_(P.getLattice()),
-      Psi(psi),
-      Pq(P),
-      Pc(Pcl)
+DensityMatrices1B::DensityMatrices1B(ParticleSet& P,
+                                     TrialWaveFunction& psi,
+                                     ParticleSet* Pcl,
+                                     const WaveFunctionFactory& factory)
+    : Lattice(P.Lattice), Psi(psi), Pq(P), Pc(Pcl), wf_factory_(factory)
 {
   reset();
 }
 
+
 DensityMatrices1B::DensityMatrices1B(DensityMatrices1B& master, ParticleSet& P, TrialWaveFunction& psi)
     : OperatorBase(master),
-      timers(getGlobalTimerManager(), DMTimerNames, timer_level_fine),
       basis_functions(master.basis_functions),
-      lattice_(P.getLattice()),
+      Lattice(P.Lattice),
       Psi(psi),
       Pq(P),
-      Pc(master.Pc)
+      Pc(master.Pc),
+      wf_factory_(master.wf_factory_)
 {
   reset();
   set_state(master);
@@ -174,7 +155,7 @@ void DensityMatrices1B::set_state(xmlNodePtr cur)
     std::string ename((const char*)element->name);
     if (ename == "parameter")
     {
-      const std::string name(getXMLAttributeValue(element, "name"));
+      const XMLAttrString name(element, "name");
       if (name == "basis")
         putContent(sposets, element);
       else if (name == "energy_matrix")
@@ -224,11 +205,12 @@ void DensityMatrices1B::set_state(xmlNodePtr cur)
     APP_ABORT("DensityMatrices1B::put  scale must be greater than zero");
 
   // get volume and cell information
+  Lattice.reset();
   if (!center_defined)
-    center = lattice_.Center;
-  volume   = lattice_.Volume * std::exp(DIM * std::log(scale));
-  periodic = lattice_.SuperCellEnum != SUPERCELL_OPEN;
-  rcorner  = center - scale * lattice_.Center;
+    center = Lattice.Center;
+  volume   = Lattice.Volume * std::exp(DIM * std::log(scale));
+  periodic = Lattice.SuperCellEnum != SUPERCELL_OPEN;
+  rcorner  = center - scale * Lattice.Center;
 
   energy_mat = emstr == "yes";
   if (igstr == "uniform_grid")
@@ -254,15 +236,14 @@ void DensityMatrices1B::set_state(xmlNodePtr cur)
     metric     = 1.0 / samples;
   }
   else
-    throw std::runtime_error(
-        "DensityMatrices1B::set_state  invalid integrator\n  valid options are: uniform_grid, uniform, density");
+    APP_ABORT("DensityMatrices1B::set_state  invalid integrator\n  valid options are: uniform_grid, uniform, density");
 
   if (evstr == "loop")
     evaluator = loop;
   else if (evstr == "matrix")
     evaluator = matrix;
   else
-    throw std::runtime_error("DensityMatrices1B::set_state  invalid evaluator\n  valid options are: loop, matrix");
+    APP_ABORT("DensityMatrices1B::set_state  invalid evaluator\n  valid options are: loop, matrix");
 
   normalized             = nmstr == "yes";
   volume_normed          = vnstr == "yes";
@@ -275,20 +256,19 @@ void DensityMatrices1B::set_state(xmlNodePtr cur)
 
   // get the sposets that form the basis
   if (sposets.size() == 0)
-    throw std::runtime_error("DensityMatrices1B::put  basis must have at least one sposet");
+    APP_ABORT("DensityMatrices1B::put  basis must have at least one sposet");
 
   for (int i = 0; i < sposets.size(); ++i)
   {
-    auto& spomap = Psi.getSPOMap();
-    auto spo_it  = spomap.find(sposets[i]);
-    if (spo_it == spomap.end())
-      throw std::runtime_error("DensityMatrices1B::put  sposet " + sposets[i] + " does not exist.");
-    basis_functions.add(spo_it->second->makeClone());
+    SPOSet* sposet = wf_factory_.getSPOSet(sposets[i]);
+    if (sposet == 0)
+      APP_ABORT("DensityMatrices1B::put  sposet " + sposets[i] + " does not exist");
+    basis_functions.add(sposet->makeClone());
   }
   basis_size = basis_functions.size();
 
   if (basis_size < 1)
-    throw std::runtime_error("DensityMatrices1B::put  basis_size must be greater than one");
+    APP_ABORT("DensityMatrices1B::put  basis_size must be greater than one");
 }
 
 
@@ -323,8 +303,11 @@ void DensityMatrices1B::initialize()
   nparticles          = Pq.getTotalNum();
   nspecies            = species.size();
   int natt            = species.numAttributes();
+  int isize           = species.addAttribute("membersize");
+  if (isize == natt)
+    APP_ABORT("DensityMatrices1B::set_state  Species set does not have the required attribute 'membersize'");
   for (int s = 0; s < nspecies; ++s)
-    species_size.push_back(Pq.groupsize(s));
+    species_size.push_back(species(isize, s));
   for (int s = 0; s < nspecies; ++s)
     species_name.push_back(species.speciesName[s]);
 
@@ -388,6 +371,15 @@ void DensityMatrices1B::initialize()
     normalize();
   }
 
+  const TimerNameList_t<DMTimers> DMTimerNames = {{DM_eval, "DensityMatrices1B::evaluate"},
+                                                  {DM_gen_samples, "DensityMatrices1B::generate_samples"},
+                                                  {DM_gen_sample_basis, "DensityMatrices1B::generate_sample_basis"},
+                                                  {DM_gen_sample_ratios, "DensityMatrices1B::generate_sample_ratios"},
+                                                  {DM_gen_particle_basis, "DensityMatrices1B::generate_particle_basis"},
+                                                  {DM_matrix_products, "DensityMatrices1B::evaluate_matrix_products"},
+                                                  {DM_accumulate, "DensityMatrices1B::evaluate_matrix_accum"}};
+  setup_timers(timers, DMTimerNames, timer_level_fine);
+
   initialized = true;
 }
 
@@ -445,7 +437,7 @@ void DensityMatrices1B::report(const std::string& pad)
   out << pad << "  periodic      = " << periodic << std::endl;
   if (sampling == volume_based)
   {
-    PosType rmax = rcorner + 2 * scale * lattice_.Center;
+    PosType rmax = rcorner + 2 * scale * Lattice.Center;
     out << pad << "  points        = " << points << std::endl;
     out << pad << "  scale         = " << scale << std::endl;
     out << pad << "  center        = " << center << std::endl;
@@ -516,7 +508,7 @@ void DensityMatrices1B::getRequiredTraces(TraceManager& tm)
 }
 
 
-void DensityMatrices1B::setRandomGenerator(RandomBase<FullPrecRealType>* rng) { uniform_random = rng; }
+void DensityMatrices1B::setRandomGenerator(RandomGenerator_t* rng) { uniform_random = rng; }
 
 
 void DensityMatrices1B::addObservables(PropertySetType& plist, BufferType& collectables)
@@ -539,7 +531,7 @@ void DensityMatrices1B::addObservables(PropertySetType& plist, BufferType& colle
 }
 
 
-void DensityMatrices1B::registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const
+void DensityMatrices1B::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
 #if defined(QMC_COMPLEX)
   std::vector<int> ng(3);
@@ -554,23 +546,29 @@ void DensityMatrices1B::registerCollectables(std::vector<ObservableHelper>& h5de
   int nentries = ng[0] * ng[1];
 #endif
 
-  hdf_path hdf_name{name_};
-  hdf_name /= "number_matrix";
+  std::string dname = name_;
+  hid_t dgid        = H5Gcreate(gid, dname.c_str(), 0);
+
+  std::string nname = "number_matrix";
+  hid_t ngid        = H5Gcreate(dgid, nname.c_str(), 0);
   for (int s = 0; s < nspecies; ++s)
   {
-    h5desc.emplace_back(hdf_name / species_name[s]);
+    h5desc.emplace_back(species_name[s]);
     auto& oh = h5desc.back();
     oh.set_dimensions(ng, nindex + s * nentries);
+    oh.open(ngid);
   }
 
   if (energy_mat)
   {
-    hdf_name.replace_subgroup("energy_matrix");
+    std::string ename = "energy_matrix";
+    hid_t egid        = H5Gcreate(dgid, ename.c_str(), 0);
     for (int s = 0; s < nspecies; ++s)
     {
-      h5desc.emplace_back(hdf_name / species_name[s]);
+      h5desc.emplace_back(species_name[s]);
       auto& oh = h5desc.back();
       oh.set_dimensions(ng, eindex + s * nentries);
+      oh.open(egid);
     }
   }
 }
@@ -664,10 +662,10 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_matrix(ParticleSet& P)
       for (int n = 0; n < basis_size2; ++n)
       {
         Value_t val = NDM(n);
-        P.Collectables[ij] += std::real(val);
+        P.Collectables[ij] += real(val);
         ij++;
 #if defined(QMC_COMPLEX)
-        P.Collectables[ij] += std::imag(val);
+        P.Collectables[ij] += imag(val);
         ij++;
 #endif
       }
@@ -682,10 +680,10 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_matrix(ParticleSet& P)
         for (int n = 0; n < basis_size2; ++n)
         {
           Value_t val = EDM(n);
-          P.Collectables[ij] += std::real(val);
+          P.Collectables[ij] += real(val);
           ij++;
 #if defined(QMC_COMPLEX)
-          P.Collectables[ij] += std::imag(val);
+          P.Collectables[ij] += imag(val);
           ij++;
 #endif
         }
@@ -728,7 +726,7 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_matrix(ParticleSet& P)
   //{
   //  app_log()<<" species "<<s<< std::endl;
   //  for(int ps=0;ps<species_size[s];++ps,++p)
-  //    app_log()<<"  "<<p<<"  "<<P.R[p]-P.getLattice().Center<< std::endl;
+  //    app_log()<<"  "<<p<<"  "<<P.R[p]-P.Lattice.Center<< std::endl;
   //}
   //
   ////app_log()<<"basis_values"<< std::endl;
@@ -867,10 +865,10 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_loop(ParticleSet& P)
         for (int j = 0; j < basis_size; ++j)
         {
           Value_t val = phi_i * integrated_values[j];
-          P.Collectables[ij] += std::real(val);
+          P.Collectables[ij] += real(val);
           ij++;
 #if defined(QMC_COMPLEX)
-          P.Collectables[ij] += std::imag(val);
+          P.Collectables[ij] += imag(val);
           ij++;
 #endif
         }
@@ -885,10 +883,10 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_loop(ParticleSet& P)
           for (int j = 0; j < basis_size; ++j)
           {
             Value_t val = ephi_i * integrated_values[j];
-            P.Collectables[ij] += std::real(val);
+            P.Collectables[ij] += real(val);
             ij++;
 #if defined(QMC_COMPLEX)
-            P.Collectables[ij] += std::imag(val);
+            P.Collectables[ij] += imag(val);
             ij++;
 #endif
           }
@@ -903,8 +901,8 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_loop(ParticleSet& P)
 inline void DensityMatrices1B::generate_samples(RealType weight, int steps)
 {
   ScopedTimer t(timers[DM_gen_samples]);
-  auto& rng            = *uniform_random;
-  bool save            = false;
+  RandomGenerator_t& rng = *uniform_random;
+  bool save              = false;
   if (steps == 0)
   {
     save  = true;
@@ -959,7 +957,7 @@ inline void DensityMatrices1B::generate_samples(RealType weight, int steps)
 }
 
 
-inline void DensityMatrices1B::generate_uniform_grid(RandomBase<FullPrecRealType>& rng)
+inline void DensityMatrices1B::generate_uniform_grid(RandomGenerator_t& rng)
 {
   PosType rp;
   PosType ushift = 0.0;
@@ -976,24 +974,24 @@ inline void DensityMatrices1B::generate_uniform_grid(RandomBase<FullPrecRealType
       nrem -= ind * ind_dims[d];
     }
     rp[DIM - 1] = nrem * du + ushift[DIM - 1];
-    rsamples[s] = lattice_.toCart(rp) + rcorner;
+    rsamples[s] = Lattice.toCart(rp) + rcorner;
   }
 }
 
 
-inline void DensityMatrices1B::generate_uniform_samples(RandomBase<FullPrecRealType>& rng)
+inline void DensityMatrices1B::generate_uniform_samples(RandomGenerator_t& rng)
 {
   PosType rp;
   for (int s = 0; s < samples; ++s)
   {
     for (int d = 0; d < DIM; ++d)
       rp[d] = scale * rng();
-    rsamples[s] = lattice_.toCart(rp) + rcorner;
+    rsamples[s] = Lattice.toCart(rp) + rcorner;
   }
 }
 
 
-inline void DensityMatrices1B::generate_density_samples(bool save, int steps, RandomBase<FullPrecRealType>& rng)
+inline void DensityMatrices1B::generate_density_samples(bool save, int steps, RandomGenerator_t& rng)
 {
   RealType sqt = std::sqrt(timestep);
   RealType ot  = 1.0 / timestep;
@@ -1084,8 +1082,8 @@ inline void DensityMatrices1B::density_drift(const PosType& r, RealType& dens, P
 }
 
 
-using RealType = DensityMatrices1B::RealType;
-using Value_t  = DensityMatrices1B::Value_t;
+typedef DensityMatrices1B::RealType RealType;
+typedef DensityMatrices1B::Value_t Value_t;
 
 
 inline RealType accum_constant(CombinedTraceSample<TraceReal>* etrace, RealType weight = 1.0)
@@ -1121,7 +1119,7 @@ inline void accum_sample(std::vector<Value_t>& E_samp, TraceSample<T>* etrace, R
 #else
   if (etrace)
     for (int p = 0; p < etrace->sample.size(); ++p)
-      E_samp[p] += weight * std::real(etrace->sample[p]);
+      E_samp[p] += weight * real(etrace->sample[p]);
 #endif
 }
 
@@ -1256,7 +1254,7 @@ inline void DensityMatrices1B::normalize()
   RealType du = scale / ngrid;
   RealType dV = volume / ngtot;
   PosType rp;
-  ValueVector bnorms;
+  ValueVector_t bnorms;
   int gdims[DIM];
   gdims[0] = pow(ngrid, DIM - 1);
   for (int d = 1; d < DIM; ++d)
@@ -1275,13 +1273,13 @@ inline void DensityMatrices1B::normalize()
       nrem -= ind * gdims[d];
     }
     rp[DIM - 1] = nrem * du + du / 2;
-    rp          = lattice_.toCart(rp) + rcorner;
+    rp          = Lattice.toCart(rp) + rcorner;
     update_basis(rp);
     for (int i = 0; i < basis_size; ++i)
       bnorms[i] += qmcplusplus::conj(basis_values[i]) * basis_values[i] * dV;
   }
   for (int i = 0; i < basis_size; ++i)
-    basis_norms[i] = 1.0 / std::sqrt(std::real(bnorms[i]));
+    basis_norms[i] = 1.0 / std::sqrt(real(bnorms[i]));
   normalized = true;
 }
 
@@ -1319,7 +1317,7 @@ inline void DensityMatrices1B::test_overlap()
       nrem -= ind * gdims[d];
     }
     rp[DIM - 1] = nrem * du + du / 2;
-    rp          = lattice_.toCart(rp) + rcorner;
+    rp          = Lattice.toCart(rp) + rcorner;
     update_basis(rp);
     for (int i = 0; i < basis_size; ++i)
       for (int j = 0; j < basis_size; ++j)
@@ -1430,8 +1428,8 @@ void DensityMatrices1B::compare(const std::string& name, Vector_t& v1, Vector_t&
   app_log() << name << " " << result << std::endl;
   if (write && !sm)
     for (int i = 0; i < v1.size(); ++i)
-      app_log() << "      " << i << " " << std::real(v1[i]) << " " << std::real(v2[i]) << " " << std::real(v1[i] / v2[i]) << " "
-                << std::real(v2[i] / v1[i]) << std::endl;
+      app_log() << "      " << i << " " << real(v1[i]) << " " << real(v2[i]) << " " << real(v1[i] / v2[i]) << " "
+                << real(v2[i] / v1[i]) << std::endl;
 }
 
 void DensityMatrices1B::compare(const std::string& name, Matrix_t& m1, Matrix_t& m2, bool write, bool diff_only)
@@ -1445,8 +1443,8 @@ void DensityMatrices1B::compare(const std::string& name, Matrix_t& m1, Matrix_t&
     for (int i = 0; i < m1.rows(); ++i)
       for (int j = 0; j < m1.cols(); ++j)
         if (!diff_only || !match(m1(i, j), m2(i, j)))
-          app_log() << "      " << i << " " << j << " " << std::real(m1(i, j)) << " " << std::real(m2(i, j)) << " "
-                    << std::real(m1(i, j) / m2(i, j)) << std::endl;
+          app_log() << "      " << i << " " << j << " " << real(m1(i, j)) << " " << real(m2(i, j)) << " "
+                    << real(m1(i, j) / m2(i, j)) << std::endl;
 }
 
 

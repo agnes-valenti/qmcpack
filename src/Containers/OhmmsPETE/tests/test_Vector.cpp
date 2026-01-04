@@ -12,11 +12,12 @@
 
 
 #include "catch.hpp"
-#include <cstdio>
-#include <vector>
-#include <string>
+
 #include "OhmmsPETE/OhmmsVector.h"
 #include "OhmmsPETE/TinyVector.h"
+
+#include <stdio.h>
+#include <string>
 
 using std::string;
 
@@ -24,7 +25,7 @@ namespace qmcplusplus
 {
 TEST_CASE("vector", "[OhmmsPETE]")
 {
-  using vec_t = Vector<double>;
+  typedef Vector<double> vec_t;
   vec_t A(3);
   vec_t B(3);
 
@@ -42,9 +43,9 @@ TEST_CASE("vector", "[OhmmsPETE]")
   // *= operator in OhmmVectorOperators.h
   B *= 3.1;
 
-  CHECK(B[0] == Approx(3.1));
-  CHECK(B[1] == Approx(3.1));
-  CHECK(B[2] == Approx(3.1));
+  REQUIRE(B[0] == Approx(3.1));
+  REQUIRE(B[1] == Approx(3.1));
+  REQUIRE(B[2] == Approx(3.1));
   REQUIRE(B == B);
   REQUIRE(!(B == A));
 
@@ -57,17 +58,17 @@ TEST_CASE("Vector simple intializer list", "[OhmmsPETE]")
 {
   //empty list should work
   Vector<int> vec_int{};
-  Vector<double> vec_double{5.0, 4.0, 3.0, 2.0, 1.0};
-  CHECK(vec_double[0] == Approx(5.0));
-  CHECK(vec_double[4] == Approx(1.0));
+  Vector<double> vec_double{5.0,4.0,3.0,2.0,1.0};
+  CHECK(vec_double[0]==Approx(5.0));
+  CHECK(vec_double[4]==Approx(1.0));
 }
 
 TEST_CASE("Vector nested intializer list", "[OhmmsPETE]")
 {
-  Vector<TinyVector<double, 3>> vec_tinyd3({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Vector<TinyVector<double, 3>> vec_tinyd3({{1,2,3},{4,5,6},{7,8,9}});
   CHECK(vec_tinyd3[1][1] == 5);
   CHECK(vec_tinyd3[2][0] == 7);
-  Vector<std::pair<int, int>> vec_pair{{1, 2}, {3, 4}};
+  Vector<std::pair<int, int>> vec_pair{{1,2},{3,4}};
   CHECK(vec_pair[0].first == 1);
   CHECK(vec_pair[1].second == 4);
 }
@@ -95,30 +96,6 @@ TEST_CASE("VectorViewer", "[OhmmsPETE]")
   REQUIRE(a[2] == -5);
 
   // TODO: add optional bounds checking to accesses via operator[]
-}
-
-TEST_CASE("NestedContainers", "[OhmmsPETE]")
-{
-  Vector<std::vector<int>> vec_of_vecs(2);
-  vec_of_vecs[0].push_back(123);
-  vec_of_vecs.resize(5);
-  vec_of_vecs[0].clear();
-  vec_of_vecs[0].push_back(123);
-  vec_of_vecs.resize(0);
-  vec_of_vecs.resize(3);
-  vec_of_vecs[0].push_back(123);
-  CHECK(vec_of_vecs[0].back() == 123);
-
-  Vector<std::vector<int>> vec_copy(vec_of_vecs);
-  REQUIRE(vec_copy.size() == 3);
-  REQUIRE(vec_copy[0].size() == 1);
-  CHECK(vec_copy[0].back() == 123);
-
-  Vector<std::vector<int>> vec_assign;
-  vec_assign = vec_of_vecs;
-  REQUIRE(vec_copy.size() == 3);
-  REQUIRE(vec_copy[0].size() == 1);
-  CHECK(vec_copy[0].back() == 123);
 }
 
 } // namespace qmcplusplus

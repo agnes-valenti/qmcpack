@@ -4,10 +4,9 @@
 <application name="qmcapp" class="serial">
 Sample qmc run for Hartree-Fock HEG.
 </application>
-    <parameter name="driver_version">legacy</parameter>
 </project>
 <include href="heg.ptcl.xml"/>
-<include href="heg.ni.wfs.xml"/>
+<include href="heg.hf.wfs.xml"/>
 <include href="heg.H.xml"/>
 <qmc method="vmc" move="pbyp">
 <parameter name="warmupsteps">200</parameter>

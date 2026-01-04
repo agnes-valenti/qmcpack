@@ -38,8 +38,8 @@ struct LRRPAHandlerTemp : public LRHandlerBase
   DECLARE_COULOMB_TYPES
 
   //Typedef for the lattice-type.
-  using ParticleLayout   = Lattice;
-  using BreakupBasisType = BreakupBasis;
+  typedef ParticleSet::ParticleLayout_t ParticleLayout_t;
+  typedef BreakupBasis BreakupBasisType;
 
   bool FirstTime;
   mRealType rs;
@@ -48,14 +48,13 @@ struct LRRPAHandlerTemp : public LRHandlerBase
   Func myFunc;
 
   //Constructor
-  LRRPAHandlerTemp(ParticleSet& ref, mRealType kc_in = -1.0)
-      : LRHandlerBase(kc_in), FirstTime(true), Basis(ref.getLattice())
+  LRRPAHandlerTemp(ParticleSet& ref, mRealType kc_in = -1.0) : LRHandlerBase(kc_in), FirstTime(true), Basis(ref.Lattice)
   {
     LRHandlerBase::ClassName = "LRRPAHandlerTemp";
     myFunc.reset(ref);
   }
 
-  //LRHandlerTemp(ParticleSet& ref, mRealType rs, mRealType kc=-1.0): LRHandlerBase(kc), Basis(ref.getLattice())
+  //LRHandlerTemp(ParticleSet& ref, mRealType rs, mRealType kc=-1.0): LRHandlerBase(kc), Basis(ref.Lattice)
   //{
   //  myFunc.reset(ref,rs);
   //}
@@ -68,10 +67,10 @@ struct LRRPAHandlerTemp : public LRHandlerBase
        * References to ParticleSet or ParticleLayoutout_t are not copied.
    */
   LRRPAHandlerTemp(const LRRPAHandlerTemp& aLR, ParticleSet& ref)
-      : LRHandlerBase(aLR), FirstTime(true), Basis(aLR.Basis, ref.getLattice())
+      : LRHandlerBase(aLR), FirstTime(true), Basis(aLR.Basis, ref.Lattice)
   {
     myFunc.reset(ref);
-    fillFk(ref.getSimulationCell().getKLists());
+    fillFk(ref.SK->getKLists());
   }
 
   LRHandlerBase* makeClone(ParticleSet& ref) const override
@@ -81,21 +80,21 @@ struct LRRPAHandlerTemp : public LRHandlerBase
 
   void initBreakup(ParticleSet& ref) override
   {
-    InitBreakup(ref.getLattice(), 1);
-    fillFk(ref.getSimulationCell().getKLists());
+    InitBreakup(ref.Lattice, 1);
+    fillFk(ref.SK->getKLists());
     LR_rc = Basis.get_rc();
   }
 
   void Breakup(ParticleSet& ref, mRealType rs_ext) override
   {
-    //ref.getLattice().Volume=ref.getTotalNum()*4.0*M_PI/3.0*rs*rs*rs;
+    //ref.Lattice.Volume=ref.getTotalNum()*4.0*M_PI/3.0*rs*rs*rs;
     if (rs_ext > 0)
       rs = rs_ext;
     else
-      rs = std::pow(3.0 / 4.0 / M_PI * ref.getLattice().Volume / static_cast<mRealType>(ref.getTotalNum()), 1.0 / 3.0);
+      rs = std::pow(3.0 / 4.0 / M_PI * ref.Lattice.Volume / static_cast<mRealType>(ref.getTotalNum()), 1.0 / 3.0);
     myFunc.reset(ref, rs);
-    InitBreakup(ref.getLattice(), 1);
-    fillFk(ref.getSimulationCell().getKLists());
+    InitBreakup(ref.Lattice, 1);
+    fillFk(ref.SK->getKLists());
     LR_rc = Basis.get_rc();
   }
 
@@ -134,6 +133,32 @@ struct LRRPAHandlerTemp : public LRHandlerBase
     //       for(int n=0; n<coefs.size(); n++) v -= coefs[n]*Basis.h(n,r);
   }
 
+  /** evaluate \f$\sum_k F_{k} \rho^1_{-{\bf k}} \rho^2_{\bf k}\f$
+   * @param kshell degeneracies of the vectors
+   * @param rk1 starting address of \f$\rho^1_{{\bf k}}\f$
+   * @param rk2 starting address of \f$\rho^2_{{\bf k}}\f$
+   *
+   * Valid for the strictly ordered k and \f$F_{k}\f$.
+   */
+  inline mRealType evaluate(const std::vector<int>& kshell,
+                            const pComplexType* restrict rk1,
+                            const pComplexType* restrict rk2) const
+  {
+    mRealType vk = 0.0;
+    for (int ks = 0, ki = 0; ks < MaxKshell; ks++)
+    {
+      mRealType u = 0;
+      for (; ki < kshell[ks + 1]; ki++, rk1++, rk2++)
+        u += ((*rk1).real() * (*rk2).real() + (*rk1).imag() * (*rk2).imag());
+      vk += Fk_symm[ks] * u;
+    }
+    //for(int ki=0; ki<Fk.size(); ki++) {
+    //  //vk += (rk1[ki]*rk2[minusk[ki]]).real()*Fk[ki];
+    //  vk += (rk1[ki].real()*rk2[ki].real()+rk1[ki].imag()*rk2[ki].imag())*Fk[ki];
+    //} //ki
+    return vk;
+  }
+
   // use what is put in fillFk. Multiplies evalFk by -1
   inline mRealType evaluate_vlr_k(mRealType k) const override { return -1.0 * evalFk(k); }
 
@@ -162,7 +187,7 @@ private:
    * basis and coefs in a usable state.
    * This method can be re-called later if lattice changes shape.
    */
-  void InitBreakup(const ParticleLayout& ref, int NumFunctions)
+  void InitBreakup(ParticleLayout_t& ref, int NumFunctions)
   {
     //First we send the new Lattice to the Basis, in case it has been updated.
     Basis.set_Lattice(ref);
@@ -217,19 +242,19 @@ private:
 
   void fillFk(const KContainer& KList)
   {
-    Fk.resize(KList.getKptsCartWorking().size());
-    const std::vector<int>& kshell(KList.getKShell());
+    Fk.resize(KList.kpts_cart.size());
+    const std::vector<int>& kshell(KList.kshell);
     if (MaxKshell >= kshell.size())
       MaxKshell = kshell.size() - 1;
     Fk_symm.resize(MaxKshell);
     //       std::cout<<"Filling FK :"<<std::endl;
     for (int ks = 0, ki = 0; ks < Fk_symm.size(); ks++)
     {
-      mRealType k  = std::pow(KList.getKSQWorking()[ki], 0.5);
+      mRealType k  = std::pow(KList.ksq[ki], 0.5);
       mRealType uk = -1.0 * evalFk(k);
       Fk_symm[ks]  = uk;
       //         std::cout<<uk<<std::endl;
-      while (ki < KList.getKShell()[ks + 1] && ki < Fk.size())
+      while (ki < KList.kshell[ks + 1] && ki < Fk.size())
         Fk[ki++] = uk;
     }
     //for(int ki=0; ki<KList.kpts_cart.size(); ki++){

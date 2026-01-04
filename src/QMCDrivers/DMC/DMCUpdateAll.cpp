@@ -26,7 +26,7 @@ using WP = WalkerProperties::Indexes;
 DMCUpdateAllWithRejection::DMCUpdateAllWithRejection(MCWalkerConfiguration& w,
                                                      TrialWaveFunction& psi,
                                                      QMCHamiltonian& h,
-                                                     RandomBase<FullPrecRealType>& rg)
+                                                     RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg)
 {
   UpdatePbyP = false;
@@ -89,7 +89,7 @@ void DMCUpdateAllWithRejection::advanceWalker(Walker_t& thisWalker, bool recompu
   }
 
   // evaluate Hamiltonian
-  enew = non_local_ops_.getMoveKind() == TmoveKind::OFF ? H.evaluate(W) : H.evaluateWithToperator(W);
+  enew = H.evaluateWithToperator(W);
   H.auxHevaluate(W, thisWalker);
   H.saveProperty(thisWalker.getPropertyBase());
 
@@ -106,7 +106,7 @@ void DMCUpdateAllWithRejection::advanceWalker(Walker_t& thisWalker, bool recompu
     thisWalker.Properties(WP::R2PROPOSED) = rr_proposed;
   }
 
-  const int NonLocalMoveAcceptedTemp = H.makeNonLocalMoves(W, non_local_ops_);
+  const int NonLocalMoveAcceptedTemp = H.makeNonLocalMoves(W);
   if (NonLocalMoveAcceptedTemp > 0)
   {
     W.saveWalker(thisWalker);
@@ -138,7 +138,7 @@ void DMCUpdateAllWithRejection::advanceWalker(Walker_t& thisWalker, bool recompu
 DMCUpdateAllWithKill::DMCUpdateAllWithKill(MCWalkerConfiguration& w,
                                            TrialWaveFunction& psi,
                                            QMCHamiltonian& h,
-                                           RandomBase<FullPrecRealType>& rg)
+                                           RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg)
 {
   UpdatePbyP = false;

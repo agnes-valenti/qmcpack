@@ -128,7 +128,7 @@ public:
         local_group_comm(),
         shmbuff_for_G(nullptr),
         maxn_unique_confg(std::max(abij.number_of_unique_excitations()[0], abij.number_of_unique_excitations()[1])),
-        maxnactive(std::max(OrbMats[0].size(), OrbMats.back().size())),
+        maxnactive(std::max(OrbMats[0].size(0), OrbMats.back().size(0))),
         max_exct_n(std::max(abij.maximum_excitation_number()[0], abij.maximum_excitation_number()[1])),
         unique_overlaps({2, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
         unique_Etot({2, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
@@ -136,12 +136,12 @@ public:
         QQ0inv1({1, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
         GA2D0_shm({1, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
         GB2D0_shm({1, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
-        local_ov  ({2, static_cast<boost::multi::size_t>(maxn_unique_confg)}),
-        local_etot({2, static_cast<boost::multi::size_t>(maxn_unique_confg)}),
-        local_QQ0inv0({static_cast<boost::multi::size_t>(OrbMats[0].size()), NAEA}),
-        local_QQ0inv1({static_cast<boost::multi::size_t>(OrbMats.back().size()), NAEB}),
-        Qwork({2 * static_cast<boost::multi::size_t>(max_exct_n), static_cast<boost::multi::size_t>(max_exct_n)}),
-        Gwork({NAEA, static_cast<boost::multi::size_t>(maxnactive)}),
+        local_ov({2, maxn_unique_confg}),
+        local_etot({2, maxn_unique_confg}),
+        local_QQ0inv0({OrbMats[0].size(0), NAEA}),
+        local_QQ0inv1({OrbMats.back().size(0), NAEB}),
+        Qwork({2 * max_exct_n, max_exct_n}),
+        Gwork({NAEA, maxnactive}),
         Ovmsd({1, 1, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
         Emsd({1, 1, 1, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
         QQ0A({1, 1, 1}, shared_allocator<ComplexType>{TG.TG_local()}),
@@ -253,26 +253,25 @@ public:
   template<class MatG, class MatA>
   void vbias(const MatG& G, MatA&& v, double a = 1.0)
   {
-    using std::get;
-    assert(get<0>(v.sizes()) == HamOp.local_number_of_cholesky_vectors());
+    assert(v.size(0) == HamOp.local_number_of_cholesky_vectors());
     double scl = (walker_type == COLLINEAR) ? 0.5 : 1.0;
     if (transposed_G_for_vbias_)
     {
-      assert(get<0>(G.sizes()) == get<1>(v.sizes()));
-      assert(get<1>(G.sizes()) == size_of_G_for_vbias());
-      HamOp.vbias(G(G.extension(), {0, long(OrbMats[0].size() * NMO)}), std::forward<MatA>(v), scl * a, 0.0);
+      assert(G.size(0) == v.size(1));
+      assert(G.size(1) == size_of_G_for_vbias());
+      HamOp.vbias(G(G.extension(0), {0, long(OrbMats[0].size(0) * NMO)}), std::forward<MatA>(v), scl * a, 0.0);
       if (walker_type == COLLINEAR) {
         APP_ABORT(" Error in PHMSD::vbias: transposed_G_for_vbias_ should be false. \n");
-        HamOp.vbias(G(G.extension(), {long(OrbMats[0].size() * NMO), get<1>(G.sizes())}),                                       std::forward<MatA>(v), scl * a, 1.0);
+        HamOp.vbias(G(G.extension(0), {long(OrbMats[0].size(0) * NMO), G.size(1)}),                                       std::forward<MatA>(v), scl * a, 1.0);
       }
     }
     else
     {
-      assert(G.size() == size_of_G_for_vbias());
-      assert(get<1>(G.sizes()) == get<1>(v.sizes()));
-      HamOp.vbias(G.sliced(0, OrbMats[0].size() * NMO), std::forward<MatA>(v), scl * a, 0.0);
+      assert(G.size(0) == size_of_G_for_vbias());
+      assert(G.size(1) == v.size(1));
+      HamOp.vbias(G.sliced(0, OrbMats[0].size(0) * NMO), std::forward<MatA>(v), scl * a, 0.0);
       if (walker_type == COLLINEAR)
-        HamOp.vbias(G.sliced(OrbMats[0].size() * NMO, G.size()), std::forward<MatA>(v), scl * a, 1.0);
+        HamOp.vbias(G.sliced(OrbMats[0].size(0) * NMO, G.size(0)), std::forward<MatA>(v), scl * a, 1.0);
     }
     TG.local_barrier();
   }
@@ -285,12 +284,11 @@ public:
   template<class MatX, class MatA>
   void vHS(MatX&& X, MatA&& v, double a = 1.0)
   {
-    using std::get;
-    assert(get<0>(X.sizes()) == HamOp.local_number_of_cholesky_vectors());
+    assert(X.size(0) == HamOp.local_number_of_cholesky_vectors());
     if (transposed_vHS_)
-      assert(get<1>(X.sizes()) == get<0>(v.sizes()));
+      assert(X.size(1) == v.size(0));
     else
-      assert(get<1>(X.sizes()) == get<1>(v.sizes()));
+      assert(X.size(1) == v.size(1));
     HamOp.vHS(std::forward<MatX>(X), std::forward<MatA>(v), a);
     TG.local_barrier();
   }
@@ -302,11 +300,10 @@ public:
   template<class WlkSet>
   void Energy(WlkSet& wset)
   {
-    using std::get;
     int nw = wset.size();
     if (ovlp.num_elements() != nw)
       ovlp.reextent(iextensions<1u>{nw});
-    if (get<0>(eloc.sizes()) != nw || get<1>(eloc.sizes()) != 3)
+    if (eloc.size(0) != nw || eloc.size(1) != 3)
       eloc.reextent({nw, 3});
     Energy(wset, eloc, ovlp);
     TG.local_barrier();
@@ -490,27 +487,20 @@ public:
   {
     static_assert(std::decay<Mat>::type::dimensionality == 2, "Wrong dimensionality");
     int ndet = number_of_references_for_back_propagation();
-    assert(A.size() == ndet);
-    if (RefOrbMats.size() == 0)
+    assert(A.size(0) == ndet);
+    if (RefOrbMats.size(0) == 0)
     {
       TG.Node().barrier(); // for safety
       int nrow(NMO * ((walker_type == NONCOLLINEAR) ? 2 : 1));
       int ncol(NAEA + NAEB); //careful here, spins are stored contiguously
       RefOrbMats.reextent({ndet, nrow * ncol});
       TG.Node().barrier(); // for safety
-      using std::get;
       if (TG.Node().root())
       {
-        boost::multi::array<ComplexType, 2> OA_({
-			static_cast<boost::multi::size_t>(get<1>(OrbMats[0].sizes())),
-			static_cast<boost::multi::size_t>(get<0>(OrbMats[0].sizes()))
-		});
+        boost::multi::array<ComplexType, 2> OA_({OrbMats[0].size(1), OrbMats[0].size(0)});
         boost::multi::array<ComplexType, 2> OB_({0, 0});
         if (OrbMats.size() > 1)
-          OB_.reextent({
-            static_cast<boost::multi::size_t>(get<1>(OrbMats[1].sizes())),
-            static_cast<boost::multi::size_t>(get<0>(OrbMats[1].sizes()))
-          });
+          OB_.reextent({OrbMats[1].size(1), OrbMats[1].size(0)});
         ma::Matrix2MAREF('H', OrbMats[0], OA_);
         if (OrbMats.size() > 1)
           ma::Matrix2MAREF('H', OrbMats[1], OB_);
@@ -542,15 +532,13 @@ public:
       }                    // TG.Node().root()
       TG.Node().barrier(); // for safety
     }
-
-    using std::get;
-    assert(get<0>(RefOrbMats.sizes()) == ndet);
-    assert(get<1>(RefOrbMats.sizes()) == get<1>(A.sizes()));
+    assert(RefOrbMats.size(0) == ndet);
+    assert(RefOrbMats.size(1) == A.size(1));
     auto&& RefOrbMats_(boost::multi::static_array_cast<ComplexType, ComplexType*>(RefOrbMats));
     auto&& A_(boost::multi::static_array_cast<ComplexType, Ptr>(A));
     using std::copy_n;
     int n0, n1;
-    std::tie(n0, n1) = FairDivideBoundary(TG.getLocalTGRank(), int(get<1>(A.sizes())), TG.getNCoresPerTG());
+    std::tie(n0, n1) = FairDivideBoundary(TG.getLocalTGRank(), int(A.size(1)), TG.getNCoresPerTG());
     for (int i = 0; i < ndet; i++)
       copy_n(RefOrbMats_[i].origin() + n0, n1 - n0, A_[i].origin() + n0);
     TG.TG_local().barrier();
@@ -704,13 +692,13 @@ protected:
     switch (walker_type)
     {
     case CLOSED: // closed-shell RHF
-      return (full) ? (NMO * NMO) : (OrbMats[0].size() * NMO);
+      return (full) ? (NMO * NMO) : (OrbMats[0].size(0) * NMO);
       break;
     case COLLINEAR:
-      return (full) ? (2 * NMO * NMO) : ((OrbMats[0].size() + OrbMats.back().size()) * NMO);
+      return (full) ? (2 * NMO * NMO) : ((OrbMats[0].size(0) + OrbMats.back().size(0)) * NMO);
       break;
     case NONCOLLINEAR:
-      return (full) ? (4 * NMO * NMO) : ((OrbMats[0].size()) * 2 * NMO);
+      return (full) ? (4 * NMO * NMO) : ((OrbMats[0].size(0)) * 2 * NMO);
       break;
     default:
       APP_ABORT(" Error: Unknown walker_type in dm_size. \n");
@@ -724,14 +712,14 @@ protected:
     switch (walker_type)
     {
     case CLOSED: // closed-shell RHF
-      return (full) ? (arr{NMO, NMO}) : (arr{OrbMats[0].size(), NMO});
+      return (full) ? (arr{NMO, NMO}) : (arr{OrbMats[0].size(0), NMO});
       break;
     case COLLINEAR:
       return (full) ? (arr{NMO, NMO})
-                    : ((sp == Alpha) ? (arr{OrbMats[0].size(), NMO}) : (arr{OrbMats.back().size(), NMO}));
+                    : ((sp == Alpha) ? (arr{OrbMats[0].size(0), NMO}) : (arr{OrbMats.back().size(0), NMO}));
       break;
     case NONCOLLINEAR:
-      return (full) ? (arr{2 * NMO, 2 * NMO}) : (arr{OrbMats[0].size(), 2 * NMO});
+      return (full) ? (arr{2 * NMO, 2 * NMO}) : (arr{OrbMats[0].size(0), 2 * NMO});
       break;
     default:
       APP_ABORT(" Error: Unknown walker_type in dm_size. \n");

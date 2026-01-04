@@ -17,13 +17,7 @@ set(QMCEST_SRC
     LocalEnergyEstimator.cpp
     RMCLocalEnergyEstimator.cpp
     EstimatorInput.cpp
-    EstimatorManagerInput.cpp
-    ParseGridInput.cpp
-    SpaceGridInput.cpp
-    ScalarEstimatorInputs.cpp
     SpinDensityInput.cpp
-    MomentumDistributionInput.cpp
-    EnergyDensityInput.cpp
     EstimatorManagerBase.cpp
     EstimatorManagerNew.cpp
     EstimatorManagerCrowd.cpp
@@ -32,32 +26,23 @@ set(QMCEST_SRC
     SpinDensityNew.cpp
     MomentumDistribution.cpp
     OneBodyDensityMatricesInput.cpp
-    OneBodyDensityMatrices.cpp
-    MagnetizationDensity.cpp
-    MagnetizationDensityInput.cpp
-    SelfHealingOverlapInput.cpp
-    SelfHealingOverlap.cpp
-    PerParticleHamiltonianLoggerInput.cpp
-    PerParticleHamiltonianLogger.cpp
-    ReferencePointsInput.cpp
-    NEReferencePoints.cpp
-    NESpaceGrid.cpp
-    EnergyDensityEstimator.cpp
-    StructureFactorInput.cpp
-    StructureFactorEstimator.cpp)
+    OneBodyDensityMatrices.cpp)
 
 ####################################
 # create libqmcestimators
 ####################################
 if(USE_OBJECT_TARGET)
   add_library(qmcestimators OBJECT ${QMCEST_SRC})
+  add_library(qmcestimators_unit OBJECT ${QMCEST_SRC})
 else()
   add_library(qmcestimators ${QMCEST_SRC})
+  add_library(qmcestimators_unit ${QMCEST_SRC})
 endif()
+use_fake_rng(qmcestimators_unit)
 
 target_include_directories(qmcestimators PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(qmcestimators_unit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(qmcestimators PUBLIC containers qmcham qmcparticle qmcutil)
+target_link_libraries(qmcestimators_unit PUBLIC containers qmcham_unit qmcparticle qmcutil)
 
-if(BUILD_UNIT_TESTS)
-  add_subdirectory(tests)
-endif()
+add_subdirectory(tests)

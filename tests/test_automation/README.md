@@ -18,4 +18,7 @@ correspond to exactly those used in production, since these are
 sometimes tweaked for runtime, minor software version updates etc.
 
 # CI configuration
-See github-actions subdirectory and <QMCPACK_ROOT>/.github/workflows/
+Most of these files begin with jenkins. Scrutinize any updates to them
+carefully there is basically no reason they should be touched except by maintainers.
+They depend on a common jenkins pipeline library pulled from QMCPACK/qmcpack_shared_jenkins.
+Updates to that library don't seem to propagate faster than ~10 minutes.

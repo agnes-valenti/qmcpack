@@ -51,23 +51,22 @@ namespace qmcplusplus
 {
 namespace afqmc
 {
-void myCHECK(const double& a, const double& b) { CHECK(a == Approx(b)); }
+void myREQUIRE(const double& a, const double& b) { REQUIRE(a == Approx(b)); }
 
-void myCHECK(const std::complex<double>& a, const std::complex<double>& b)
+void myREQUIRE(const std::complex<double>& a, const std::complex<double>& b)
 {
-  CHECK(a.real() == Approx(b.real()));
-  CHECK(a.imag() == Approx(b.imag()));
+  REQUIRE(a.real() == Approx(b.real()));
+  REQUIRE(a.imag() == Approx(b.imag()));
 }
 
 template<class M1, class M2>
 void check(M1&& A, M2& B)
 {
-  using std::get;
-  REQUIRE(get<0>(A.sizes()) == get<0>(B.sizes()));
-  REQUIRE(get<1>(A.sizes()) == get<1>(B.sizes()));
-  for (int i = 0; i < get<0>(A.sizes()); i++)
-    for (int j = 0; j < get<1>(A.sizes()); j++)
-      myCHECK(A[i][j], B[i][j]);
+  REQUIRE(A.size(0) == B.size(0));
+  REQUIRE(A.size(1) == B.size(1));
+  for (int i = 0; i < A.size(0); i++)
+    for (int j = 0; j < A.size(1); j++)
+      myREQUIRE(A[i][j], B[i][j]);
 }
 
 using namespace afqmc;
@@ -123,21 +122,21 @@ TEST_CASE("SDetOps_double_serial", "[sdet_ops]")
   SlaterDetOperations SDet( SlaterDetOperations_shared<Type>(NMO,NEL) );
 
   // Overlaps
-  CHECK(SDet.Overlap(A,B) == Approx(ov));
-  CHECK(SDet.Overlap(Aref,B) == Approx(ov));
-  CHECK(SDet.Overlap(A,Bref) == Approx(ov));
-  CHECK(SDet.Overlap(Aref,Bref) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,B) == Approx(ov));
+  REQUIRE(SDet.Overlap(Aref,B) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,Bref) == Approx(ov));
+  REQUIRE(SDet.Overlap(Aref,Bref) == Approx(ov));
 
   // Test array_view
-  CHECK(SDet.Overlap(A(A.extension(0),A.extension(1)),B) == Approx(ov));
-  CHECK(SDet.Overlap(A,B(B.extension(0),B.extension(1))) == Approx(ov));
+  REQUIRE(SDet.Overlap(A(A.extension(0),A.extension(1)),B) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,B(B.extension(0),B.extension(1))) == Approx(ov));
 
   array A_ = A({0,2},{0,3});
   array B_ = B({0,3},{0,2});
   REQUIRE(SDet.Overlap(A({0,2},{0,3}),
                        B({0,3},{0,2})) == Approx(ov2));
-  CHECK(SDet.Overlap(A({0,2},{0,3}),B_) == Approx(ov2));
-  CHECK(SDet.Overlap(A_,B({0,3},{0,2})) == Approx(ov2));
+  REQUIRE(SDet.Overlap(A({0,2},{0,3}),B_) == Approx(ov2));
+  REQUIRE(SDet.Overlap(A_,B({0,3},{0,2})) == Approx(ov2));
 
 
   // Density Matrices 
@@ -210,7 +209,7 @@ TEST_CASE("SDetOps_double_serial", "[sdet_ops]")
 
   // Orthogonalize
   Type detR = SDet.Orthogonalize(Q);
-  CHECK( ov_=SDet.Overlap_noHerm(Q,Q) == Approx(1.0)  );
+  REQUIRE( ov_=SDet.Overlap_noHerm(Q,Q) == Approx(1.0)  );
 
 }
 
@@ -268,24 +267,24 @@ TEST_CASE("SDetOps_double_mpi3", "[sdet_ops]")
   SlaterDetOperations SDet( SlaterDetOperations_shared<Type>(NMO,NEL) );
 
   // Overlaps 
-  CHECK(SDet.Overlap(A,B,node) == Approx(ov));
-  CHECK(SDet.Overlap(Aref,B,node) == Approx(ov));
-  CHECK(SDet.Overlap(A,Bref,node) == Approx(ov));
-  CHECK(SDet.Overlap(Aref,Bref,node) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,B,node) == Approx(ov));
+  REQUIRE(SDet.Overlap(Aref,B,node) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,Bref,node) == Approx(ov));
+  REQUIRE(SDet.Overlap(Aref,Bref,node) == Approx(ov));
 
   // Test array_view
-  CHECK(SDet.Overlap(A(A.extension(0),A.extension(1)),B,node) == Approx(ov));
-  CHECK(SDet.Overlap(A,B(B.extension(0),B.extension(1)),node) == Approx(ov));
+  REQUIRE(SDet.Overlap(A(A.extension(0),A.extension(1)),B,node) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,B(B.extension(0),B.extension(1)),node) == Approx(ov));
 
   array A_ = A({0,2},{0,3});
   array B_ = B({0,3},{0,2});
   REQUIRE(SDet.Overlap(A({0,2},{0,3}),
                        B({0,3},{0,2}),node) == Approx(ov2));
-  CHECK(SDet.Overlap(A({0,2},{0,3}),B_) == Approx(ov2));
-  CHECK(SDet.Overlap(A_,B({0,3},{0,2}),node) == Approx(ov2));
+  REQUIRE(SDet.Overlap(A({0,2},{0,3}),B_) == Approx(ov2));
+  REQUIRE(SDet.Overlap(A_,B({0,3},{0,2}),node) == Approx(ov2));
 
   shared_communicator node_ = node.split(node.rank()%2,node.rank());
-  CHECK(SDet.Overlap(A,B,node_) == Approx(ov));
+  REQUIRE(SDet.Overlap(A,B,node_) == Approx(ov));
   REQUIRE(SDet.Overlap(A({0,2},{0,3}),
                        B({0,3},{0,2}),node_) == Approx(ov2));
 
@@ -421,13 +420,13 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
   {
     Type ov_;
     ov_ = SDet.Overlap(A, B, 0.0);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
     ov_ = SDet.Overlap(Aref, B, 0.0);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
     ov_ = SDet.Overlap(A, Bref, 0.0);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
     ov_ = SDet.Overlap(Aref, Bref, 0.0);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
   }
 
   // Test array_view
@@ -435,9 +434,9 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
   {
     Type ov_;
     ov_ = SDet.Overlap(A(A.extension(0), A.extension(1)), B, 0.0);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
     ov_ = SDet.Overlap(A, B(B.extension(0), B.extension(1)), 0.0);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
   }
 
   // copy not yet working with device_pointer
@@ -447,11 +446,11 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
     array B_ = B({0, 3}, {0, 2});
     Type ov_;
     ov_ = SDet.Overlap(A({0, 2}, {0, 3}), B({0, 3}, {0, 2}), 0.0);
-    myCHECK(ov_, ov2);
+    myREQUIRE(ov_, ov2);
     ov_ = SDet.Overlap(A({0, 2}, {0, 3}), B_, 0.0);
-    myCHECK(ov_, ov2);
+    myREQUIRE(ov_, ov2);
     ov_ = SDet.Overlap(A_, B({0, 3}, {0, 2}), 0.0);
-    myCHECK(ov_, ov2);
+    myREQUIRE(ov_, ov2);
   }
 
   /**** Density Matrices *****/
@@ -522,7 +521,7 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
     check(Gc, gc_ref);
     ov_ = SDet.MixedDensityMatrix(Aref, Bref, Gc, 0.0, true);
     check(Gc, gc_ref);
-    myCHECK(ov_, ov);
+    myREQUIRE(ov_, ov);
 
     ov_ = SDet.MixedDensityMatrix(A({0, 2}, {0, 3}), B({0, 3}, {0, 2}), Gc({0, 2}, {0, 3}), 0.0, true);
     check(Gc({0, 2}, {0, 3}), gc_ref_2);
@@ -537,12 +536,12 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
     array Q = B;
     SDet.Orthogonalize(Q, 0.0);
     Type ov_ = SDet.Overlap_noHerm(Q, Q, 0.0);
-    myCHECK(ov_, std::complex<double>(1., 0.));
+    myREQUIRE(ov_, std::complex<double>(1., 0.));
   }
 
   // Batched
   // TODO fix CPU.
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
   //SECTION("batched_density_matrix")
   {
     boost::multi::array<Type, 3, Allocator> Gw({3, NMO, NMO}, alloc);
@@ -575,14 +574,14 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
     {
       for (int i = 0; i < 3; i++)
       {
-        myCHECK(ovlp[i], ov_ref);
+        myREQUIRE(ovlp[i], ov_ref);
       }
     }
     SDet.BatchedMixedDensityMatrix(RA, RB, Gw, log_ovlp, ovlp, false);
     {
       for (int i = 0; i < 3; i++)
       {
-        myCHECK(ovlp[i], ov_ref);
+        myREQUIRE(ovlp[i], ov_ref);
       }
     }
     {
@@ -615,7 +614,7 @@ void SDetOps_complex_serial(Allocator alloc, BufferManager b)
     {
       for (int i = 0; i < 3; i++)
       {
-        myCHECK(ovlp[i], ov_ref);
+        myREQUIRE(ovlp[i], ov_ref);
       }
     }
     {
@@ -664,13 +663,12 @@ TEST_CASE("SDetOps_complex_mpi3", "[sdet_ops]")
   array A({NEL, NMO});
   array B({NMO, NEL});
 
-  using std::get;
-  for (int i = 0, k = 0; i < get<0>(A.sizes()); i++)
-    for (int j = 0; j < get<1>(A.sizes()); j++, k++)
+  for (int i = 0, k = 0; i < A.size(0); i++)
+    for (int j = 0; j < A.size(1); j++, k++)
       A[i][j] = m_a[k];
 
-  for (int i = 0, k = 0; i < get<0>(B.sizes()); i++)
-    for (int j = 0; j < get<1>(B.sizes()); j++, k++)
+  for (int i = 0, k = 0; i < B.size(0); i++)
+    for (int j = 0; j < B.size(1); j++, k++)
       B[i][j] = m_b[k];
 
   array_ref Aref(m_a.data(), {NEL, NMO});
@@ -682,34 +680,34 @@ TEST_CASE("SDetOps_complex_mpi3", "[sdet_ops]")
   /**** Overlaps ****/
   Type ov_;
   ov_ = SDet.Overlap(A, B, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(Aref, B, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(A, Bref, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(Aref, Bref, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
 
   // Test array_view
   ov_ = SDet.Overlap(A(A.extension(0), A.extension(1)), B, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(A, B(B.extension(0), B.extension(1)), 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
 
   array A_ = A({0, 2}, {0, 3});
   array B_ = B({0, 3}, {0, 2});
   ov_      = SDet.Overlap(A({0, 2}, {0, 3}), B({0, 3}, {0, 2}), 0.0, node);
-  myCHECK(ov_, ov2);
+  myREQUIRE(ov_, ov2);
   ov_ = SDet.Overlap(A({0, 2}, {0, 3}), B_, 0.0);
-  myCHECK(ov_, ov2);
+  myREQUIRE(ov_, ov2);
   ov_ = SDet.Overlap(A_, B({0, 3}, {0, 2}), 0.0, node);
-  myCHECK(ov_, ov2);
+  myREQUIRE(ov_, ov2);
 
   shared_communicator node_ = node.split(node.rank() % 2, node.rank());
   ov_                       = SDet.Overlap(A, B, 0.0, node_);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(A({0, 2}, {0, 3}), B({0, 3}, {0, 2}), 0.0, node_);
-  myCHECK(ov_, ov2);
+  myREQUIRE(ov_, ov2);
 
   /**** Density Matrices *****/
   vector v_ref    = {1.17573619385025996 - 0.01580426445014660i,  -0.25295981756593167 + 0.28594469607401085i,
@@ -838,13 +836,12 @@ TEST_CASE("SDetOps_complex_csr", "[sdet_ops]")
   array A({NMO, NEL}); // Will be transposed when Acsr is built
   array B({NMO, NEL});
 
-  using std::get;
-  for (int i = 0, k = 0; i < get<0>(A.sizes()); i++)
-    for (int j = 0; j < get<1>(A.sizes()); j++, k++)
+  for (int i = 0, k = 0; i < A.size(0); i++)
+    for (int j = 0; j < A.size(1); j++, k++)
       A[i][j] = m_a[k];
 
-  for (int i = 0, k = 0; i < get<0>(B.sizes()); i++)
-    for (int j = 0; j < get<1>(B.sizes()); j++, k++)
+  for (int i = 0, k = 0; i < B.size(0); i++)
+    for (int j = 0; j < B.size(1); j++, k++)
       B[i][j] = m_b[k];
 
   boost::multi::array_ref<Type, 2> Bref(m_b.data(), {NMO, NEL});
@@ -857,29 +854,29 @@ TEST_CASE("SDetOps_complex_csr", "[sdet_ops]")
   /**** Overlaps ****/
   Type ov_;
   ov_ = SDet.Overlap(Acsr, B, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(Acsr, Bref, 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
 
   ov_ = SDet.Overlap(Acsr, B, 0.0);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(Acsr, Bref, 0.0);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
 
   // Test array_view
   ov_ = SDet.Overlap(Acsr, B(B.extension(0), B.extension(1)), 0.0, node);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
   ov_ = SDet.Overlap(Acsr, B(B.extension(0), B.extension(1)), 0.0);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
 
   shared_communicator node_ = node.split(node.rank() % 2, node.rank());
   ov_                       = SDet.Overlap(Acsr, B, 0.0, node_);
-  myCHECK(ov_, ov);
+  myREQUIRE(ov_, ov);
 
   array B_ = B({0, 3}, {0, 2});
 
   ov_ = SDet.Overlap(Acsr[{0, 2, 0, 3}], B_, 0.0);
-  myCHECK(ov_, ov2);
+  myREQUIRE(ov_, ov2);
 
   /**** Density Matrices *****/
   vector v_ref    = {1.17573619385025996 - 0.01580426445014660i,  -0.25295981756593167 + 0.28594469607401085i,
@@ -978,7 +975,7 @@ TEST_CASE("SDetOps_complex_serial", "[sdet_ops]")
   auto world = boost::mpi3::environment::get_world_instance();
   auto node  = world.split_shared(world.rank());
 
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
   arch::INIT(node);
   using Alloc = device::device_allocator<ComplexType>;
 #else

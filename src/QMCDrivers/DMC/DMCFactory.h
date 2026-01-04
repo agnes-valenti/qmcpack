@@ -28,12 +28,11 @@ private:
 public:
   DMCFactory(bool pbyp, bool gpu, xmlNodePtr cur) : PbyPUpdate(pbyp), GPU(gpu), myNode(cur) {}
 
-  std::unique_ptr<QMCDriver> create(const ProjectData& project_data,
-                                    MCWalkerConfiguration& w,
-                                    TrialWaveFunction& psi,
-                                    QMCHamiltonian& h,
-                                    Communicate* comm,
-                                    bool enable_profiling);
+  QMCDriver* create(MCWalkerConfiguration& w,
+                    TrialWaveFunction& psi,
+                    QMCHamiltonian& h,
+                    Communicate* comm,
+                    bool enable_profiling);
 };
 } // namespace qmcplusplus
 

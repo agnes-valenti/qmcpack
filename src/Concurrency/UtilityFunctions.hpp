@@ -17,50 +17,42 @@
  *  @brief utility functions for executors
  */
 
+#include <omp.h>
 #include "Concurrency/Info.hpp"
-#include "Concurrency/OpenMP.h"
 
 namespace qmcplusplus
 {
 namespace Concurrency
 {
-/** A service class to restore active avaiable threads upon destruction as the thread count recorded during construction.
- */
+
 template<Executor TT = Executor::OPENMP>
-class ThreadCountProtector
-{
-  ThreadCountProtector() {}
-};
+class OverrideMaxCapacity;
 
 template<>
-class ThreadCountProtector<Executor::OPENMP>
+class OverrideMaxCapacity<Executor::OPENMP>
 {
 private:
-  const int original_max_threads_;
-
+  int original_max_threads_;
 public:
-  ThreadCountProtector() : original_max_threads_(omp_get_max_threads()) {}
-
-  ~ThreadCountProtector() { omp_set_num_threads(original_max_threads_); }
+  OverrideMaxCapacity(int max_threads)
+  {
+    original_max_threads_ = omp_get_max_threads();
+    omp_set_num_threads(max_threads);
+  }
+  
+  ~OverrideMaxCapacity()
+  {
+    omp_set_num_threads(original_max_threads_);
+  }
 };
 
-/** A service class to override active avaiable threads upon construction.
- * Restore active avaiable threads upon destruction as the thread count recorded during construction.
- */
-template<Executor TT = Executor::OPENMP>
-class OverrideMaxCapacity : private ThreadCountProtector<TT>
+template<Executor TT>
+class OverrideMaxCapacity
 {
   OverrideMaxCapacity(int max_threads) {}
 };
 
-template<>
-class OverrideMaxCapacity<Executor::OPENMP> : private ThreadCountProtector<Executor::OPENMP>
-{
-public:
-  OverrideMaxCapacity(int max_threads) { omp_set_num_threads(max_threads); }
-};
-
-} // namespace Concurrency
-} // namespace qmcplusplus
+}
+}
 
 #endif

@@ -13,8 +13,10 @@
 #ifndef QMCPLUSPLUS_DTDIMPL_AA_H
 #define QMCPLUSPLUS_DTDIMPL_AA_H
 
-#include "Lattice/ParticleBConds3DSoa.h"
+//#include "Lattice/ParticleBConds3DSoa.h"
+#include "Lattice/ParticleBConds2DSoa.h"
 #include "DistanceTable.h"
+#include "CPU/SIMD/algorithm.hpp"
 
 namespace qmcplusplus
 {
@@ -27,19 +29,22 @@ struct SoaDistanceTableAA : public DTD_BConds<T, D, SC>, public DistanceTableAA
   /// actual memory for dist and displacements_
   aligned_vector<RealType> memory_pool_;
 
-  SoaDistanceTableAA(const ParticleSet& target)
-      : DTD_BConds<T, D, SC>(target.getLattice()),
-        DistanceTableAA(target, DTModes::ALL_OFF),
+  SoaDistanceTableAA(ParticleSet& target)
+      : DTD_BConds<T, D, SC>(target.Lattice),
+        DistanceTableAA(target, DTModes::NEED_TEMP_DATA_ON_HOST),
         num_targets_padded_(getAlignedSize<T>(num_targets_)),
 #if !defined(NDEBUG)
         old_prepared_elec_id_(-1),
 #endif
-        evaluate_timer_(createGlobalTimer(std::string("DTAA::evaluate_") + target.getName() + "_" + target.getName(),
-                                          timer_level_fine)),
-        move_timer_(createGlobalTimer(std::string("DTAA::move_") + target.getName() + "_" + target.getName(),
-                                      timer_level_fine)),
-        update_timer_(createGlobalTimer(std::string("DTAA::update_") + target.getName() + "_" + target.getName(),
-                                        timer_level_fine))
+        evaluate_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableAA::evaluate_") + target.getName() +
+                                                       "_" + target.getName(),
+                                                   timer_level_fine)),
+        move_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableAA::move_") + target.getName() + "_" +
+                                                   target.getName(),
+                                               timer_level_fine)),
+        update_timer_(*timer_manager.createTimer(std::string("SoaDistanceTableAA::update_") + target.getName() + "_" +
+                                                     target.getName(),
+                                                 timer_level_fine))
   {
     resize();
   }

@@ -31,18 +31,16 @@ namespace qmcplusplus
 template<typename T>
 class CuspCorrectionAtomicBasis
 {
-  using QMCT          = QMCTraits;
-  using RadialSetType = MultiQuinticSpline1D<T>;
-  using PosType       = ParticleSet::PosType;
+  using QMCT = QMCTraits;
+  typedef MultiQuinticSpline1D<T> RadialSetType;
+  typedef ParticleSet::PosType PosType;
 
   QMCT::RealType r_max_ = 100;
   RadialSetType AOs;
   aligned_vector<size_t> ID;
 
 public:
-  CuspCorrectionAtomicBasis() = default;
-
-  auto getNumOrbs() const { return AOs.getNumSplines(); }
+  CuspCorrectionAtomicBasis(){};
 
   /** copy constructor */
   CuspCorrectionAtomicBasis(const CuspCorrectionAtomicBasis& a) = default;

@@ -16,21 +16,21 @@
 #if defined(HAVE_MPI)
 #include <mpi.h>
 #else
-using MPI_Datatype = int;
+typedef int MPI_Datatype;
 #endif
 
 namespace qmcplusplus
 {
 namespace mpi
 {
-using communicator = Communicate;
+typedef Communicate communicator;
 
 #if defined(HAVE_MPI)
 
 ///@typedef mpi::request
-using request = MPI_Request;
+typedef MPI_Request request;
 ///@typedef mpi::status
-using status = MPI_Status;
+typedef MPI_Status status;
 
 template<typename T>
 inline MPI_Datatype get_mpi_datatype(const T&)
@@ -89,9 +89,9 @@ MPI_Datatype construct_column_type(const T* element, int nrow, int ncol)
 }
 
 #else
-using status       = int;
-using request      = int;
-using MPI_Datatype = int;
+typedef int status;
+typedef int request;
+typedef int MPI_Datatype;
 
 //return a non-sense integer
 template<typename T>

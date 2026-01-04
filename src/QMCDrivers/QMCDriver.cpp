@@ -34,29 +34,28 @@
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
-#include "WalkerLogInput.h"
-#include "WalkerLogManager.h"
+#ifdef QMC_CUDA
+#include "type_traits/CUDATypes.h"
+#endif
 
 namespace qmcplusplus
 {
-QMCDriver::QMCDriver(const ProjectData& project_data,
-                     MCWalkerConfiguration& w,
+QMCDriver::QMCDriver(MCWalkerConfiguration& w,
                      TrialWaveFunction& psi,
                      QMCHamiltonian& h,
                      Communicate* comm,
                      const std::string& QMC_driver_type,
                      bool enable_profiling)
     : MPIObjectBase(comm),
-      project_data_(project_data),
       DriftModifier(0),
       qmcNode(NULL),
       QMCType(QMC_driver_type),
       W(w),
       Psi(psi),
       H(h),
-      checkpoint_timer_(createGlobalTimer("checkpoint::recordBlock", timer_level_medium)),
+      driver_scope_timer_(*timer_manager.createTimer(QMC_driver_type, timer_level_coarse)),
       driver_scope_profiler_(enable_profiling)
 {
   ResetRandom  = false;
@@ -64,13 +63,15 @@ QMCDriver::QMCDriver(const ProjectData& project_data,
   DumpConfig   = false;
   IsQMCDriver  = true;
   allow_traces = false;
-  allow_walker_logs = false;
-  walker_logs_xml   = NULL;
   MyCounter    = 0;
   //<parameter name=" "> value </parameter>
   //accept multiple names for the same value
   //recommend using all lower cases for a new parameter
-  Period4CheckPoint = 0;
+  Period4CheckPoint = -1;
+  storeConfigs      = 0;
+  //m_param.add(storeConfigs,"storeConfigs");
+  m_param.add(storeConfigs, "storeconfigs");
+  m_param.add(storeConfigs, "store_configs");
   Period4CheckProperties = 100;
   m_param.add(Period4CheckProperties, "checkProperties");
   m_param.add(Period4CheckProperties, "checkproperties");
@@ -116,7 +117,6 @@ QMCDriver::QMCDriver(const ProjectData& project_data,
 
   SpinMass = 1.0;
   m_param.add(SpinMass, "SpinMass");
-  m_param.add(SpinMass, "spin_mass");
 
   Tau = 0.1;
   //m_param.add(Tau,"timeStep");
@@ -128,18 +128,34 @@ QMCDriver::QMCDriver(const ProjectData& project_data,
   m_param.add(MaxCPUSecs, "maxcpusecs", {}, TagStatus::DEPRECATED);
   m_param.add(MaxCPUSecs, "max_seconds");
   // by default call recompute at the end of each block in the mixed precision case.
+#ifdef QMC_CUDA
+  using CTS = CUDAGlobalTypes;
+  if (typeid(CTS::RealType) == typeid(float))
+  {
+    // gpu mixed precision
+    nBlocksBetweenRecompute = 1;
+  }
+  else if (typeid(CTS::RealType) == typeid(double))
+  {
+    // gpu double precision
+    nBlocksBetweenRecompute = 0;
+  }
+#else
 #ifdef MIXED_PRECISION
   // cpu mixed precision
   nBlocksBetweenRecompute = 1;
 #else
   // cpu double precision
-  nBlocksBetweenRecompute = 10;
+  nBlocksBetweenRecompute = 0;
+#endif
 #endif
   m_param.add(nBlocksBetweenRecompute, "blocks_between_recompute");
   ////add each OperatorBase to W.PropertyList so that averages can be taken
   //H.add2WalkerProperty(W);
   //if (storeConfigs) ForwardWalkingHistory.storeConfigsForForwardWalking(w);
   rotation = 0;
+
+  checkpointTimer = timer_manager.createTimer("checkpoint::recordBlock", timer_level_medium);
 }
 
 QMCDriver::~QMCDriver()
@@ -180,15 +196,33 @@ void QMCDriver::process(xmlNodePtr cur)
   //H.setTau(Tau);
   //need to initialize properties
   int numCopies = (H1.empty()) ? 1 : H1.size();
+  //std::cout<<"AV in QMCDriver::process, before resetWalkerProperty"<<std::endl;
+  
+  //reset walkers (number of walkers, weight)
   W.resetWalkerProperty(numCopies);
+
+  infoSummary.flush();
+  infoLog.flush();
+  
+  //std::cout<<"AV in QMCDriver::process, after resetWalkerProperty"<<std::endl;
   //create branchEngine first
   if (!branchEngine)
   {
+    //std::cout<<"AV in QMCDriver::process, before make branchEngine, num walkers: "<<W.getGlobalNumWalkers()<<" Tau: "<<Tau <<std::endl;
     branchEngine = std::make_unique<BranchEngineType>(Tau, W.getGlobalNumWalkers());
+    //std::cout<<"AV in QMCDriver::process, after make branchEngine, num walkers: "<<W.getGlobalNumWalkers()<<" Tau: "<<Tau <<std::endl;
   }
   //execute the put function implemented by the derived classes
-  put(cur);
+  //std::cout<<"AV in QMCDriver::process, before put"<<std::endl;
+
+  //First run: QMCFixedSampleLinearOptimize::put. There, set attributes and parameters by calling derived put -> AttributeSet::put (puts all attributes, function goes to next attribute and calls itself, same with ParameterSet::put. Redirects to OhmmsParameter::put, where the content is put to (from?) the xmlnode. After all attributes are set, QMCFixedSampleLinearOptimize::put probably calls QMCDriver::process (current function) again, but with changed node/ parameter -> second call of put
+  //Second run/call: VMC::put (also ParameterSet::put called in VMC::put), all concrete VMC properties (samples etc.) are set
+  put(cur);  //bool
+  infoSummary.flush();
+  infoLog.flush();
+  //std::cout<<"AV in QMCDriver::process, after put"<<std::endl;
   //create and initialize estimator
+  //std::cout<<"AV in QMCDriver::process, before set estimators"<<std::endl;
   Estimators = branchEngine->getEstimatorManager();
   if (Estimators == nullptr)
   {
@@ -196,27 +230,42 @@ void QMCDriver::process(xmlNodePtr cur)
     Estimators = branchEngine->getEstimatorManager();
     branchEngine->read(h5FileRoot);
   }
+  infoSummary.flush();
+  infoLog.flush();
+  //std::cout<<"AV in QMCDriver::process, after set estimators"<<std::endl;
   if (DriftModifier == 0)
     DriftModifier = createDriftModifier(cur, myComm);
   DriftModifier->parseXML(cur);
 #if !defined(REMOVE_TRACEMANAGER)
   //create and initialize traces
   if (!Traces)
+  {
     Traces = std::make_unique<TraceManager>(myComm);
+  }
+
+  //ParameterSet::put (same after self put call from above ran through, resuming original function call)
+  //std::cout<<"AV in QMCDriver, traces_xml: "<<traces_xml<<" allow_traces: "<<allow_traces<<std::endl;
   Traces->put(traces_xml, allow_traces, RootName);
 #endif
-  //create and initialize traces
-  if (!wlog_manager_)
-  {
-    WalkerLogInput walker_logs_input(walker_logs_xml);
-    wlog_manager_ = std::make_unique<WalkerLogManager>(walker_logs_input, allow_walker_logs, RootName, myComm);
-  }
+  //std::cout<<"AV in QMCDriver::process, before put brachEngine, put Estimators"<<std::endl;
+
+  //SimpleFixedNodeBranch::put->ParameterSet::put->OhmmsParameter::put (go through parameters) (same after self put call from above ran through, resuming original function call)
   branchEngine->put(cur);
+
+  //AttributeSet::put (1 call only) (same after self put call from above ran through, resuming original function call)
   Estimators->put(H, cur);
+  infoSummary.flush();
+  infoLog.flush();
+    //std::cout<<"AV in QMCDriver::process, after put brachEngine, put Estimators"<<std::endl;
   if (!wOut)
-    wOut = std::make_unique<HDFWalkerOutput>(W.getTotalNum(), RootName, myComm);
+    wOut = std::make_unique<HDFWalkerOutput>(W, RootName, myComm);
+
+  //std::cout<<"AV in QMCDriver::process, before start, write branchEngine"<<std::endl;
   branchEngine->start(RootName);
   branchEngine->write(RootName);
+  infoSummary.flush();
+  infoLog.flush();
+  //std::cout<<"AV in QMCDriver::process, after start, write brachEngine"<<std::endl;
   //use new random seeds
   if (ResetRandom)
   {
@@ -252,10 +301,11 @@ void QMCDriver::setStatus(const std::string& aname, const std::string& h5name, b
  */
 void QMCDriver::putWalkers(std::vector<xmlNodePtr>& wset)
 {
-  if (wset.empty())
-    return;
+  if (wset.empty()){
+    std::cout<<"AV in QMCDriver::putWalkers, Walker set empty"<<std::endl;
+    return;}
   int nfile = wset.size();
-  HDFWalkerInputManager W_in(W, W.getTotalNum(), myComm);
+  HDFWalkerInputManager W_in(W, myComm);
   for (int i = 0; i < wset.size(); i++)
     if (W_in.put(wset[i]))
       h5FileRoot = W_in.getFileRoot();
@@ -271,8 +321,12 @@ void QMCDriver::putWalkers(std::vector<xmlNodePtr>& wset)
     myComm->allreduce(nw);
     for (int ip = 0; ip < np; ++ip)
       nwoff[ip + 1] = nwoff[ip] + nw[ip];
+    W.setGlobalNumWalkers(nwoff[np]);
     W.setWalkerOffsets(nwoff);
+    qmc_common.is_restart = true;
   }
+  else
+    qmc_common.is_restart = false;
 }
 
 std::string QMCDriver::getRotationName(std::string RootName)
@@ -308,10 +362,11 @@ void QMCDriver::recordBlock(int block)
 {
   if (DumpConfig && block % Period4CheckPoint == 0)
   {
-    ScopedTimer local(checkpoint_timer_);
+    checkpointTimer->start();
     wOut->dump(W, block);
     branchEngine->write(RootName, true); //save energy_history
     RandomNumberControl::write(RootName, myComm);
+    checkpointTimer->stop();
   }
 }
 
@@ -374,12 +429,13 @@ void QMCDriver::setWalkerOffsets()
   myComm->allreduce(nw);
   for (int ip = 0; ip < myComm->size(); ip++)
     nwoff[ip + 1] = nwoff[ip] + nw[ip];
+  W.setGlobalNumWalkers(nwoff[myComm->size()]);
   W.setWalkerOffsets(nwoff);
   long id = nwoff[myComm->rank()];
   for (int iw = 0; iw < nw[myComm->rank()]; ++iw, ++id)
   {
-    W[iw]->setWalkerID(id);
-    W[iw]->setParentID(id);
+    W[iw]->ID       = id;
+    W[iw]->ParentID = id;
   }
   app_log() << "  Total number of walkers: " << W.EnsembleProperty.NumSamples << std::endl;
   app_log() << "  Total weight: " << W.EnsembleProperty.Weight << std::endl;
@@ -409,12 +465,21 @@ bool QMCDriver::putQMCInfo(xmlNodePtr cur)
   //int oldSteps=nSteps;
 
   //set the default walker to the number of threads times 10
-  Period4CheckPoint = 0;
-  int defaultw      = omp_get_max_threads();
+  Period4CheckPoint = -1;
+  // set default for delayed update streak k to zero, meaning use the original Sherman-Morrison rank-1 update
+  // if kdelay is set to k (k>1), then the new rank-k scheme is used
+#ifdef QMC_CUDA
+  kDelay = Psi.getndelay();
+#endif
+  int defaultw = omp_get_max_threads();
   OhmmsAttributeSet aAttrib;
   aAttrib.add(Period4CheckPoint, "checkpoint");
   aAttrib.add(kDelay, "kdelay");
   aAttrib.put(cur);
+#ifdef QMC_CUDA
+  W.setkDelay(kDelay);
+  kDelay = W.getkDelay(); // in case number is sanitized
+#endif
   if (cur != NULL)
   {
     //initialize the parameter set
@@ -487,14 +552,18 @@ bool QMCDriver::putQMCInfo(xmlNodePtr cur)
     CurrentStep = 0;
 
   //if walkers are initialized via <mcwalkerset/>, use the existing one
-  if (qmc_common.qmc_counter)
+  if (qmc_common.qmc_counter || qmc_common.is_restart)
   {
     app_log() << "Using existing walkers " << std::endl;
   }
   else
   {
     app_log() << "Resetting walkers" << std::endl;
+#ifdef QMC_CUDA
+    int nths(1);
+#else
     int nths(omp_get_max_threads());
+#endif
     nTargetWalkers = (std::max(nths, (nTargetWalkers / nths) * nths));
     int nw         = W.getActiveWalkers();
     int ndiff      = 0;
@@ -523,7 +592,7 @@ xmlNodePtr QMCDriver::getQMCNode()
     std::string cname((const char*)(cur->name));
     if (cname == "parameter")
     {
-      const std::string name(getXMLAttributeValue(cur, "name"));
+      const XMLAttrString name(cur, "name");
       if (name == "current")
         current_ptr = cur;
     }

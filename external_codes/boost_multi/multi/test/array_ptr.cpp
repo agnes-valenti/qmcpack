@@ -1,219 +1,104 @@
-// Copyright 2019-2024 Alfredo A. Correa
-// Copyright 2024 Matt Borland
-// Distributed under the Boost Software License, Version 1.0.
-// https://www.boost.org/LICENSE_1_0.txt
-
-#include <boost/multi/array.hpp>
-
-#include <array>
-
-// Suppress warnings from boost.test
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wold-style-cast"
-#  pragma clang diagnostic ignored "-Wundef"
-#  pragma clang diagnostic ignored "-Wconversion"
-#  pragma clang diagnostic ignored "-Wsign-conversion"
-#  pragma clang diagnostic ignored "-Wfloat-equal"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wold-style-cast"
-#  pragma GCC diagnostic ignored "-Wundef"
-#  pragma GCC diagnostic ignored "-Wconversion"
-#  pragma GCC diagnostic ignored "-Wsign-conversion"
-#  pragma GCC diagnostic ignored "-Wfloat-equal"
+#ifdef COMPILATION// -*-indent-tabs-mode:t;c-basic-offset:4;tab-width:4;-*-
+$CXX $CXXFLAGS $0 -o $0.$X -lboost_unit_test_framework&&$0.$X&&rm $0.$X;exit
 #endif
+// © Alfredo A. Correa 2019-2020
 
-#ifndef BOOST_TEST_MODULE
-#  define BOOST_TEST_MAIN
-#endif
+#define BOOST_TEST_MODULE "C++ Unit Tests for Multi array pointer"
+#define BOOST_TEST_DYN_LINK
+#include<boost/test/unit_test.hpp>
 
-#include <boost/test/unit_test.hpp>
+#include "../array.hpp"
 
 namespace multi = boost::multi;
 
 // NOLINTNEXTLINE(fuchsia-trailing-return): trailing return helps readability
-template<class T> auto fwd_array(T&& array) -> T&& { return std::forward<T>(array); }
+template<class T> auto fwd_array(T&& t)->T&& {return std::forward<T>(t);}
 
 BOOST_AUTO_TEST_CASE(multi_array_ptr_equality) {
-	multi::array<double, 2> arr = {
-		{1.0, 2.0, 3.0},
-		{4.0, 5.0, 6.0},
-		{7.0, 8.0, 9.0},
-		{1.0, 2.0, 3.0},
+	multi::array<double, 2> A = {
+		{1., 2., 3.},
+		{4., 5., 6.},
+		{7., 8., 9.},
+		{1., 2., 3.}
 	};
-	BOOST_REQUIRE(  arr[2] ==  arr[2] );
-	BOOST_REQUIRE( &arr[2] == &arr[2] );
-	BOOST_REQUIRE( &arr[2] != &(arr[2]({0, 2})) );
-	BOOST_REQUIRE( !( &arr[2] == &std::as_const(arr)[2]({0, 2})) );
-	BOOST_REQUIRE( &arr[2] == &fwd_array(arr[2]) );
-	BOOST_REQUIRE( &fwd_array(arr[2]) == &arr[2] );
+	BOOST_REQUIRE(  A[2] ==  A[2] );
+	BOOST_REQUIRE( &A[2] == &A[2] );
+	BOOST_REQUIRE( &A[2] == &fwd_array(A[2]) );
+	BOOST_REQUIRE( &fwd_array(A[2]) == &A[2] );
 
-	auto arr_ptr = &arr[2];
-	BOOST_REQUIRE( arr_ptr == arr_ptr );
+//	auto const& A2 = fwd_array(A[2]);
+	auto const& AC2 = A[2];
+	BOOST_REQUIRE( AC2[0] == A[2][0] );
+	BOOST_REQUIRE( AC2.base() == A[2].base() );
+	BOOST_REQUIRE( &AC2 == &A[2] );
 
-	auto& arr_ptr_ref = arr_ptr;
-	arr_ptr = arr_ptr_ref;
-	arr_ptr = std::move(arr_ptr_ref);
-
-	auto arr_ptr2 = &std::as_const(arr)[2];
-	BOOST_REQUIRE( arr_ptr == arr_ptr2 );
-	BOOST_REQUIRE( arr_ptr2 == arr_ptr );
-	BOOST_REQUIRE( !(arr_ptr != arr_ptr) );
-
-	auto& arr_ptr2_ref = arr_ptr2;
-	arr_ptr2 = arr_ptr2_ref;
-	arr_ptr2_ref = arr_ptr2;
-
-	auto const& carr2 = arr[2];
-	BOOST_REQUIRE( carr2[0] == arr[2][0] );
-	BOOST_REQUIRE( carr2.base() == arr[2].base() );
-	BOOST_REQUIRE( &carr2 == &std::as_const(arr)[2] );
-	BOOST_REQUIRE( &carr2 == &              arr [2] );
-
-	auto const& ac2 = carr2;  // fwd_array(A[2]);
-	BOOST_REQUIRE( &ac2 == &std::as_const(arr)[2] );
-	BOOST_REQUIRE( &std::as_const(arr)[2] == &ac2 );
-	BOOST_REQUIRE( &ac2 == &              arr [2] );
+	auto const& ac2 = AC2; //fwd_array(A[2]);
+	BOOST_REQUIRE( &ac2 == &A[2] );
 }
 
 BOOST_AUTO_TEST_CASE(multi_array_ptr) {
 	{
-		// clang-format off
-		std::array<std::array<double, 5>, 4> arr{
-			{{{0.0, 1.0, 2.0, 3.0, 4.0}},
-			 {{5.0, 6.0, 7.0, 8.0, 9.0}},
-			 {{10.0, 11.0, 12.0, 13.0, 14.0}},
-			 {{15.0, 16.0, 17.0, 18.0, 19.0}}},
+		std::array<std::array<double, 5>, 4> a{
+			{
+				{ 0.,  1.,  2.,  3.,  4.},
+				{ 5.,  6.,  7.,  8.,  9.},
+				{10., 11., 12., 13., 14.},
+				{15., 16., 17., 18., 19.}
+			}
 		};
-		// clang-format on
+		std::array<std::array<double, 5>, 4> b{};
 
-		multi::array_ptr<double, 2> const arrP{&arr};
-
-		BOOST_REQUIRE( arrP->extensions() == multi::extensions(arr) );
-		BOOST_REQUIRE( extensions(*arrP) == multi::extensions(arr) );
-
+		multi::array_ptr<double, 2> aP{&a};
+		BOOST_REQUIRE( aP->extensions() == multi::extensions(a) );
+		BOOST_REQUIRE( extensions(*aP) == multi::extensions(a) );
 		using multi::extensions;
-		BOOST_REQUIRE( extensions(*arrP) == extensions(arr) );
-		BOOST_REQUIRE( &arrP->operator[](1)[1] == &arr[1][1] );
+		BOOST_REQUIRE( extensions(*aP) == extensions(a) );
+		BOOST_REQUIRE( &aP->operator[](1)[1] == &a[1][1] );
 
-		multi::array_ptr<double, 2> const arrP2{&arr};
-		BOOST_REQUIRE( arrP == arrP2 );
-		BOOST_REQUIRE( ! (arrP != arrP2) );
+		multi::array_ptr<double, 2> aP2{&a};
+		BOOST_REQUIRE( aP == aP2 );
 
-		std::array<std::array<double, 5>, 4> arr2{};
-		multi::array_ptr<double, 2>          arr2P{&arr2};
-		BOOST_REQUIRE( arr2P != arrP );
-		BOOST_REQUIRE( ! (arr2P == arrP) );
+		multi::array_ptr<double, 2> bP{&b};
+		BOOST_REQUIRE( bP != aP );
 
-		arr2P = arrP;
-		BOOST_REQUIRE(  arrP ==  arr2P );
-		BOOST_REQUIRE( *arrP == *arr2P );
-		BOOST_REQUIRE(  arrP->operator==(*arrP) );
+		bP = aP;
+		BOOST_REQUIRE( aP == bP );
+		BOOST_REQUIRE( *aP == *bP );
+		BOOST_REQUIRE( aP->operator==(*bP) );
 
-		auto&& arrR = *arrP;
-		BOOST_REQUIRE( &arrR[1][1] == &arr[1][1] );
-		BOOST_REQUIRE( arrR == *arrP );
-		BOOST_REQUIRE( std::equal(arrR.begin(), arrR.end(), arrP->begin(), arrP->end()) );
-		BOOST_REQUIRE( size(arrR) == arrP->size() );
+		auto&& aR = *aP;
+		BOOST_REQUIRE( &aR[1][1] == &a[1][1] );
+		BOOST_REQUIRE( aR == *aP );
+		BOOST_REQUIRE( aR.equal(aP->begin()) );
+		BOOST_REQUIRE( size(aR) == aP->size() );
 	}
 	{
-		std::array<std::array<double, 5>, 4> arr = {
-			{std::array<double, 5>{{0.0, 1.0, 2.0, 3.0, 4.0}},
-			 std::array<double, 5>{{5.0, 6.0, 7.0, 8.0, 9.0}},
-			 std::array<double, 5>{{10.0, 11.0, 12.0, 13.0, 14.0}},
-			 std::array<double, 5>{{15.0, 16.0, 17.0, 18.0, 19.0}}},
+		std::array<std::array<double, 5>, 4> a = {
+			std::array<double, 5>{ 0.,  1.,  2.,  3.,  4.},
+			std::array<double, 5>{ 5.,  6.,  7.,  8.,  9.},
+			std::array<double, 5>{10., 11., 12., 13., 14.},
+			std::array<double, 5>{15., 16., 17., 18., 19.}
 		};
 
-		std::vector<multi::array_ptr<double, 1>> ptrs;
-		ptrs.emplace_back(&arr[0][0], 5);  // NOLINT(readability-container-data-pointer) test access
-		ptrs.emplace_back(arr[2].data(), 5);
-		ptrs.emplace_back(&arr[3][0], 5);  // NOLINT(readability-container-data-pointer) test access
+		std::vector<multi::array_ptr<double, 1>> ps;
+		ps.emplace_back(&a[0][0], 5);
+		ps.emplace_back(&a[2][0], 5);
+		ps.emplace_back(&a[3][0], 5);
 
-		BOOST_REQUIRE( &(*ptrs[2])[4] == &arr[3][4]   );
-		BOOST_REQUIRE(  (*ptrs[2])[4] == 19         );
-		BOOST_REQUIRE(    ptrs[2]->operator[](4) == 19 );
+		BOOST_REQUIRE( &(*ps[2])[4] == &a[3][4] );
+		BOOST_REQUIRE( (*ps[2])[4] == 19 );
+		BOOST_REQUIRE( ps[2]->operator[](4) == 19 );
 	}
-	{
-		std::vector<double>                v1(100, 3.0);  // testing std::vector of multi:array NOLINT(fuchsia-default-arguments-calls)
-		std::vector<double> const          v2(100, 4.0);  // testing std::vector of multi:array NOLINT(fuchsia-default-arguments-calls)
-		multi::array_ptr<double, 2> const  v1P2D(v1.data(), {10, 10});
-		multi::array_cptr<double, 2> const v2P2D(v2.data(), {10, 10});
+	 {
+		std::vector<double> v1(100, 3.);
+		std::vector<double> const v2(100, 4.);
+		multi::array_ptr<double, 2> v1P2D(v1.data(), {10, 10});
+		multi::array_cptr<double, 2> v2P2D(v2.data(), {10, 10});
 
 		*v1P2D = *v2P2D;
 		v1P2D->operator=(*v2P2D);
 
-		BOOST_REQUIRE( v1[8] == 4.0 );
+		BOOST_REQUIRE( v1[8] == 4. );
 	}
 }
 
-BOOST_AUTO_TEST_CASE(span_like) {
-	std::vector<double> vec = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};  // testing std::vector of multi:array NOLINT(fuchsia-default-arguments-calls)
-
-	using my_span = multi::array_ref<double, 1>;
-
-	auto aP = &my_span{vec.data() + 2, {5}};  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-	BOOST_REQUIRE( aP->size() == 5 );
-	BOOST_REQUIRE( (*aP)[0] == 2.0 );
-
-	auto const& aCRef = *aP;
-	BOOST_REQUIRE(  aCRef.size() == 5 );
-
-	BOOST_REQUIRE( &aCRef[0] == &vec[2] );
-	BOOST_REQUIRE(  aCRef[0] == 2.0     );
-
-	auto&& aRef = *aP;
-	aRef[0]     = 99.0;
-	BOOST_REQUIRE( vec[2] == 99.0 );
-}
-
-BOOST_AUTO_TEST_CASE(multi_array_ptr_assignment) {
-	multi::array<double, 2> arr = {
-		{1.0, 2.0, 3.0},
-		{4.0, 5.0, 6.0},
-		{7.0, 8.0, 9.0},
-		{1.0, 2.0, 3.0},
-	};
-	{
-		auto rowP = &arr[2];
-
-		rowP = *std::addressof(rowP);
-
-		auto rowP2 = rowP;
-		rowP2      = rowP;  // self assigment
-
-		BOOST_REQUIRE( rowP == rowP2 );
-		BOOST_REQUIRE( ! (rowP != rowP2) );
-
-		auto rowP0 = &arr[0];
-
-		BOOST_REQUIRE( rowP0 != rowP2 );
-		BOOST_REQUIRE( ! (rowP0 == rowP2) );
-
-		rowP2 = decltype(rowP2){nullptr};
-		BOOST_REQUIRE( ! rowP2 );
-
-		auto rowP3 = std::exchange(rowP, nullptr);
-		BOOST_REQUIRE( rowP3 == &arr[2] );
-		BOOST_REQUIRE( rowP == nullptr );
-		BOOST_REQUIRE( ! rowP );
-	}
-	{
-		auto rowP = &arr();
-
-		rowP = *std::addressof(rowP);
-
-		decltype(rowP) rowP2;
-		rowP2 = rowP;
-
-		BOOST_REQUIRE( rowP == rowP2 );
-
-		rowP2 = decltype(rowP2){nullptr};
-		BOOST_REQUIRE( ! rowP2 );
-
-		auto rowP3 = std::exchange(rowP, nullptr);
-		BOOST_REQUIRE( rowP3 == &arr() );
-		BOOST_REQUIRE( rowP == nullptr );
-		BOOST_REQUIRE( ! rowP );
-	}
-}

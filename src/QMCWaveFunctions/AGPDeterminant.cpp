@@ -15,13 +15,15 @@
 #include "AGPDeterminant.h"
 #include "Numerics/DeterminantOperators.h"
 #include "Numerics/MatrixOperators.h"
-#include "CPU/SIMD/inner_product.hpp"
+#include "CPU/SIMD/simd.hpp"
 
 namespace qmcplusplus
 {
 using std::copy;
 
-AGPDeterminant::AGPDeterminant(BasisSetType* bs) : GeminalBasis(bs), NumPtcls(0) {}
+AGPDeterminant::AGPDeterminant(BasisSetType* bs)
+    : WaveFunctionComponent("AGPDeterminant"), GeminalBasis(bs), NumPtcls(0)
+{}
 AGPDeterminant::~AGPDeterminant() {}
 
 void AGPDeterminant::resize(int nup, int ndown)
@@ -70,6 +72,23 @@ void AGPDeterminant::resize(int nup, int ndown)
   }
 }
 
+void AGPDeterminant::checkInVariables(opt_variables_type& active)
+{
+  //do nothing
+}
+void AGPDeterminant::checkOutVariables(const opt_variables_type& active)
+{
+  //do nothing
+}
+void AGPDeterminant::resetParameters(const opt_variables_type& active)
+{
+  //GeminalBasis->resetParameters(active);
+}
+void AGPDeterminant::reportStatus(std::ostream& os)
+{
+  //do nothing
+}
+
 /** Calculate the log value of the Dirac determinant for particles
  *@param P input configuration containing N particles
  *@param G a vector containing N gradients
@@ -80,9 +99,9 @@ void AGPDeterminant::resize(int nup, int ndown)
  *contribution of the determinant to G(radient) and L(aplacian)
  *for local energy calculations.
  */
-AGPDeterminant::LogValue AGPDeterminant::evaluateLog(const ParticleSet& P,
-                                                     ParticleSet::ParticleGradient& G,
-                                                     ParticleSet::ParticleLaplacian& L)
+AGPDeterminant::LogValueType AGPDeterminant::evaluateLog(const ParticleSet& P,
+                                                         ParticleSet::ParticleGradient_t& G,
+                                                         ParticleSet::ParticleLaplacian_t& L)
 {
   evaluateLogAndStore(P);
   G += myG;
@@ -172,7 +191,7 @@ void AGPDeterminant::registerData(ParticleSet& P, WFBufferType& buf)
   //buf.add(myL.begin(), myL.end());
 }
 
-AGPDeterminant::LogValue AGPDeterminant::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
+AGPDeterminant::LogValueType AGPDeterminant::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
 {
   evaluateLogAndStore(P);
   P.G += myG;
@@ -224,8 +243,9 @@ void AGPDeterminant::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
  * @param P current configuration
  * @param iat the particle thas is being moved
  */
-AGPDeterminant::PsiValue AGPDeterminant::ratio(ParticleSet& P, int iat)
+AGPDeterminant::PsiValueType AGPDeterminant::ratio(ParticleSet& P, int iat)
 {
+  std::cout<<"AV AGPDeterminant::ratio"<<std::endl;
   UpdateMode = ORB_PBYP_RATIO;
   //GeminalBasis->evaluate(P,iat);
   GeminalBasis->evaluateForPtclMove(P, iat); //@@
@@ -273,7 +293,7 @@ void AGPDeterminant::ratioUp(ParticleSet& P, int iat)
   }
   //curRatio = DetRatio(psiM_temp, psiU.data(),iat);
   curRatio = DetRatioByRow(psiM_temp, psiU, iat);
-  InverseUpdateByRow(psiM_temp, psiU, workV1, workV2, iat, static_cast<ValueType>(curRatio));
+  InverseUpdateByRow(psiM_temp, psiU, workV1, workV2, iat, curRatio);
   std::copy(dpsiU[iat], dpsiU[iat] + Nup, dpsiUv.begin());
   std::copy(d2psiU[iat], d2psiU[iat] + Nup, d2psiUv.begin());
   //const GradType* restrict  dy_ptr = GeminalBasis->dy(0);
@@ -311,7 +331,7 @@ void AGPDeterminant::ratioDown(ParticleSet& P, int iat)
   }
   //curRatio = DetRatioTranspose(psiM_temp, psiD.data(),d);
   curRatio = DetRatioByColumn(psiM_temp, psiD, d);
-  InverseUpdateByColumn(psiM_temp, psiD, workV1, workV2, d, static_cast<ValueType>(curRatio));
+  InverseUpdateByColumn(psiM_temp, psiD, workV1, workV2, d, curRatio);
   std::copy(dpsiD[d], dpsiD[d] + Nup, dpsiDv.begin());
   std::copy(d2psiD[d], d2psiD[d] + Nup, d2psiDv.begin());
   //const GradType* restrict dy_ptr = GeminalBasis->dy(0);
@@ -342,9 +362,9 @@ void AGPDeterminant::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
   {
     APP_ABORT("Incomplete AGPDeterminant::acceptMove Turn on useDrift ");
     if (iat < Nup)
-      InverseUpdateByRow(psiM, psiU, workV1, workV2, iat, static_cast<ValueType>(curRatio));
+      InverseUpdateByRow(psiM, psiU, workV1, workV2, iat, curRatio);
     else
-      InverseUpdateByColumn(psiM, psiD, workV1, workV2, iat - Nup, static_cast<ValueType>(curRatio));
+      InverseUpdateByColumn(psiM, psiD, workV1, workV2, iat - Nup, curRatio);
     psiM_temp = psiM;
     //psiM = psiM_temp;
   }

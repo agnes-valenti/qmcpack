@@ -15,8 +15,43 @@
 #ifndef HIPBLAS_HPP
 #define HIPBLAS_HPP
 
-#include <hipblas/hipblas.h>
+#include <hipblas.h>
 #include <hip/hip_complex.h>
+
+//------------------------------------------------------------------------------
+hipblasStatus_t
+hipblasCgemmBatched(hipblasHandle_t handle,
+                    hipblasOperation_t transa,
+                    hipblasOperation_t transb,
+                    int m,
+                    int n,
+                    int k,
+                    const hipComplex *alpha,
+                    const hipComplex *const Aarray[],
+                    int lda,
+                    const hipComplex *const Barray[],
+                    int ldb,
+                    const hipComplex *beta,
+                    hipComplex *const Carray[],
+                    int ldc,
+                    int batchCount);
+
+hipblasStatus_t
+hipblasZgemmBatched(hipblasHandle_t handle,
+                    hipblasOperation_t transa,
+                    hipblasOperation_t transb,
+                    int m,
+                    int n,
+                    int k,
+                    const hipDoubleComplex *alpha,
+                    const hipDoubleComplex *const Aarray[],
+                    int lda,
+                    const hipDoubleComplex *const Barray[],
+                    int ldb,
+                    const hipDoubleComplex *beta,
+                    hipDoubleComplex *const Carray[],
+                    int ldc,
+                    int batchCount);
 
 //------------------------------------------------------------------------------
 hipblasStatus_t

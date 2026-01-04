@@ -31,11 +31,7 @@ enum
   DUMMYOPT
 };
 
-SFNBranch::SFNBranch(RealType tau, RealType feedback, DMCRefEnergyScheme refenergy_update_scheme)
-    : WarmUpToDoSteps(0),
-      EtrialUpdateToDoSteps(0),
-      myNode(NULL),
-      ref_energy_collector(refenergy_update_scheme, std::max(1, static_cast<int>(1.0 / (feedback * tau))))
+SFNBranch::SFNBranch(RealType tau, int nideal) : WarmUpToDoSteps(0), EtrialUpdateToDoSteps(0), myNode(NULL)
 {
   BranchMode.set(B_DMCSTAGE, 0);     //warmup stage
   BranchMode.set(B_POPCONTROL, 1);   //use standard DMC
@@ -45,7 +41,7 @@ SFNBranch::SFNBranch(RealType tau, RealType feedback, DMCRefEnergyScheme refener
   vParam.fill(1.0);
   vParam[SBVP::TAU]         = tau;
   vParam[SBVP::TAUEFF]      = tau;
-  vParam[SBVP::FEEDBACK]    = feedback;
+  vParam[SBVP::FEEDBACK]    = 1.0;
   vParam[SBVP::FILTERSCALE] = 10;
   vParam[SBVP::SIGMA_BOUND] = 10;
   R2Accepted(1.0e-10);
@@ -84,6 +80,8 @@ void SFNBranch::registerParameters()
   m_param.add(vParam[SBVP::TAU], "TimeStep");
   //filterscale:  sets the filtercutoff to sigma*filterscale
   m_param.add(vParam[SBVP::FILTERSCALE], "filterscale");
+  //feed back parameter for population control
+  m_param.add(vParam[SBVP::FEEDBACK], "feedback");
   m_param.add(vParam[SBVP::SIGMA_BOUND], "sigmaBound");
   //turn on/off effective tau onl for time-step error comparisons
   m_param.add(sParam[USETAUOPT], "useBareTau");
@@ -108,7 +106,7 @@ int SFNBranch::initParam(const MCPopulation& population,
   vParam[SBVP::SIGMA2] = var;
   vParam[SBVP::TAUEFF] = vParam[SBVP::TAU] * R2Accepted.result() / R2Proposed.result();
   /// FIXME, magic number 50
-  setBranchCutoff(vParam[SBVP::SIGMA2], vParam[SBVP::SIGMA_BOUND], 50, population.get_golden_electrons().getTotalNum());
+  setBranchCutoff(vParam[SBVP::SIGMA2], vParam[SBVP::SIGMA_BOUND], 50, population.get_num_particles());
 
   int nwtot_now = population.get_num_global_walkers();
   if (iParam[B_TARGETWALKERS] == 0)
@@ -130,12 +128,12 @@ int SFNBranch::initParam(const MCPopulation& population,
   return int(round(double(iParam[B_TARGETWALKERS]) / double(nwtot_now)));
 }
 
-void SFNBranch::updateParamAfterPopControl(const MCDataType<FullPrecRealType>& wc_ensemble_prop, int Nelec)
+void SFNBranch::updateParamAfterPopControl(int pop_int, const MCDataType<FullPrecRealType>& wc_ensemble_prop, int Nelec)
 {
-  //target weight
-  const auto logN = std::log(static_cast<FullPrecRealType>(iParam[B_TARGETWALKERS]));
-  //population weight before branching
-  const FullPrecRealType pop_weight = wc_ensemble_prop.Weight;
+  FullPrecRealType logN    = std::log(static_cast<FullPrecRealType>(iParam[B_TARGETWALKERS]));
+  FullPrecRealType pop_now = static_cast<FullPrecRealType>(pop_int);
+  //population for trial energy modification should not include any released node walkers.
+  pop_now -= wc_ensemble_prop.RNSamples;
   //current energy
   vParam[SBVP::ENOW] = wc_ensemble_prop.Energy;
 
@@ -150,13 +148,12 @@ void SFNBranch::updateParamAfterPopControl(const MCDataType<FullPrecRealType>& w
       throw UniformCommunicateError("Bug: WarmUpToDoSteps should be 0 after warmup.");
 
     // assuming ENOW only fluctuates around the mean (EREF) once warmup completes.
-    const auto ene = BranchMode[B_KILLNODES]
-        ? vParam[SBVP::ENOW] - std::log(wc_ensemble_prop.LivingFraction) / vParam[SBVP::TAUEFF]
-        : vParam[SBVP::ENOW];
-    ref_energy_collector.pushWeightEnergyVariance(wc_ensemble_prop.Weight, ene, wc_ensemble_prop.Variance);
-    // update the reference energy
-    auto [ene_avg, var_avg] = ref_energy_collector.getEnergyVariance();
-    vParam[SBVP::EREF]      = ene_avg;
+    if (BranchMode[B_KILLNODES])
+      EnergyHist(vParam[SBVP::ENOW] - std::log(wc_ensemble_prop.LivingFraction) / vParam[SBVP::TAUEFF]);
+    else
+      EnergyHist(vParam[SBVP::ENOW]);
+    VarianceHist(wc_ensemble_prop.Variance);
+    vParam[SBVP::EREF] = EnergyHist.mean(); //current mean
 
     // update Etrial based on EREF
     if (BranchMode[B_POPCONTROL])
@@ -164,14 +161,15 @@ void SFNBranch::updateParamAfterPopControl(const MCDataType<FullPrecRealType>& w
       --EtrialUpdateToDoSteps;
       if (EtrialUpdateToDoSteps == 0)
       {
-        vParam[SBVP::ETRIAL]  = vParam[SBVP::EREF] + vParam[SBVP::FEEDBACK] * (logN - std::log(pop_weight));
+        vParam[SBVP::ETRIAL]  = vParam[SBVP::EREF] + vParam[SBVP::FEEDBACK] * (logN - std::log(pop_now));
         EtrialUpdateToDoSteps = iParam[B_ENERGYUPDATEINTERVAL];
       }
     }
     else
     {
       throw UniformCommunicateError("Bug: FIXME SBVP::EREF should be calculated based on weights");
-      /// FIXME vParam[SBVP::ETRIAL] = vParam[SBVP::EREF];
+      /// FIXME
+      vParam[SBVP::ETRIAL] = vParam[SBVP::EREF];
     }
   }
   else //warmup
@@ -179,29 +177,30 @@ void SFNBranch::updateParamAfterPopControl(const MCDataType<FullPrecRealType>& w
     if (WarmUpToDoSteps == 0)
       throw UniformCommunicateError("Bug: WarmUpToDoSteps should be larger than 0 during warmup.");
 
-    // Use Enow as the best estimate of ground state energy during warmup.
-    vParam[SBVP::EREF] = vParam[SBVP::ENOW];
-    // update Etrial based on Enow as Enow is not yet converged in warmup stage
+    // update Etrial based on ENOW as ENOW is not yet converged in warmup stage
     if (BranchMode[B_POPCONTROL])
     {
       if (BranchMode[B_KILLNODES])
         vParam[SBVP::ETRIAL] = (0.00 * vParam[SBVP::EREF] + 1.0 * vParam[SBVP::ENOW]) +
-            vParam[SBVP::FEEDBACK] * (logN - std::log(pop_weight)) -
+            vParam[SBVP::FEEDBACK] * (logN - std::log(pop_now)) -
             std::log(wc_ensemble_prop.LivingFraction) / vParam[SBVP::TAU];
       else
-        vParam[SBVP::ETRIAL] = vParam[SBVP::ENOW] + (logN - std::log(pop_weight)) / vParam[SBVP::TAU];
+        vParam[SBVP::ETRIAL] = vParam[SBVP::ENOW] + (logN - std::log(pop_now)) / vParam[SBVP::TAU];
     }
     else
     {
       throw UniformCommunicateError("Bug: FIXME SBVP::EREF should be calculated based on weights");
-      /// FIXME vParam[SBVP::ETRIAL] = vParam[SBVP::ENOW];
+      /// FIXME
+      vParam[SBVP::ETRIAL] = vParam[SBVP::ENOW];
     }
 
     --WarmUpToDoSteps;
     if (WarmUpToDoSteps == 0) //warmup is done
     {
-      if (ref_energy_collector.count())
-        throw UniformCommunicateError("Bug: ref_energy_collector should not have been used during warmup.");
+      if (EnergyHist.count())
+        throw UniformCommunicateError("Bug: EnergyHist should not have been used during warmup.");
+      if (VarianceHist.count())
+        throw UniformCommunicateError("Bug: VarianceHist should not have been used during warmup.");
 
       vParam[SBVP::SIGMA2] = wc_ensemble_prop.Variance;
       setBranchCutoff(vParam[SBVP::SIGMA2], vParam[SBVP::SIGMA_BOUND], 10, Nelec);
@@ -235,7 +234,7 @@ void SFNBranch::printStatus() const
   if (BranchMode[B_RMC])
   {
     o << "====================================================";
-    o << "\n  End of a RMC section";
+    o << "\n  End of a RMC block";
     o << "\n    QMC counter                   = " << iParam[B_COUNTER];
     o << "\n    time step                     = " << vParam[SBVP::TAU];
     o << "\n    effective time step           = " << vParam[SBVP::TAUEFF];
@@ -248,7 +247,7 @@ void SFNBranch::printStatus() const
   else // running DMC
   {
     o << "====================================================";
-    o << "\n  End of a DMC section";
+    o << "\n  End of a DMC block";
     o << "\n    QMC counter                   = " << iParam[B_COUNTER];
     o << "\n    time step                     = " << vParam[SBVP::TAU];
     o << "\n    effective time step           = " << vParam[SBVP::TAUEFF];

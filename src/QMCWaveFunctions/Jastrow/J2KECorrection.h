@@ -36,9 +36,9 @@ public:
   J2KECorrection(const ParticleSet& targetPtcl, const std::vector<FT*>& F)
       : num_groups_(targetPtcl.groups()),
         num_elecs_(targetPtcl.getTotalNum()),
-        vol(targetPtcl.getLattice().Volume),
+        vol(targetPtcl.Lattice.Volume),
         F_(F),
-        SK_enabled(targetPtcl.hasSK())
+        SK_enabled(targetPtcl.SK != nullptr)
   {
     // compute num_elec_in_groups_
     num_elec_in_groups_.reserve(3);
@@ -46,12 +46,12 @@ public:
       num_elec_in_groups_.push_back(targetPtcl.last(i) - targetPtcl.first(i));
 
     if (SK_enabled)
-      G0mag = std::sqrt(targetPtcl.getSimulationCell().getKLists().getKSQWorking()[0]);
+      G0mag = std::sqrt(targetPtcl.SK->getKLists().ksq[0]);
   }
 
   RT computeKEcorr()
   {
-    if (!SK_enabled)
+    if (1==1) //(!SK_enabled)  //AVFLAG
       return 0;
 
     const int numPoints = 1000;

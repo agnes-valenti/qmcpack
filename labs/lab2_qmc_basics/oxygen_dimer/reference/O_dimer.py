@@ -82,7 +82,6 @@ for scale in scales:
     # describe optimization run
     if scale==1.00:                   # use eqm. Jastrow for all bond lengths
         opt = generate_qmcpack(
-            driver       = 'legacy',
             identifier   = 'opt',
             path         = directory,
             job          = qmcjob,
@@ -127,7 +126,6 @@ for scale in scales:
 
     # describe DMC run
     qmc = generate_qmcpack(
-        driver       = 'legacy',
         identifier   = 'qmc',
         path         = directory,
         job          = qmcjob,

@@ -10,13 +10,13 @@ mpic++ -O3 -std=c++14 -Wall -Wextra $0 -o $0x.x -D_MAKE_BOOST_SERIALIZATION_HEAD
 namespace mpi3 = boost::mpi3;
 using std::cout;
 
-auto mpi3::main(int/*argc*/, char**/*argv*/, mpi3::communicator world)->int try{
+int mpi3::main(int, char*[], mpi3::communicator world){
 
 	assert( world.size() > 1 );
 
 	using T = double;
 	std::vector<T> const cbuffer = {0, 1, 2};
-	std::vector<T> buffer(3); // TODO(correaa): test with list
+	std::vector<T> buffer(3); // TODO, test with list
 
 	int right = world.right();
 	int left = world.left();
@@ -30,7 +30,5 @@ auto mpi3::main(int/*argc*/, char**/*argv*/, mpi3::communicator world)->int try{
 	assert( std::equal(cbuffer.begin(), cbuffer.end(), buffer.begin()) );
 
 	return 0;
-}catch(...){
-	return 1;
 }
 

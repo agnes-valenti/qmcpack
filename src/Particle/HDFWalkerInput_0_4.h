@@ -17,14 +17,14 @@
 
 #include "hdf/HDFVersion.h"
 #include "OhmmsData/AttributeSet.h"
-#include "WalkerConfigurations.h"
-#include <filesystem>
 #include <stack>
 
 class Communicate;
 
 namespace qmcplusplus
 {
+class MCWalkerConfiguration;
+
 struct HDFWalkerInput_0_4
 {
   struct IOInfo
@@ -45,10 +45,8 @@ struct HDFWalkerInput_0_4
     }
   };
 
-  /// reference to the list of walker configurations to be read from file
-  WalkerConfigurations& wc_list_;
-  /// number of particles
-  const size_t num_ptcls_;
+  //reference to target walker configuration
+  MCWalkerConfiguration& targetW;
   //pointer to the communicator
   Communicate* myComm;
   //current version this class supports
@@ -57,18 +55,17 @@ struct HDFWalkerInput_0_4
   IOInfo i_info;
   //propoery list to handle parallel io
   hid_t h_plist;
-  //the last file which was processed, extension removed
-  std::filesystem::path FileName_noext;
-  //list of files to process, extensions removed
-  std::stack<std::filesystem::path> FileStack;
+  //the last file which was processed
+  std::string FileName;
+  //list of files to process
+  std::stack<std::string> FileStack;
 
   /** constructor
-   * @param wc_list target walker configurations
-   * @param num_ptcls the number of particles in each walker
+   * @param W target MCWalkerConfiguration
    * @param c communicator
    * @param v version
    */
-  HDFWalkerInput_0_4(WalkerConfigurations& wc_list, size_t num_ptcls, Communicate* c, const HDFVersion& v);
+  HDFWalkerInput_0_4(MCWalkerConfiguration& W, Communicate* c, const HDFVersion& v);
   ~HDFWalkerInput_0_4();
 
   /** read walkers
@@ -82,11 +79,11 @@ struct HDFWalkerInput_0_4
   void checkOptions(xmlNodePtr cur);
 
   /** read walkers for small number of MPI tasks */
-  bool read_hdf5(const std::filesystem::path& h5name);
+  bool read_hdf5(std::string h5name);
   /** read walkers. Master reads and scatter the walkers */
-  bool read_hdf5_scatter(const std::filesystem::path& h5name);
+  bool read_hdf5_scatter(std::string h5name);
   /** read walkers using PHDF5 */
-  bool read_phdf5(const std::filesystem::path& h5name);
+  bool read_phdf5(std::string h5name);
 };
 
 } // namespace qmcplusplus

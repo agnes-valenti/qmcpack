@@ -19,14 +19,11 @@
 #include <type_traits>
 #include <atomic>
 #include "config.h"
-#include "Common/allocator_traits.hpp"
-#if defined(ENABLE_OFFLOAD)
-#include <omp.h>
-#endif
+#include "allocator_traits.hpp"
 
 #if defined(QMC_OFFLOAD_MEM_ASSOCIATED)
-#include <VendorKind.hpp>
-#include <MemManageAlias.hpp>
+#include <CUDA/CUDAruntime.hpp>
+#include <omp.h>
 #endif
 
 namespace qmcplusplus
@@ -76,10 +73,10 @@ struct OMPallocator : public HostAllocator
   OMPallocator(const OMPallocator<U, V>&) : device_ptr_(nullptr)
   {}
 
-  template<class U>
+  template<class U, class V>
   struct rebind
   {
-    using other = OMPallocator<U, typename std::allocator_traits<HostAllocator>::template rebind_alloc<U>>;
+    typedef OMPallocator<U, V> other;
   };
 
   value_type* allocate(std::size_t n)
@@ -87,7 +84,7 @@ struct OMPallocator : public HostAllocator
     static_assert(std::is_same<T, value_type>::value, "OMPallocator and HostAllocator data types must agree!");
     value_type* pt = HostAllocator::allocate(n);
 #if defined(QMC_OFFLOAD_MEM_ASSOCIATED)
-    compute::MemManage<VendorKind>::mallocDevice((void **)&device_ptr_, n * sizeof(T));
+    cudaErrorCheck(cudaMalloc(&device_ptr_, n * sizeof(T)), "cudaMalloc failed in OMPallocator!");
     const int status = omp_target_associate_ptr(pt, device_ptr_, n * sizeof(T), 0, omp_get_default_device());
     if (status != 0)
       throw std::runtime_error("omp_target_associate_ptr failed in OMPallocator!");
@@ -104,10 +101,10 @@ struct OMPallocator : public HostAllocator
     OMPallocator_device_mem_allocated -= n * sizeof(T);
 #if defined(QMC_OFFLOAD_MEM_ASSOCIATED)
     T* device_ptr_from_omp = getOffloadDevicePtr(pt);
-    const int status       = omp_target_disassociate_ptr(pt, omp_get_default_device());
+    const int status = omp_target_disassociate_ptr(pt, omp_get_default_device());
     if (status != 0)
       throw std::runtime_error("omp_target_disassociate_ptr failed in OMPallocator!");
-    compute::MemManage<VendorKind>::freeDevice(device_ptr_from_omp);
+    cudaErrorCheck(cudaFree(device_ptr_from_omp), "cudaFree failed in OMPallocator!");
 #else
     PRAGMA_OFFLOAD("omp target exit data map(delete:pt[0:n])")
 #endif
@@ -133,8 +130,8 @@ private:
 template<typename T, class HostAllocator>
 struct qmc_allocator_traits<OMPallocator<T, HostAllocator>>
 {
-  static constexpr bool is_host_accessible = true;
-  static constexpr bool is_dual_space      = true;
+  static const bool is_host_accessible = true;
+  static const bool is_dual_space      = true;
 
   static void fill_n(T* ptr, size_t n, const T& value)
   {
@@ -144,19 +141,21 @@ struct qmc_allocator_traits<OMPallocator<T, HostAllocator>>
 
   static void attachReference(const OMPallocator<T, HostAllocator>& from,
                               OMPallocator<T, HostAllocator>& to,
-                              std::ptrdiff_t ptr_offset)
+                              const T* from_data,
+                              T* ref)
   {
+    std::ptrdiff_t ptr_offset = ref - from_data;
     to.attachReference(from, ptr_offset);
   }
 
-  static void updateTo(OMPallocator<T, HostAllocator>& alloc, T* host_ptr, size_t n, size_t offset = 0)
+  static void updateTo(OMPallocator<T, HostAllocator>& alloc, T* host_ptr, size_t n)
   {
-    PRAGMA_OFFLOAD("omp target update to(host_ptr[offset:n])");
+    PRAGMA_OFFLOAD("omp target update to(host_ptr[:n])");
   }
 
-  static void updateFrom(OMPallocator<T, HostAllocator>& alloc, T* host_ptr, size_t n, size_t offset = 0)
+  static void updateFrom(OMPallocator<T, HostAllocator>& alloc, T* host_ptr, size_t n)
   {
-    PRAGMA_OFFLOAD("omp target update from(host_ptr[offset:n])");
+    PRAGMA_OFFLOAD("omp target update from(host_ptr[:n])");
   }
 
   // Not very optimized device side copy.  Only used for testing.
@@ -168,103 +167,6 @@ struct qmc_allocator_traits<OMPallocator<T, HostAllocator>>
       dev_ptr[to + i] = dev_ptr[from + i];
   }
 };
-
-#if defined(ENABLE_OFFLOAD)
-/** allocator for OMPTarget device memory
- * @tparam T data type
- *
- * using this with something other than Ohmms containers?
- *  -- use caution, write unit tests! --
- * It's not tested beyond use in some unit tests using std::vector with constant size.
- * OMPTargetAllocator appears to meet all the nonoptional requirements of a c++ Allocator.
- *
- * Some of the default implementations in std::allocator_traits
- * of optional Allocator requirements may cause runtime or compilation failures.
- * They assume there is only one memory space and that the host has access to it.
- */
-template<typename T>
-class OMPTargetAllocator
-{
-public:
-  using value_type    = T;
-  using size_type     = size_t;
-  using pointer       = T*;
-  using const_pointer = const T*;
-
-  OMPTargetAllocator() = default;
-  template<class U>
-  OMPTargetAllocator(const OMPTargetAllocator<U>&)
-  {}
-
-  template<class U>
-  struct rebind
-  {
-    using other = OMPTargetAllocator<U>;
-  };
-
-  T* allocate(std::size_t n)
-  {
-    void* pt = omp_target_alloc(n * sizeof(T), omp_get_default_device());
-    if (!pt)
-      throw std::runtime_error("Allocation failed in OMPTargetAllocator!");
-    OMPallocator_device_mem_allocated += n * sizeof(T);
-    return static_cast<T*>(pt);
-  }
-
-  void deallocate(T* p, std::size_t n)
-  {
-    omp_target_free(p, omp_get_default_device());
-    OMPallocator_device_mem_allocated -= n * sizeof(T);
-  }
-
-  /** Provide a construct for std::allocator_traits::contruct to call.
-   *  Don't do anything on construct, pointer p is on the device!
-   *
-   *  For example std::vector calls this to default initialize each element. You'll segfault
-   *  if std::allocator_traits::construct tries doing that at p.
-   *
-   *  The standard is a bit confusing on this point. Implementing this is an optional requirement
-   *  of Allocator from C++11 on, its not slated to be removed.
-   *
-   *  Its deprecated for the std::allocator in c++17 and will be removed in c++20.  But we are not implementing
-   *  std::allocator.
-   *
-   *  STL containers only use Allocators through allocator_traits and std::allocator_traits handles the case
-   *  where no construct method is present in the Allocator.
-   *  But std::allocator_traits will call the Allocators construct method if present.
-   */
-  template<class U, class... Args>
-  static void construct(U* p, Args&&... args)
-  {}
-
-  /** Give std::allocator_traits something to call.
-   *  The default if this isn't present is to call p->~T() which
-   *  we can't do on device memory.
-   */
-  template<class U>
-  static void destroy(U* p)
-  {}
-};
-
-template<class T1, class T2>
-bool operator==(const OMPTargetAllocator<T1>&, const OMPTargetAllocator<T2>&)
-{
-  return true;
-}
-template<class T1, class T2>
-bool operator!=(const OMPTargetAllocator<T1>&, const OMPTargetAllocator<T2>&)
-{
-  return false;
-}
-
-template<typename T>
-struct qmc_allocator_traits<qmcplusplus::OMPTargetAllocator<T>>
-{
-  static const bool is_host_accessible = false;
-  static const bool is_dual_space      = false;
-  static void fill_n(T* ptr, size_t n, const T& value) {}
-};
-#endif
 
 } // namespace qmcplusplus
 #endif

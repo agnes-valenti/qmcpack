@@ -18,48 +18,22 @@
 #define QMCPLUSPLUS_DIRACDETERMINANTBATCHED_H
 
 #include "QMCWaveFunctions/Fermion/DiracDeterminantBase.h"
+#include "QMCWaveFunctions/Fermion/MatrixUpdateOMPTarget.h"
+#if defined(ENABLE_CUDA) && defined(ENABLE_OFFLOAD)
+#include "QMCWaveFunctions/Fermion/MatrixDelayedUpdateCUDA.h"
+#endif
+#include "DualAllocatorAliases.hpp"
 #include "WaveFunctionTypes.hpp"
 #include "type_traits/complex_help.hpp"
-#include "QMCWaveFunctions/Fermion/DelayedUpdateBatched.h"
-#include "DiracMatrixInverter.hpp"
 
 namespace qmcplusplus
 {
 
-//forward declaration
-class TWFFastDerivWrapper;
-
-template<PlatformKind PL, typename VT>
-struct UpdateEngineSelector;
-
-template<typename VT>
-struct UpdateEngineSelector<PlatformKind::OMPTARGET, VT>
-{
-  using Engine = DelayedUpdateBatched<PlatformKind::OMPTARGET, VT>;
-};
-
-#if defined(ENABLE_CUDA) && defined(ENABLE_OFFLOAD)
-template<typename VT>
-struct UpdateEngineSelector<PlatformKind::CUDA, VT>
-{
-  using Engine = DelayedUpdateBatched<PlatformKind::CUDA, VT>;
-};
-#endif
-
-#if defined(ENABLE_SYCL) && defined(ENABLE_OFFLOAD)
-template<typename VT>
-struct UpdateEngineSelector<PlatformKind::SYCL, VT>
-{
-  using Engine = DelayedUpdateBatched<PlatformKind::SYCL, VT>;
-};
-#endif
-
-template<PlatformKind PL, typename VT, typename FPVT>
+template<typename DET_ENGINE = MatrixUpdateOMPTarget<QMCTraits::ValueType, QMCTraits::QTFull::ValueType>>
 class DiracDeterminantBatched : public DiracDeterminantBase
 {
 public:
-  using UpdateEngine  = typename UpdateEngineSelector<PL, VT>::Engine;
-  using WFT           = WaveFunctionTypes<VT, FPVT>;
+  using WFT           = typename DET_ENGINE::WFT;
   using Value         = typename WFT::Value;
   using FullPrecValue = typename WFT::FullPrecValue;
   using PsiValue      = typename WFT::PsiValue;
@@ -69,16 +43,31 @@ public:
   using Real          = typename WFT::Real;
   using FullPrecGrad  = TinyVector<FullPrecValue, DIM>;
 
-  // the understanding of dual memory space needs to follow UpdateEngine
+  // the understanding of dual memory space needs to follow DET_ENGINE
   template<typename DT>
-  using DualVector = Vector<DT, OffloadPinnedAllocator<DT>>;
+  using PinnedDualAllocator = typename DET_ENGINE::template PinnedDualAllocator<DT>;
   template<typename DT>
-  using DualMatrix = Matrix<DT, OffloadPinnedAllocator<DT>>;
+  using DualVector = Vector<DT, PinnedDualAllocator<DT>>;
   template<typename DT>
-  using OffloadMatrix = Matrix<DT, OffloadPinnedAllocator<DT>>;
-  using DualVGLVector = VectorSoaContainer<Value, DIM + 2, OffloadPinnedAllocator<Value>>;
+  using DualMatrix    = Matrix<DT, PinnedDualAllocator<DT>>;
+  using DualVGLVector = VectorSoaContainer<Value, DIM + 2, PinnedDualAllocator<Value>>;
 
-  using OffloadMWVGLArray = typename SPOSet::OffloadMWVGLArray;
+  struct DiracDeterminantBatchedMultiWalkerResource : public Resource
+  {
+    DiracDeterminantBatchedMultiWalkerResource() : Resource("DiracDeterminantBatched") {}
+    DiracDeterminantBatchedMultiWalkerResource(const DiracDeterminantBatchedMultiWalkerResource&)
+        : DiracDeterminantBatchedMultiWalkerResource()
+    {}
+
+    Resource* makeClone() const override { return new DiracDeterminantBatchedMultiWalkerResource(*this); }
+    DualVector<LogValue> log_values;
+    /// value, grads, laplacian of single-particle orbital for particle-by-particle update and multi walker [5][nw*norb]
+    DualVGLVector phi_vgl_v;
+    // multi walker of ratio
+    std::vector<Value> ratios_local;
+    // multi walker of grads
+    std::vector<Grad> grad_new_local;
+  };
 
   /** constructor
    *@param spos the single-particle orbital set
@@ -86,24 +75,20 @@ public:
    *@param last index of last particle
    *@param ndelay delayed update rank
    */
-  DiracDeterminantBatched(SPOSet& phi,
+  DiracDeterminantBatched(std::shared_ptr<SPOSet>&& spos,
                           int first,
                           int last,
-                          int ndelay                          = 1,
+                          int ndelay                           = 1,
                           DetMatInvertor matrix_inverter_kind = DetMatInvertor::ACCEL);
 
   // copy constructor and assign operator disabled
-  DiracDeterminantBatched(const DiracDeterminantBatched& s)            = delete;
+  DiracDeterminantBatched(const DiracDeterminantBatched& s) = delete;
   DiracDeterminantBatched& operator=(const DiracDeterminantBatched& s) = delete;
-
-  std::string getClassName() const override { return "DiracDeterminant"; }
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& active,
-                           Vector<Value>& dlogpsi,
-                           Vector<Value>& dhpsioverpsi) override;
-
-  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& optvars, Vector<ValueType>& dlogpsi) override;
+                           std::vector<Value>& dlogpsi,
+                           std::vector<Value>& dhpsioverpsi) override;
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
 
@@ -126,29 +111,9 @@ public:
    */
   void evaluateRatios(const VirtualParticleSet& VP, std::vector<Value>& ratios) override;
 
-  void evaluateSpinorRatios(const VirtualParticleSet& VP,
-                            const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                            std::vector<Value>& ratios) override;
-
   void mw_evaluateRatios(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                          const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
                          std::vector<std::vector<Value>>& ratios) const override;
-
-  void mw_evaluateSpinorRatios(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                               const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
-                               const RefVector<std::pair<ValueVector, ValueVector>>& spinor_multiplier_list,
-                               std::vector<std::vector<Value>>& ratios) const override;
-
-  void evaluateDerivRatios(const VirtualParticleSet& VP,
-                           const opt_variables_type& optvars,
-                           std::vector<ValueType>& ratios,
-                           Matrix<ValueType>& dratios) override;
-
-  void evaluateSpinorDerivRatios(const VirtualParticleSet& VP,
-                                 const std::pair<ValueVector, ValueVector>& spinor_multiplier,
-                                 const opt_variables_type& optvars,
-                                 std::vector<ValueType>& ratios,
-                                 Matrix<ValueType>& dratios) override;
 
   PsiValue ratioGrad(ParticleSet& P, int iat, Grad& grad_iat) override;
 
@@ -158,29 +123,12 @@ public:
                     std::vector<PsiValue>& ratios,
                     std::vector<Grad>& grad_new) const override;
 
-  void mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                            const RefVectorWithLeader<ParticleSet>& p_list,
-                            int iat,
-                            std::vector<PsiValue>& ratios,
-                            std::vector<Grad>& grad_new,
-                            std::vector<ComplexType>& spingrad_new) const override;
-
-  PsiValue ratioGradWithSpin(ParticleSet& P, int iat, Grad& grad_iat, ComplexType& spingrad) override;
-
   Grad evalGrad(ParticleSet& P, int iat) override;
 
   void mw_evalGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                    const RefVectorWithLeader<ParticleSet>& p_list,
                    int iat,
                    std::vector<Grad>& grad_now) const override;
-
-  Grad evalGradWithSpin(ParticleSet& P, int iat, ComplexType& spingrad) override;
-
-  void mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                           const RefVectorWithLeader<ParticleSet>& p_list,
-                           int iat,
-                           std::vector<Grad>& grad_now,
-                           std::vector<ComplexType>& spingrad_now) const override;
 
   /** \todo would be great to have docs.
    *  Note: Can result in substantial CPU memory allocation on first call.
@@ -191,8 +139,8 @@ public:
   Grad evalGradSource(ParticleSet& P,
                       ParticleSet& source,
                       int iat,
-                      TinyVector<ParticleSet::ParticleGradient, OHMMS_DIM>& grad_grad,
-                      TinyVector<ParticleSet::ParticleLaplacian, OHMMS_DIM>& lapl_grad) override;
+                      TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
+                      TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override;
 
   /** move was accepted, update the real container
    */
@@ -220,21 +168,21 @@ public:
    *
    *  return of the log of the dirac determinant is the least of what it does.
    *
-   *  call to generate valid initial state for determinant and when you
+   *  call to generate valid inital state for determinant and when you
    *  suspect psiMinv or other state variables may have picked up error.
    */
   LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+                       ParticleSet::ParticleGradient_t& G,
+                       ParticleSet::ParticleLaplacian_t& L) override;
 
   void mw_evaluateLog(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                       const RefVectorWithLeader<ParticleSet>& p_list,
-                      const RefVector<ParticleSet::ParticleGradient>& G_list,
-                      const RefVector<ParticleSet::ParticleLaplacian>& L_list) const override;
+                      const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                      const RefVector<ParticleSet::ParticleLaplacian_t>& L_list) const override;
 
   void recompute(const ParticleSet& P) override;
 
-  /** Does a phi_.mw_evaluate_notranspose then mw_invertPsiM over a set of
+  /** Does a Phi->mw_evaluate_notranspose then mw_invertPsiM over a set of
    *  elements filtered based on the recompute mask.
    *
    */
@@ -243,17 +191,17 @@ public:
                     const std::vector<bool>& recompute) const override;
 
   LogValue evaluateGL(const ParticleSet& P,
-                      ParticleSet::ParticleGradient& G,
-                      ParticleSet::ParticleLaplacian& L,
+                      ParticleSet::ParticleGradient_t& G,
+                      ParticleSet::ParticleLaplacian_t& L,
                       bool fromscratch) override;
 
   void mw_evaluateGL(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                      const RefVectorWithLeader<ParticleSet>& p_list,
-                     const RefVector<ParticleSet::ParticleGradient>& G_list,
-                     const RefVector<ParticleSet::ParticleLaplacian>& L_list,
+                     const RefVector<ParticleSet::ParticleGradient_t>& G_list,
+                     const RefVector<ParticleSet::ParticleLaplacian_t>& L_list,
                      bool fromscratch) const override;
 
-  void evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi) override;
+  void evaluateHessian(ParticleSet& P, HessVector_t& grad_grad_psi) override;
 
   void createResource(ResourceCollection& collection) const override;
   void acquireResource(ResourceCollection& collection,
@@ -261,7 +209,6 @@ public:
   void releaseResource(ResourceCollection& collection,
                        const RefVectorWithLeader<WaveFunctionComponent>& wfc_list) const override;
 
-  void registerTWFFastDerivWrapper(const ParticleSet& P, TWFFastDerivWrapper& twf) const override;
   /** cloning function
    * @param tqp target particleset
    * @param spo spo set
@@ -269,13 +216,12 @@ public:
    * This interface is exposed only to SlaterDet and its derived classes
    * can overwrite to clone itself correctly.
    */
-  std::unique_ptr<DiracDeterminantBase> makeCopy(SPOSet& phi) const override;
+  std::unique_ptr<DiracDeterminantBase> makeCopy(std::shared_ptr<SPOSet>&& spo) const override;
 
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<Value>& ratios) override;
 
-  const auto& get_psiMinv() const { return psiMinv_; }
+  DET_ENGINE& get_det_engine() { return det_engine_; }
 
-private:
   /** @defgroup LegacySingleData
    *  @brief    Single Walker Data Members of Legacy OO design
    *            High and flexible throughput of walkers requires would ideally separate
@@ -285,12 +231,6 @@ private:
    *  @ingroup LegacySingleData
    *  @{
    */
-  /* inverse transpose of psiM(j,i) \f$= \psi_j({\bf r}_i)\f$
-   * Only NumOrbitals x NumOrbitals subblock has meaningful data
-   * The number of rows is equal to NumOrbitals
-   * The number of columns in each row is padded to a multiple of QMC_SIMD_ALIGNMENT
-   */
-  DualMatrix<Value> psiMinv_;
   /// fused memory for psiM, dpsiM and d2psiM. [5][norb*norb]
   DualVGLVector psiM_vgl;
   /** psiM(j,i) \f$= \psi_j({\bf r}_i)\f$. partial memory view of psiM_vgl
@@ -319,30 +259,28 @@ private:
   Vector<Grad> dpsiV_host_view;
   DualVector<Value> d2psiV;
   Vector<Value> d2psiV_host_view;
-  DualVector<Value> dspin_psiV;
-  Vector<Value> dspin_psiV_host_view;
 
   /// psi(r')/psi(r) during a PbyP move
   PsiValue curRatio;
   /**@}*/
 
-  struct DiracDeterminantBatchedMultiWalkerResource;
-  ResourceHandle<DiracDeterminantBatchedMultiWalkerResource> mw_res_handle_;
+  std::unique_ptr<DiracDeterminantBatchedMultiWalkerResource> mw_res_;
 
+private:
   ///reset the size: with the number of particles and number of orbtials
   void resize(int nel, int morb);
 
   /// Delayed update engine 1 per walker.
-  UpdateEngine det_engine_;
+  DET_ENGINE det_engine_;
 
   /// slow but doesn't consume device memory
   DiracMatrix<FullPrecValue> host_inverter_;
 
   /// matrix inversion engine this a crowd scope resource and only the leader engine gets it
-  ResourceHandle<DiracMatrixInverter<FPVT, VT>> accel_inverter_;
+  std::unique_ptr<typename DET_ENGINE::DetInverter> accel_inverter_;
 
-  /// compute G and L assuming psiMinv, dpsiM, d2psiM are ready for use
-  void computeGL(ParticleSet::ParticleGradient& G, ParticleSet::ParticleLaplacian& L) const;
+  /// compute G adn L assuming psiMinv, dpsiM, d2psiM are ready for use
+  void computeGL(ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L) const;
 
   /// single invert logdetT(psiM)
   /// as a side effect this->log_value_ gets the log determinant of logdetT
@@ -359,8 +297,21 @@ private:
    *  the compute mask. See future PR for those changes, or drop of compute_mask argument.
    */
   static void mw_invertPsiM(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                            const RefVector<const DualMatrix<Value>>& logdetT_list,
-                            const RefVector<DualMatrix<Value>>& a_inv_lis);
+                     const RefVector<const DualMatrix<Value>>& logdetT_list,
+                     const RefVector<DualMatrix<Value>>& a_inv_lis);
+
+  // make this class unit tests friendly without the need of setup resources.
+  void guardMultiWalkerRes()
+  {
+    if (!mw_res_)
+    {
+      std::cerr
+          << "WARNING DiracDeterminantBatched : This message should not be seen in production (performance bug) runs "
+             "but only unit tests (expected)."
+          << std::endl;
+      mw_res_ = std::make_unique<DiracDeterminantBatchedMultiWalkerResource>();
+    }
+  }
 
   /// Resize all temporary arrays required for force computation.
   void resizeScratchObjectsForIonDerivs();
@@ -369,22 +320,17 @@ private:
   const int ndelay_;
 
   /// selected scheme for inversion with walker batching
-  const DetMatInvertor matrix_inverter_kind_;
+  DetMatInvertor matrix_inverter_kind_;
 
   /// timers
   NewTimer &D2HTimer, &H2DTimer;
 };
 
-extern template class DiracDeterminantBatched<PlatformKind::OMPTARGET,
-                                              QMCTraits::ValueType,
-                                              QMCTraits::QTFull::ValueType>;
+extern template class DiracDeterminantBatched<>;
 #if defined(ENABLE_CUDA) && defined(ENABLE_OFFLOAD)
-extern template class DiracDeterminantBatched<PlatformKind::CUDA, QMCTraits::ValueType, QMCTraits::QTFull::ValueType>;
+extern template class DiracDeterminantBatched<
+    MatrixDelayedUpdateCUDA<QMCTraits::ValueType, QMCTraits::QTFull::ValueType>>;
 #endif
-#if defined(ENABLE_SYCL) && defined(ENABLE_OFFLOAD)
-extern template class DiracDeterminantBatched<PlatformKind::SYCL, QMCTraits::ValueType, QMCTraits::QTFull::ValueType>;
-#endif
-
 
 } // namespace qmcplusplus
 #endif

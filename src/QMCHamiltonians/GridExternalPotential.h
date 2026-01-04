@@ -24,13 +24,25 @@ namespace qmcplusplus
 {
 /** This class allows one to read in an arbitrary external potential
   */
-class GridExternalPotential : public OperatorBase
+struct GridExternalPotential : public OperatorBase
 {
-public:
-  GridExternalPotential(ParticleSet& P);
+  const ParticleSet& Ps;
 
-  std::string getClassName() const override { return "GridExternalPotential"; }
+  std::shared_ptr<UBspline_3d_d> spline_data;
 
+#if !defined(REMOVE_TRACEMANAGER)
+  ///single particle trace sample array
+  Array<TraceReal, 1>* V_sample;
+#endif
+
+  //construction/destruction
+  GridExternalPotential(ParticleSet& P) : Ps(P)
+  {
+    setEnergyDomain(POTENTIAL);
+    oneBodyQuantumDomain(P);
+  }
+
+  //unneeded interface functions
   void resetTargetParticleSet(ParticleSet& P) override {}
 
   //standard interface functions
@@ -40,28 +52,27 @@ public:
 
   //functions for physical (hamiltonian component) estimator
   Return_t evaluate(ParticleSet& P) override;
-  Return_t evaluate(ParticleSet& P, std::vector<NonLocalData>& Txy);
+  inline Return_t evaluate(ParticleSet& P, std::vector<NonLocalData>& Txy) { return evaluate(P); }
 
 #if !defined(REMOVE_TRACEMANAGER)
   //traces interface
-  void contributeParticleQuantities() override;
+  void contributeParticleQuantities() override { request_.contribute_array(name_); }
 
-  void checkoutParticleQuantities(TraceManager& tm) override;
+  void checkoutParticleQuantities(TraceManager& tm) override
+  {
+    streaming_particles_ = request_.streaming_array(name_);
+    if (streaming_particles_)
+      V_sample = tm.checkout_real<1>(name_, Ps);
+  }
 
-  void deleteParticleQuantities() override;
+  void deleteParticleQuantities() override
+  {
+    if (streaming_particles_)
+      delete V_sample;
+  }
 
-private:
-  Return_t evaluate_sp(ParticleSet& P);
-#endif
-
-private:
-  const ParticleSet& ps_;
-
-  std::shared_ptr<UBspline_3d_d> spline_data_;
-
-#if !defined(REMOVE_TRACEMANAGER)
-  ///single particle trace sample array
-  Array<TraceReal, 1>* v_sample_;
+  //  not really for interface, just collects traces
+  inline Return_t evaluate_sp(ParticleSet& P);
 #endif
 };
 } // namespace qmcplusplus

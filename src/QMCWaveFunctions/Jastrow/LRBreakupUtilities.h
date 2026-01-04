@@ -44,8 +44,8 @@ struct YukawaBreakup
 
   void reset(ParticleSet& ref)
   {
-    NormFactor    = 4.0 * M_PI / ref.getLattice().Volume;
-    T Density     = ref.getTotalNum() / ref.getLattice().Volume;
+    NormFactor    = 4.0 * M_PI / ref.Lattice.Volume;
+    T Density     = ref.getTotalNum() / ref.Lattice.Volume;
     Rs            = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     SqrtRs        = std::sqrt(Rs);
     OneOverSqrtRs = 1.0 / SqrtRs;
@@ -53,7 +53,7 @@ struct YukawaBreakup
 
   void reset(ParticleSet& ref, T rs)
   {
-    NormFactor = 4.0 * M_PI / ref.getLattice().Volume;
+    NormFactor = 4.0 * M_PI / ref.Lattice.Volume;
     //NormFactor*=(rs*rs*rs)/(Rs*Rs*Rs);
     Rs            = rs;
     SqrtRs        = std::sqrt(Rs);
@@ -120,10 +120,10 @@ struct DerivRPABreakup
 
   void reset(ParticleSet& ref)
   {
-    //       NormFactor= 4.0*M_PI/ref.getLattice().Volume;
+    //       NormFactor= 4.0*M_PI/ref.Lattice.Volume;
     //       NormFactor=4.0*M_PI/ref.getTotalNum();
     NormFactor = 1.0 / ref.getTotalNum();
-    Density    = ref.getTotalNum() / ref.getLattice().Volume;
+    Density    = ref.getTotalNum() / ref.Lattice.Volume;
     Rs         = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     //unpolarized K_f
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -131,10 +131,10 @@ struct DerivRPABreakup
 
   void reset(ParticleSet& ref, T rs)
   {
-    //       NormFactor=4.0*M_PI/ref.getLattice().Volume;
+    //       NormFactor=4.0*M_PI/ref.Lattice.Volume;
     NormFactor = 1.0 / ref.getTotalNum();
     //       NormFactor=4.0*M_PI/ref.getTotalNum();
-    Density = ref.getTotalNum() / ref.getLattice().Volume;
+    Density = ref.getTotalNum() / ref.Lattice.Volume;
     Rs      = rs;
     //unpolarized
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -190,10 +190,10 @@ struct RPABreakup
 
   void reset(ParticleSet& ref)
   {
-    //       NormFactor= 4.0*M_PI/ref.getLattice().Volume;
+    //       NormFactor= 4.0*M_PI/ref.Lattice.Volume;
     //       NormFactor=4.0*M_PI/ref.getTotalNum();
     NormFactor = 1.0 / ref.getTotalNum();
-    Density    = ref.getTotalNum() / ref.getLattice().Volume;
+    Density    = ref.getTotalNum() / ref.Lattice.Volume;
     Rs         = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     //unpolarized K_f
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -201,10 +201,10 @@ struct RPABreakup
 
   void reset(ParticleSet& ref, T rs)
   {
-    //       NormFactor=4.0*M_PI/ref.getLattice().Volume;
+    //       NormFactor=4.0*M_PI/ref.Lattice.Volume;
     NormFactor = 1.0 / ref.getTotalNum();
     //       NormFactor=4.0*M_PI/ref.getTotalNum();
-    Density = ref.getTotalNum() / ref.getLattice().Volume;
+    Density = ref.getTotalNum() / ref.Lattice.Volume;
     Rs      = rs;
     //unpolarized
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -265,8 +265,8 @@ struct DerivYukawaBreakup
 
   void reset(ParticleSet& ref)
   {
-    NormFactor            = 4.0 * M_PI / ref.getLattice().Volume;
-    T Density             = ref.getTotalNum() / ref.getLattice().Volume;
+    NormFactor            = 4.0 * M_PI / ref.Lattice.Volume;
+    T Density             = ref.getTotalNum() / ref.Lattice.Volume;
     n2                    = ref.getTotalNum();
     Rs                    = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     SqrtRs                = std::sqrt(Rs);
@@ -274,13 +274,13 @@ struct DerivYukawaBreakup
     OneOverSqrtRs3        = std::pow(OneOverSqrtRs, 3.0);
     OneOverRs             = 1.0 / Rs;
     DerivSecondTaylorTerm = (1.0 / 12.0) * OneOverSqrtRs3;
-    Rc                    = ref.getLattice().LR_rc;
+    Rc                    = ref.Lattice.LR_rc;
   }
 
   void reset(ParticleSet& ref, T rs)
   {
     Rs                    = rs;
-    NormFactor            = 4.0 * M_PI / ref.getLattice().Volume;
+    NormFactor            = 4.0 * M_PI / ref.Lattice.Volume;
     n2                    = ref.getTotalNum();
     SqrtRs                = std::sqrt(Rs);
     OneOverSqrtRs         = 1.0 / SqrtRs;
@@ -342,7 +342,7 @@ struct EPRPABreakup
   void reset(ParticleSet& ref)
   {
     NormFactor = 1.0 / ref.getTotalNum();
-    Density    = ref.getTotalNum() / ref.getLattice().Volume;
+    Density    = ref.getTotalNum() / ref.Lattice.Volume;
     Rs         = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     //unpolarized K_f
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -350,10 +350,10 @@ struct EPRPABreakup
 
   void reset(ParticleSet& ref, T rs)
   {
-    //       NormFactor=4.0*M_PI/ref.getLattice().Volume;
+    //       NormFactor=4.0*M_PI/ref.Lattice.Volume;
     NormFactor = 1.0 / ref.getTotalNum();
     //       NormFactor=4.0*M_PI/ref.getTotalNum();
-    Density = ref.getTotalNum() / ref.getLattice().Volume;
+    Density = ref.getTotalNum() / ref.Lattice.Volume;
     Rs      = rs;
     //unpolarized
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -408,7 +408,7 @@ struct derivEPRPABreakup
   void reset(ParticleSet& ref)
   {
     NormFactor = 1.0 / ref.getTotalNum();
-    Density    = ref.getTotalNum() / ref.getLattice().Volume;
+    Density    = ref.getTotalNum() / ref.Lattice.Volume;
     Rs         = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     //unpolarized K_f
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -416,10 +416,10 @@ struct derivEPRPABreakup
 
   void reset(ParticleSet& ref, T rs)
   {
-    //       NormFactor=4.0*M_PI/ref.getLattice().Volume;
+    //       NormFactor=4.0*M_PI/ref.Lattice.Volume;
     NormFactor = 1.0 / ref.getTotalNum();
     //       NormFactor=4.0*M_PI/ref.getTotalNum();
-    Density = ref.getTotalNum() / ref.getLattice().Volume;
+    Density = ref.getTotalNum() / ref.Lattice.Volume;
     Rs      = rs;
     //unpolarized
     Kf = std::pow(2.25 * M_PI, 1.0 / 3.0) / Rs;
@@ -465,7 +465,7 @@ struct derivEPRPABreakup
 template<typename T>
 struct ShortRangePartAdapter : OptimizableFunctorBase
 {
-  using HandlerType = LRHandlerBase;
+  typedef LRHandlerBase HandlerType;
 
   explicit ShortRangePartAdapter(HandlerType* inhandler) : Uconst(0), myHandler(inhandler) {}
 
@@ -475,10 +475,21 @@ struct ShortRangePartAdapter : OptimizableFunctorBase
   inline void setRmax(real_type rm) { Uconst = myHandler->evaluate(rm, 1.0 / rm); }
   inline real_type evaluate(real_type r) { return f(r); }
   inline real_type f(real_type r) override { return myHandler->evaluate(r, 1.0 / r) - Uconst; }
+  inline real_type f(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+    std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+    abort;
+    return 0; }
   inline real_type df(real_type r) override { return myHandler->srDf(r, 1.0 / r); }
-  void checkInVariablesExclusive(opt_variables_type& active) override {}
+  /** implement the virtual function of OptimizableFunctorBase */
+  inline real_type df(real_type r, real_type xsquared, real_type ysquared, int numpart, int tauvalue) override { 
+  std::cout<<"AV in SplineFunctors.h::f, needs to be implemented"<<std::endl;
+  abort;
+  return 0; }
+
+  
+  void checkInVariables(opt_variables_type& active) override {}
   void checkOutVariables(const opt_variables_type& active) override {}
-  void resetParametersExclusive(const opt_variables_type& optVariables) override {}
+  void resetParameters(const opt_variables_type& optVariables) override {}
   bool put(xmlNodePtr cur) override { return true; }
   real_type Uconst;
   HandlerType* myHandler;
@@ -502,11 +513,11 @@ struct RPABFeeBreakup
   // assumes 3D here, fix
   void reset(ParticleSet& ref)
   {
-    volume = ref.getLattice().Volume;
+    volume = ref.Lattice.Volume;
     nspin  = ref.groups();
     for (int i = 0; i < nspin; ++i)
       nppss[i] = ref.last(i) - ref.first(i);
-    Density = ref.getTotalNum() / ref.getLattice().Volume;
+    Density = ref.getTotalNum() / ref.Lattice.Volume;
     Rs      = std::pow(3.0 / (4.0 * M_PI * Density), 1.0 / 3.0);
     nelec   = ref.getTotalNum();
     hbs2m   = 0.5;
@@ -523,8 +534,8 @@ struct RPABFeeBreakup
   // assumes 3D here, fix
   void reset(ParticleSet& ref, T rs)
   {
-    Density = ref.getTotalNum() / ref.getLattice().Volume;
-    volume  = ref.getLattice().Volume;
+    Density = ref.getTotalNum() / ref.Lattice.Volume;
+    volume  = ref.Lattice.Volume;
     nspin   = ref.groups();
     for (int i = 0; i < nspin; ++i)
       nppss[i] = ref.last(i) - ref.first(i);

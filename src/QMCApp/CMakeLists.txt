@@ -18,16 +18,13 @@
 ####################################
 # create libqmc
 ####################################
-set(QMCAPPDIR QMCAppBase.cpp QMCMain.cpp)
+set(QMCAPPDIR QMCAppBase.cpp QMCMainState.cpp QMCMain.cpp CoupledMC.cpp)
 if(USE_OBJECT_TARGET)
   add_library(qmc OBJECT ${QMCAPPDIR})
 else()
   add_library(qmc ${QMCAPPDIR})
 endif()
 target_link_libraries(qmc PUBLIC qmcdriver)
-if(BUILD_AFQMC)
-  target_link_libraries(qmc PUBLIC afqmc)
-endif(BUILD_AFQMC)
 
 ####################################
 # QMCPACK application
@@ -51,14 +48,17 @@ if(USE_OBJECT_TARGET)
     qmcestimators
     qmcham
     qmcwfs
-    qmcwfs_omptarget
-    spline2
-    spline2_omptarget
     qmcparticle
-    qmcparticle_omptarget
     qmcutil
     platform_omptarget_LA)
 endif()
 
-add_test_target_in_output_location(qmcpack bin)
+if(BUILD_AFQMC)
+  target_link_libraries(qmcpack afqmc)
+endif(BUILD_AFQMC)
+
+if(BUILD_FCIQMC)
+  target_link_libraries(qmcpack fciqmc)
+endif(BUILD_FCIQMC)
+
 install(TARGETS qmcpack RUNTIME DESTINATION bin)

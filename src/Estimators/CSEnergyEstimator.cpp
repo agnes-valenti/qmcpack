@@ -17,11 +17,9 @@
 #include "CSEnergyEstimator.h"
 #include "QMCHamiltonians/QMCHamiltonian.h"
 #include "QMCWaveFunctions/TrialWaveFunction.h"
-#include "CPU/VectorOps.h"
+#include "ParticleBase/ParticleAttribOps.h"
 #include "Message/CommOperators.h"
 #include "QMCDrivers/DriftOperators.h"
-
-#include <array>
 
 namespace qmcplusplus
 {
@@ -29,7 +27,7 @@ namespace qmcplusplus
    * @param h QMCHamiltonian to define the components
    * @param hcopy number of copies of QMCHamiltonians
    */
-CSEnergyEstimator::CSEnergyEstimator(const QMCHamiltonian& h, int hcopy)
+CSEnergyEstimator::CSEnergyEstimator(QMCHamiltonian& h, int hcopy)
 {
   int NumObservables = h.sizeOfObservables();
 
@@ -47,25 +45,6 @@ CSEnergyEstimator::CSEnergyEstimator(const QMCHamiltonian& h, int hcopy)
   scalars_saved.resize(scalars.size());
 }
 
-CSEnergyEstimator::CSEnergyEstimator(CSLocalEnergyInput&& input, const QMCHamiltonian& h) : input_(input)
-{
-  int NumObservables = h.sizeOfObservables();
-
-  NumCopies        = input_.get_n_psi();
-  FirstHamiltonian = h.startIndex();
-  LastHamiltonian  = FirstHamiltonian + NumObservables;
-
-  //add names
-  h_components.push_back("LocEne");
-  h_components.push_back("LocPot");
-  for (int i = 0; i < NumObservables; ++i)
-    h_components.push_back(h.getObservableName(i));
-
-  scalars.resize(NumCopies + h_components.size() * (NumCopies + NumCopies * (NumCopies - 1) / 2));
-  scalars_saved.resize(scalars.size());
-}
-  
-  
 CSEnergyEstimator* CSEnergyEstimator::clone() { return new CSEnergyEstimator(*this); }
 
 /**  add the local energy, variance and all the Hamiltonian components to the scalar record container
@@ -73,26 +52,22 @@ CSEnergyEstimator* CSEnergyEstimator::clone() { return new CSEnergyEstimator(*th
    */
 void CSEnergyEstimator::add2Record(RecordNamedProperty<RealType>& record)
 {
-  std::array<char, 80> aname;
+  char aname[80];
   FirstIndex = record.size();
 
   for (int i = 0; i < NumCopies; ++i)
   {
     for (int k = 0; k < h_components.size(); ++k)
     {
-      int length = std::snprintf(aname.data(), aname.size(), "%s_%i", h_components[k].c_str(), i);
-      if (length < 0)
-        throw std::runtime_error("Error generating record name");
-      record.add(std::string(aname.data(), length));
+      sprintf(aname, "%s_%i", h_components[k].c_str(), i);
+      int dummy = record.add(aname);
     }
   }
 
   for (int i = 0; i < NumCopies; ++i)
   {
-    int length = std::snprintf(aname.data(), aname.size(), "wpsi_%i", i);
-    if (length < 0)
-      throw std::runtime_error("Error generating record name");
-    record.add(std::string(aname.data(), length));
+    sprintf(aname, "wpsi_%i", i);
+    int dummy = record.add(aname);
   }
 
   for (int i = 0; i < NumCopies; i++)
@@ -101,10 +76,8 @@ void CSEnergyEstimator::add2Record(RecordNamedProperty<RealType>& record)
     {
       for (int k = 0; k < h_components.size(); ++k)
       {
-        int length = std::snprintf(aname.data(), aname.size(), "d%s_%d_%d", h_components[k].c_str(), i, j);
-        if (length < 0)
-          throw std::runtime_error("Error generating record name");
-        record.add(std::string(aname.data(), length));
+        sprintf(aname, "d%s_%d_%d", h_components[k].c_str(), i, j);
+        int dummy = record.add(aname);
       }
     }
   }
@@ -118,7 +91,7 @@ void CSEnergyEstimator::add2Record(RecordNamedProperty<RealType>& record)
   //msg.add(d_data.begin(),d_data.end());
 }
 
-void CSEnergyEstimator::registerObservables(std::vector<ObservableHelper>& h5dec, hdf_archive& file)
+void CSEnergyEstimator::registerObservables(std::vector<ObservableHelper>& h5dec, hid_t gid)
 {
   //NEED TO IMPLEMENT for hdf5
 }

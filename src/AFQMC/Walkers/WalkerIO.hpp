@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <vector>
 #include <type_traits>
+#include "type_traits/container_traits_multi.h"
 
 #include "Configuration.h"
 #include "AFQMC/config.h"
@@ -190,8 +191,10 @@ bool restartFromHDF5(WalkerSet& wset,
       return false;
     }
 
-    read.push("Walkers");
-    read.push("WalkerSet");
+    if (!read.push("Walkers"))
+      return false;
+    if (!read.push("WalkerSet"))
+      return false;
 
     if (!read.readEntry(Idata, "dims"))
       return false;
@@ -372,15 +375,13 @@ bool dumpToHDF5(WalkerSet& wset, hdf_archive& dump)
       displ.reextent({TG.TG_heads().size()});
       wlk_per_blk.reserve(nblks);
 
-      using std::get;
-
       int NMO, NAEA, NAEB = 0;
       { // to limit the scope
         auto w = wset[0];
-        NMO    = get<0>((*w.SlaterMatrix(Alpha)).sizes());
-        NAEA   = get<1>((*w.SlaterMatrix(Alpha)).sizes());
+        NMO    = (*w.SlaterMatrix(Alpha)).size(0);
+        NAEA   = (*w.SlaterMatrix(Alpha)).size(1);
         if (walker_type == COLLINEAR)
-          NAEB = get<1>((*w.SlaterMatrix(Beta)).sizes());
+          NAEB = (*w.SlaterMatrix(Beta)).size(1);
         if (walker_type == NONCOLLINEAR)
           NMO /= 2;
       }

@@ -43,15 +43,15 @@ void output_vector(const std::string& name, std::vector<int>& vec)
 // uncomment the std::cout and output_vector lines to see the walker assignments
 TEST_CASE("Walker control assign walkers", "[drivers][walker_control]")
 {
-  int Cur_pop     = 8;
-  int NumContexts = 4;
+  int Cur_pop                 = 8;
+  int NumContexts             = 4;
   std::vector<int> FairOffset(NumContexts + 1);
 
   // The in loop copy is necessary to support the assert at the end of the swaps.
   // This was important for debugging but will go in a future PR as part of cleaning
   // update determineNewWalkerPopulation
   std::vector<int> NumPerRank = {4, 4, 0, 0};
-  std::vector<int> NewNum     = NumPerRank;
+  std::vector<int> NewNum = NumPerRank;
   for (int me = 0; me < NumContexts; me++)
   {
     std::vector<int> minus;
@@ -243,9 +243,8 @@ struct WalkerControlMPITest
 
     wc.use_nonblocking = use_nonblocking;
 
-    const SimulationCell simulation_cell;
-    MCWalkerConfiguration W(simulation_cell); // Unused in the function
-    using Walker_t = MCWalkerConfiguration::Walker_t;
+    MCWalkerConfiguration W; // Unused in the function
+    typedef MCWalkerConfiguration::Walker_t Walker_t;
 
     //UPtrVector<Walker_t> walkers;
     // Set up Cur_pop
@@ -258,7 +257,7 @@ struct WalkerControlMPITest
     }
     // One walker on every node, should be no swapping
     wc.good_w.push_back(std::make_unique<Walker_t>());
-    wc.good_w[0]->setWalkerID(c->rank());
+    wc.good_w[0]->ID = c->rank();
     wc.ncopy_w.push_back(0);
 
     wc.swapWalkersSimple(W);
@@ -277,8 +276,8 @@ struct WalkerControlMPITest
         wc.good_w.push_back(std::make_unique<Walker_t>());
 
         // Use the ID variable to check that the walker content was transmitted
-        wc.good_w[1]->setWalkerID(c->size());
-        wc.good_w[2]->setWalkerID(c->size() + 1);
+        wc.good_w[1]->ID = c->size();
+        wc.good_w[2]->ID = c->size() + 1;
 
         wc.ncopy_w.push_back(0);
         wc.ncopy_w.push_back(0);
@@ -296,19 +295,19 @@ struct WalkerControlMPITest
         REQUIRE(wc.good_w.size() == 2);
         // This check is a bit too restrictive - no guarantee the last walker was the
         //  one transmitted
-        bool okay1 = wc.good_w[1]->getWalkerID() == c->size() || wc.good_w[1]->getWalkerID() == c->size() + 1;
+        bool okay1 = wc.good_w[1]->ID == c->size() || wc.good_w[1]->ID == c->size() + 1;
         REQUIRE(okay1);
       }
       else if (c->rank() == c->size() - 1)
       {
         REQUIRE(wc.good_w.size() == 2);
-        bool okay2 = wc.good_w[1]->getWalkerID() == c->size() || wc.good_w[1]->getWalkerID() == c->size() + 1;
+        bool okay2 = wc.good_w[1]->ID == c->size() || wc.good_w[1]->ID == c->size() + 1;
         REQUIRE(okay2);
       }
       else
       {
         REQUIRE(wc.good_w.size() == 1);
-        REQUIRE(wc.good_w[0]->getWalkerID() == c->rank());
+        REQUIRE(wc.good_w[0]->ID == c->rank());
       }
       wc.NumPerRank[0]             = 1;
       wc.NumPerRank[c->size() - 1] = 2;
@@ -327,10 +326,10 @@ struct WalkerControlMPITest
         // wc.good_w.push_back(new Walker_t());
         // wc.good_w.push_back(new Walker_t());
         int nwalkers_rank                = wc.good_w.size();
-        wc.good_w[nwalkers_rank - 1]->setWalkerID(c->size() + 5);
-        wc.good_w[nwalkers_rank - 2]->setWalkerID(c->size() + 4);
-        // wc.good_w[nwalkers_rank - 3]->setWalkerID(c->size() + 3);
-        // wc.good_w[nwalkers_rank - 4]->setWalkerID(c->size() + 2);
+        wc.good_w[nwalkers_rank - 1]->ID = c->size() + 5;
+        wc.good_w[nwalkers_rank - 2]->ID = c->size() + 4;
+        // wc.good_w[nwalkers_rank - 3]->ID = c->size() + 3;
+        // wc.good_w[nwalkers_rank - 4]->ID = c->size() + 2;
 
         wc.ncopy_w.push_back(2);
         wc.ncopy_w.push_back(1);
@@ -445,18 +444,17 @@ TEST_CASE("Walker control reconfiguration", "[drivers][walker_control]")
     wr.dN[1] = -1;
   }
 
-  const SimulationCell simulation_cell;
-  MCWalkerConfiguration W(simulation_cell);
+  MCWalkerConfiguration W;
   W.createWalkers(1);
-  using Walker_t = MCWalkerConfiguration::Walker_t;
+  typedef MCWalkerConfiguration::Walker_t Walker_t;
 
   if (c->rank() == 0)
   {
-    W[0]->setWalkerID(100);
+    W[0]->ID = 100;
   }
   else
   {
-    W[0]->setWalkerID(1);
+    W[0]->ID = 1;
   }
 
   std::vector<int> plus, minus;
@@ -471,17 +469,17 @@ TEST_CASE("Walker control reconfiguration", "[drivers][walker_control]")
   if (plus.size() > 0)
   {
     wr.sendWalkers(W, plus);
-    REQUIRE(W.getActiveWalkers() == 1);
-    REQUIRE(W[0]->getWalkerID() == 100);
+    REQUIRE(W.WalkerList.size() == 1);
+    REQUIRE(W[0]->ID == 100);
   }
 
   if (minus.size() > 0)
   {
     wr.recvWalkers(W, minus);
-    REQUIRE(W.getActiveWalkers() == 1);
+    REQUIRE(W.WalkerList.size() == 1);
     // Use ID and ParentID to check the walker was transmitted
-    REQUIRE(W[0]->getWalkerID() == 1 + c->size());
-    REQUIRE(W[0]->getParentID() == 100);
+    REQUIRE(W[0]->ID == 1 + c->size());
+    REQUIRE(W[0]->ParentID == 100);
   }
 }
 

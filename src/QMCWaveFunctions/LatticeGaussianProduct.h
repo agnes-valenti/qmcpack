@@ -46,13 +46,27 @@ public:
 
   ~LatticeGaussianProduct() override;
 
-  std::string getClassName() const override { return "LatticeGaussianProduct"; }
+  /** check out optimizable variables
+   */
+  void checkOutVariables(const opt_variables_type& o) override;
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+  /** check in an optimizable parameter
+   * @param o a super set of optimizable variables
+   */
+  void checkInVariables(opt_variables_type& o) override;
 
-  PsiValue ratio(ParticleSet& P, int iat) override;
+  /** print the state, e.g., optimizables */
+  void reportStatus(std::ostream& os) override;
+
+  /** reset the parameters during optimizations
+   */
+  void resetParameters(const opt_variables_type& active) override;
+
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
+
+  PsiValueType ratio(ParticleSet& P, int iat) override;
 
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override;
 
@@ -60,23 +74,19 @@ public:
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch) override;
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
 
   GradType evalGrad(ParticleSet& P, int iat) override;
 
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
 
-  void evaluateDerivatives(ParticleSet& P,
-                           const opt_variables_type& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
-  {}
-
-  void evaluateLogAndStore(const ParticleSet& P, ParticleSet::ParticleGradient& dG, ParticleSet::ParticleLaplacian& dL);
+  void evaluateLogAndStore(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& dG,
+                           ParticleSet::ParticleLaplacian_t& dL);
 };
 } // namespace qmcplusplus
 #endif

@@ -23,48 +23,48 @@
  */
 namespace qmcplusplus
 {
-class ExampleHeComponent : public WaveFunctionComponent, OptimizableObject
+class ExampleHeComponent : public WaveFunctionComponent
 {
 public:
   ExampleHeComponent(const ParticleSet& ions, ParticleSet& els)
-      : OptimizableObject("example"),
+      : WaveFunctionComponent("ExampleHeComponent"),
         ions_(ions),
-        my_table_ee_idx_(els.addTable(els, DTModes::NEED_TEMP_DATA_ON_HOST | DTModes::NEED_VP_FULL_TABLE_ON_HOST)),
-        my_table_ei_idx_(els.addTable(ions, DTModes::NEED_VP_FULL_TABLE_ON_HOST)){};
+        my_table_ee_idx_(els.addTable(els)),
+        my_table_ei_idx_(els.addTable(ions)){};
 
   using OptVariablesType = optimize::VariableSet;
   using PtclGrpIndexes   = QMCTraits::PtclGrpIndexes;
 
-  std::string getClassName() const override { return "ExampleHeComponent"; }
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override { opt_obj_refs.push_back(*this); }
-  bool isOptimizable() const override { return true; }
-  void checkInVariablesExclusive(OptVariablesType& active) override { active.insertFrom(my_vars_); }
+  void checkInVariables(OptVariablesType& active) override { active.insertFrom(my_vars_); }
   void checkOutVariables(const OptVariablesType& active) override { my_vars_.getIndex(active); }
-  void resetParametersExclusive(const OptVariablesType& active) override;
+  void resetParameters(const OptVariablesType& active) override;
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+
+  void reportStatus(std::ostream& os) override {}
+
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override {}
 
   void restore(int iat) override {}
 
-  PsiValue ratio(ParticleSet& P, int iat) override;
+  PsiValueType ratio(ParticleSet& P, int iat) override;
 
   GradType evalGrad(ParticleSet& P, int iat) override;
 
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
   void evaluateDerivatives(ParticleSet& P,
                            const OptVariablesType& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override;
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override;
 
 
   void registerData(ParticleSet& P, WFBufferType& buf) override {}
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override {}
 

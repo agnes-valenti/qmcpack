@@ -23,43 +23,14 @@
 #define QMCPLUSPLUS_DIRACDETERMINANT_H
 
 #include "QMCWaveFunctions/Fermion/DiracDeterminantBase.h"
-#include <PlatformSelector.hpp>
-#include "DiracMatrix.h"
-#include "Fermion/DelayedUpdate.h"
-#if defined(ENABLE_CUDA) || defined(ENABLE_SYCL)
-#include "InverterAccel.hpp"
-#include "Fermion/DelayedUpdateAccel.h"
+#include "QMCWaveFunctions/Fermion/DelayedUpdate.h"
+#if defined(ENABLE_CUDA) && !defined(QMC_CUDA2HIP)
+#include "QMCWaveFunctions/Fermion/DelayedUpdateCUDA.h"
 #endif
 
 namespace qmcplusplus
 {
-template<PlatformKind P, typename T, typename FP_T>
-struct AccelEngine;
-
-template<typename T, typename FP_T>
-struct AccelEngine<PlatformKind::CPU, T, FP_T>
-{
-  static constexpr bool inverter_supported = false;
-  DelayedUpdate<T> update_eng_;
-};
-
-#if defined(ENABLE_CUDA) || defined(ENABLE_SYCL)
-template<PlatformKind P, typename T, typename FP_T>
-struct AccelEngine
-{
-  static constexpr bool inverter_supported = true;
-  DelayedUpdateAccel<P, T> update_eng_;
-  typename InverterAccel<P, FP_T>::Inverter inverter_;
-};
-#endif
-
-/** implements delayed update on CPU using BLAS
- * @tparam VT base precision value type of the delayed update engine
- * @tparam FPVT high precision value type for matrix inversion, FPVT >= VT
- */
-template<PlatformKind PL = PlatformKind::CPU,
-         typename VT     = QMCTraits::ValueType,
-         typename FPVT   = QMCTraits::QTFull::ValueType>
+template<typename DU_TYPE = DelayedUpdate<QMCTraits::ValueType, QMCTraits::QTFull::ValueType>>
 class DiracDeterminant : public DiracDeterminantBase
 {
 protected:
@@ -69,12 +40,13 @@ protected:
   void resize(int nel, int morb);
 
 public:
-  using ValueVector = SPOSet::ValueVector;
-  using ValueMatrix = SPOSet::ValueMatrix;
-  using GradVector  = SPOSet::GradVector;
-  using GradMatrix  = SPOSet::GradMatrix;
-  using HessMatrix  = SPOSet::HessMatrix;
-  using HessVector  = SPOSet::HessVector;
+  using ValueVector_t = SPOSet::ValueVector_t;
+  using ValueMatrix_t = SPOSet::ValueMatrix_t;
+  using GradVector_t  = SPOSet::GradVector_t;
+  using GradMatrix_t  = SPOSet::GradMatrix_t;
+  using HessMatrix_t  = SPOSet::HessMatrix_t;
+  using HessVector_t  = SPOSet::HessVector_t;
+  using HessType      = SPOSet::HessType;
 
   using mValueType = QMCTraits::QTFull::ValueType;
   using mGradType  = TinyVector<mValueType, DIM>;
@@ -85,114 +57,66 @@ public:
    *@param last index of last particle
    *@param ndelay delayed update rank
    */
-  DiracDeterminant(SPOSet& phi,
-                   int first,
-                   int last,
-                   int ndelay                          = 1,
-                   DetMatInvertor matrix_inverter_kind = DetMatInvertor::ACCEL);
-
-  ~DiracDeterminant() override;
+  DiracDeterminant(std::shared_ptr<SPOSet>&& spos, int first, int last, int ndelay = 1);
 
   // copy constructor and assign operator disabled
-  DiracDeterminant(const DiracDeterminant& s)            = delete;
+  DiracDeterminant(const DiracDeterminant& s) = delete;
   DiracDeterminant& operator=(const DiracDeterminant& s) = delete;
-
-  std::string getClassName() const override { return "DiracDeterminant"; }
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& active,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override;
-
-  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& optvars, Vector<ValueType>& dlogpsi) override;
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override;
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
 
-  void updateAfterSweep(const ParticleSet& P, ParticleSet::ParticleGradient& G, ParticleSet::ParticleLaplacian& L);
+  void updateAfterSweep(const ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
-
-  /** Finds the SPOSet associated with this determinant, and registers it with WFN wrapper
-   */
-  void registerTWFFastDerivWrapper(const ParticleSet& P, TWFFastDerivWrapper& twf) const final;
 
   /** return the ratio only for the  iat-th partcle move
    * @param P current configuration
    * @param iat the particle thas is being moved
    */
-  PsiValue ratio(ParticleSet& P, int iat) override;
+  PsiValueType ratio(ParticleSet& P, int iat) override;
 
   //Ye: TODO, good performance needs batched SPO evaluation.
   //void mw_calcRatio(const std::vector<WaveFunctionComponent*>& wfc_list,
   //                  const std::vector<ParticleSet*>& p_list,
   //                  int iat,
-  //                  std::vector<PsiValue>& ratios) override;
+  //                  std::vector<PsiValueType>& ratios) override;
 
   /** compute multiple ratios for a particle move
    */
   void evaluateRatios(const VirtualParticleSet& VP, std::vector<ValueType>& ratios) override;
 
-  void evaluateSpinorRatios(const VirtualParticleSet& VP,
-                            const std::pair<ValueVector, ValueVector>& spinor_multipler,
-                            std::vector<ValueType>& ratios) override;
-
   void mw_evaluateRatios(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                          const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
                          std::vector<std::vector<ValueType>>& ratios) const override;
 
-  void evaluateDerivRatios(const VirtualParticleSet& VP,
-                           const opt_variables_type& optvars,
-                           std::vector<ValueType>& ratios,
-                           Matrix<ValueType>& dratios) override;
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
-  void evaluateSpinorDerivRatios(const VirtualParticleSet& VP,
-                                 const std::pair<ValueVector, ValueVector>& spinor_multipler,
-                                 const opt_variables_type& optvars,
-                                 std::vector<ValueType>& ratios,
-                                 Matrix<ValueType>& dratios) override;
-
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
-
-  PsiValue ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad) final;
+  PsiValueType ratioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad) final;
 
   void mw_ratioGrad(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
                     const RefVectorWithLeader<ParticleSet>& p_list,
                     int iat,
-                    std::vector<PsiValue>& ratios,
+                    std::vector<PsiValueType>& ratios,
                     std::vector<GradType>& grad_new) const override;
-
-  void mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                            const RefVectorWithLeader<ParticleSet>& p_list,
-                            int iat,
-                            std::vector<PsiValue>& ratios,
-                            std::vector<GradType>& grad_new,
-                            std::vector<ComplexType>& spingrad_new) const override
-  {
-    mw_ratioGradWithSpin_serialized(wfc_list, p_list, iat, ratios, grad_new, spingrad_new);
-  }
 
   GradType evalGrad(ParticleSet& P, int iat) override;
 
   GradType evalGradWithSpin(ParticleSet& P, int iat, ComplexType& spingrad) final;
-
-  void mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
-                           const RefVectorWithLeader<ParticleSet>& p_list,
-                           int iat,
-                           std::vector<GradType>& grad_now,
-                           std::vector<ComplexType>& spingrad_now) const override
-  {
-    mw_evalGradWithSpin_serialized(wfc_list, p_list, iat, grad_now, spingrad_now);
-  }
 
   GradType evalGradSource(ParticleSet& P, ParticleSet& source, int iat) override;
 
   GradType evalGradSource(ParticleSet& P,
                           ParticleSet& source,
                           int iat,
-                          TinyVector<ParticleSet::ParticleGradient, OHMMS_DIM>& grad_grad,
-                          TinyVector<ParticleSet::ParticleLaplacian, OHMMS_DIM>& lapl_grad) override;
+                          TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
+                          TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override;
 
   /** move was accepted, update the real container
    */
@@ -224,24 +148,28 @@ public:
   void restore(int iat) override;
 
   ///evaluate log of a determinant for a particle set
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
   //Ye: TODO, good performance needs batched SPO evaluation.
   //void mw_evaluateLog(const std::vector<WaveFunctionComponent*>& wfc_list,
   //                    const std::vector<ParticleSet*>& p_list,
-  //                    const std::vector<ParticleSet::ParticleGradient*>& G_list,
-  //                    const std::vector<ParticleSet::ParticleLaplacian*>& L_list) override;
+  //                    const std::vector<ParticleSet::ParticleGradient_t*>& G_list,
+  //                    const std::vector<ParticleSet::ParticleLaplacian_t*>& L_list) override;
 
   void recompute(const ParticleSet& P) override;
 
-  LogValue evaluateGL(const ParticleSet& P,
-                      ParticleSet::ParticleGradient& G,
-                      ParticleSet::ParticleLaplacian& L,
-                      bool fromscratch) override;
+  LogValueType evaluateGL(const ParticleSet& P,
+                          ParticleSet::ParticleGradient_t& G,
+                          ParticleSet::ParticleLaplacian_t& L,
+                          bool fromscratch) override;
 
-  void evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi) override;
+  void evaluateHessian(ParticleSet& P, HessVector_t& grad_grad_psi) override;
+
+  void createResource(ResourceCollection& collection) const override;
+  void acquireResource(ResourceCollection& collection, const RefVectorWithLeader<WaveFunctionComponent>& wf_list) const override;
+  void releaseResource(ResourceCollection& collection, const RefVectorWithLeader<WaveFunctionComponent>& wf_list) const override;
 
   /** cloning function
    * @param tqp target particleset
@@ -250,48 +178,51 @@ public:
    * This interface is exposed only to SlaterDet and its derived classes
    * can overwrite to clone itself correctly.
    */
-  std::unique_ptr<DiracDeterminantBase> makeCopy(SPOSet& phi) const override;
+  std::unique_ptr<DiracDeterminantBase> makeCopy(std::shared_ptr<SPOSet>&& spo) const override;
 
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios) override;
 
 #ifndef NDEBUG
   /// return  for testing
-  ValueMatrix& getPsiMinv() override { return psiM; }
+  ValueMatrix_t& getPsiMinv() override { return psiM; }
 #else
-  ValueMatrix& getPsiMinv() { return psiM; }
+  ValueMatrix_t& getPsiMinv() { return psiM; }
 #endif
 
   /// psiM(j,i) \f$= \psi_j({\bf r}_i)\f$
-  ValueMatrix psiM_temp;
+  ValueMatrix_t psiM_temp;
 
   /// inverse transpose of psiM(j,i) \f$= \psi_j({\bf r}_i)\f$
-  ValueMatrix psiM;
+  ValueMatrix_t psiM;
 
   /// temporary container for testing
-  ValueMatrix psiMinv;
+  ValueMatrix_t psiMinv;
 
   /// dpsiM(i,j) \f$= \nabla_i \psi_j({\bf r}_i)\f$
-  GradMatrix dpsiM;
+  GradMatrix_t dpsiM;
 
   /// d2psiM(i,j) \f$= \nabla_i^2 \psi_j({\bf r}_i)\f$
-  ValueMatrix d2psiM;
+  ValueMatrix_t d2psiM;
 
   /// Used for force computations
-  GradMatrix grad_source_psiM, grad_lapl_source_psiM;
-  HessMatrix grad_grad_source_psiM;
+  GradMatrix_t grad_source_psiM, grad_lapl_source_psiM;
+  HessMatrix_t grad_grad_source_psiM;
 
-  GradMatrix phi_alpha_Minv, grad_phi_Minv;
-  ValueMatrix lapl_phi_Minv;
-  HessMatrix grad_phi_alpha_Minv;
+  GradMatrix_t phi_alpha_Minv, grad_phi_Minv;
+  ValueMatrix_t lapl_phi_Minv;
+  HessMatrix_t grad_phi_alpha_Minv;
 
   /// value of single-particle orbital for particle-by-particle update
-  ValueVector psiV;
-  ValueVector dspin_psiV;
-  GradVector dpsiV;
-  ValueVector d2psiV;
+  ValueVector_t psiV;
+  ValueVector_t dspin_psiV;
+  GradVector_t dpsiV;
+  ValueVector_t d2psiV;
+
+  /// delayed update engine
+  DU_TYPE updateEng;
 
   /// the row of up-to-date inverse matrix
-  ValueVector invRow;
+  ValueVector_t invRow;
 
   /** row id correspond to the up-to-date invRow. [0 norb), invRow is ready; -1, invRow is not valid.
    *  This id is set after calling getInvRow indicating invRow has been prepared for the invRow_id row
@@ -300,36 +231,24 @@ public:
    */
   int invRow_id;
 
-  PsiValue curRatio;
+  PsiValueType curRatio;
   ValueType* FirstAddressOfdV;
   ValueType* LastAddressOfdV;
 
 private:
-  /// accelerator (delayed update + solver) engine
-  AccelEngine<PL, VT, FPVT> accel_engine_;
-
-  /// slow but doesn't consume device memory
-  DiracMatrix<QMCTraits::QTFull::ValueType> host_inverter_;
-
-  /// selected scheme for inversion
-  const DetMatInvertor matrix_inverter_kind_;
-
   /// invert psiM or its copies
-  void invertPsiM(const ValueMatrix& logdetT, ValueMatrix& invMat);
+  void invertPsiM(const ValueMatrix_t& logdetT, ValueMatrix_t& invMat);
 
   /// Resize all temporary arrays required for force computation.
   void resizeScratchObjectsForIonDerivs();
 
   /// internal function computing ratio and gradients after computing the SPOs, used by ratioGrad.
-  PsiValue ratioGrad_compute(int iat, GradType& grad_iat);
+  PsiValueType ratioGrad_compute(int iat, GradType& grad_iat);
 };
 
 extern template class DiracDeterminant<>;
-#if defined(ENABLE_CUDA)
-extern template class DiracDeterminant<PlatformKind::CUDA, QMCTraits::ValueType, QMCTraits::QTFull::ValueType>;
-#endif
-#if defined(ENABLE_SYCL)
-extern template class DiracDeterminant<PlatformKind::SYCL, QMCTraits::ValueType, QMCTraits::QTFull::ValueType>;
+#if defined(ENABLE_CUDA) && !defined(QMC_CUDA2HIP)
+extern template class DiracDeterminant<DelayedUpdateCUDA<QMCTraits::ValueType, QMCTraits::QTFull::ValueType>>;
 #endif
 
 } // namespace qmcplusplus

@@ -15,13 +15,13 @@
 
 #include "Fermion/BackflowTransformation.h"
 #include "DistanceTable.h"
-#include "CPU/VectorOps.h"
+#include "Particle/ParticleBase/ParticleAttribOps.h"
 #include "QMCWaveFunctions/Fermion/BackflowFunctionBase.h"
 
 namespace qmcplusplus
 {
 BackflowTransformation::BackflowTransformation(ParticleSet& els)
-    : OptimizableObject("bf"), QP(els), cutOff(0.0), myTableIndex_(els.addTable(els))
+    : QP(els), cutOff(0.0), myTableIndex_(els.addTable(els))
 {
   NumTargets = els.getTotalNum();
   Bmat.resize(NumTargets);
@@ -115,7 +115,7 @@ void BackflowTransformation::checkOutVariables(const opt_variables_type& active)
     bfFuns[i]->checkOutVariables(active);
 }
 
-bool BackflowTransformation::isOptimizable() const
+bool BackflowTransformation::isOptimizable()
 {
   for (int i = 0; i < bfFuns.size(); i++)
     if (bfFuns[i]->isOptimizable())
@@ -315,18 +315,20 @@ void BackflowTransformation::evaluate(const ParticleSet& P)
   Amat      = 0.0;
   Bmat_full = 0.0;
   QP.R      = P.R;
+  //std::cout<<"AV in BackflowTransformation::evaluate, P.R: " <<P.R<<std::endl;
   for (int i = 0; i < NumTargets; i++)
   {
     //QP.R[i] = P.R[i];
     Amat(i, i).diagonal(1.0);
   }
   for (int i = 0; i < bfFuns.size(); i++)
+    //Backflow_ee.h::evaluate 
     bfFuns[i]->evaluate(P, QP, Bmat_full, Amat);
-  //      std::cerr <<"P.R \n";
-  //      std::cerr <<P.R[0] << std::endl;
-  //      std::cerr <<"QP.R " << std::endl;
-  //      std::cerr <<QP.R[0] << std::endl;
-  //      std::cerr <<omp_get_thread_num()<<" "<<P.R[0]-QP.R[0] << std::endl;
+        //std::cerr <<"P.R \n";
+        //std::cerr <<P.R[0] << "  " <<P.R[1]<<std::endl;
+        //std::cerr <<"QP.R " << std::endl;
+        //std::cerr <<QP.R[0] << "  " <<QP.R[1]<<std::endl;
+        //std::cerr <<omp_get_thread_num()<<" "<<P.R[0]-QP.R[0] << std::endl;
   //      APP_ABORT("TESTING BF \n");
   /*Bmat=0.0;
     Amat=0.0;
@@ -388,7 +390,8 @@ void BackflowTransformation::evaluateDerivatives(const ParticleSet& P)
   Bmat_full = 0.0;
   Cmat      = 0.0;
   Ymat      = 0.0;
-  std::fill_n(Xmat.data(), Xmat.size(), 0);
+  for (int i = 0; i < Xmat.size(); i++)
+    Xmat(i) = 0;
   for (int i = 0; i < NumTargets; i++)
   {
     QP.R[i] = P.R[i];
@@ -413,7 +416,9 @@ void BackflowTransformation::testDeriv(const ParticleSet& P)
   Bmat_full = 0.0;
   Cmat      = 0.0;
   Ymat      = 0.0;
-  std::fill_n(Xmat.data(), Xmat.size(), 0);
+  //       Xmat=DummyHess;
+  for (int i = 0; i < Xmat.size(); i++)
+    Xmat(i) = 0;
   for (int i = 0; i < NumTargets; i++)
   {
     QP.R[i] = P.R[i];
@@ -421,13 +426,13 @@ void BackflowTransformation::testDeriv(const ParticleSet& P)
   }
   for (int i = 0; i < bfFuns.size(); i++)
     bfFuns[i]->evaluateWithDerivatives(P, QP, Bmat_full, Amat, Cmat, Ymat, Xmat);
-  ParticleSet::ParticlePos qp_0;
-  ParticleSet::ParticlePos qp_1;
-  ParticleSet::ParticlePos qp_2;
-  GradMatrix Bmat_full_1;
-  HessMatrix Amat_1;
-  GradMatrix Bmat_full_2;
-  HessMatrix Amat_2;
+  ParticleSet::ParticlePos_t qp_0;
+  ParticleSet::ParticlePos_t qp_1;
+  ParticleSet::ParticlePos_t qp_2;
+  GradMatrix_t Bmat_full_1;
+  HessMatrix_t Amat_1;
+  GradMatrix_t Bmat_full_2;
+  HessMatrix_t Amat_2;
   RealType dh = 0.00001;
   qp_0.resize(NumTargets);
   qp_1.resize(NumTargets);
@@ -548,13 +553,13 @@ void BackflowTransformation::testDeriv(const ParticleSet& P)
 
 void BackflowTransformation::testPbyP(ParticleSet& P)
 {
-  GradMatrix Bmat_full_0;
-  HessMatrix Amat_0;
-  GradMatrix Bmat_full_1;
-  HessMatrix Amat_1;
-  ParticleSet::ParticlePos qp_0;
-  ParticleSet::ParticlePos qp_1;
-  ParticleSet::ParticlePos qp_2, qp_3;
+  GradMatrix_t Bmat_full_0;
+  HessMatrix_t Amat_0;
+  GradMatrix_t Bmat_full_1;
+  HessMatrix_t Amat_1;
+  ParticleSet::ParticlePos_t qp_0;
+  ParticleSet::ParticlePos_t qp_1;
+  ParticleSet::ParticlePos_t qp_2, qp_3;
   qp_0.resize(NumTargets);
   qp_1.resize(NumTargets);
   qp_2.resize(NumTargets);

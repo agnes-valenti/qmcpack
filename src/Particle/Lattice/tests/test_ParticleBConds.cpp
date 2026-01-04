@@ -29,13 +29,13 @@ using vec_t = TinyVector<OHMMS_PRECISION, 3>;
 
 TEST_CASE("open_bconds", "[lattice]")
 {
-  Lattice lattice;
-  DTD_BConds<OHMMS_PRECISION, 3, SUPERCELL_OPEN> bcond(lattice);
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
+  DTD_BConds<OHMMS_PRECISION, 3, SUPERCELL_OPEN> bcond(Lattice);
 
   vec_t v(3.0, 4.0, 5.0);
 
   OHMMS_PRECISION r2 = bcond.apply_bc(v);
-  CHECK(Approx(r2) == 50.0);
+  REQUIRE(Approx(r2) == 50.0);
 
 
   std::vector<vec_t> disps(1);
@@ -44,29 +44,29 @@ TEST_CASE("open_bconds", "[lattice]")
 
   bcond.apply_bc(disps, r, rinv);
 
-  CHECK(Approx(r[0]) == std::sqrt(50.0));
-  CHECK(Approx(rinv[0]) == 1.0 / std::sqrt(50.0));
+  REQUIRE(Approx(r[0]) == std::sqrt(50.0));
+  REQUIRE(Approx(rinv[0]) == 1.0 / std::sqrt(50.0));
 
   r[0] = 0.0;
   bcond.apply_bc(disps, r);
-  CHECK(Approx(r[0]) == std::sqrt(50.0));
+  REQUIRE(Approx(r[0]) == std::sqrt(50.0));
 
   bcond.evaluate_rsquared(disps.data(), rr.data(), disps.size());
-  CHECK(Approx(rr[0]) == 50.0);
+  REQUIRE(Approx(rr[0]) == 50.0);
 }
 
-/** lattice is defined but Open BC is also used.
+/** Lattice is defined but Open BC is also used.
  */
 TEST_CASE("periodic_bulk_bconds", "[lattice]")
 {
-  Lattice lattice;
-  lattice.BoxBConds = false; // Open BC
-  lattice.R.diagonal(0.4);
-  lattice.reset();
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
+  Lattice.BoxBConds = false; // Open BC
+  Lattice.R.diagonal(0.4);
+  Lattice.reset();
 
-  CHECK(lattice.Volume == Approx(0.4 * 0.4 * 0.4));
+  REQUIRE(Lattice.Volume == Approx(0.4 * 0.4 * 0.4));
 
-  DTD_BConds<OHMMS_PRECISION, 3, SUPERCELL_BULK> bcond(lattice);
+  DTD_BConds<OHMMS_PRECISION, 3, SUPERCELL_BULK> bcond(Lattice);
 
   vec_t v1(0.0, 0.0, 0.0);
 
@@ -75,26 +75,26 @@ TEST_CASE("periodic_bulk_bconds", "[lattice]")
 
   vec_t v2(0.5, 0.0, 0.0);
   r2 = bcond.apply_bc(v2);
-  CHECK(r2 == Approx(0.01));
+  REQUIRE(r2 == Approx(0.01));
 }
 
-TEST_CASE("uniform 3D lattice layout", "[lattice]")
+TEST_CASE("uniform 3D Lattice layout", "[lattice]")
 {
-  Lattice lattice;
-  lattice.BoxBConds = true; // periodic
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> Lattice;
+  Lattice.BoxBConds = true; // periodic
 
-  lattice.R.diagonal(1.0);
-  lattice.reset();
+  Lattice.R.diagonal(1.0);
+  Lattice.reset();
 
-  REQUIRE(lattice.R(0, 0) == 1.0);
-  REQUIRE(lattice.R(0, 1) == 0.0);
-  REQUIRE(lattice.R(0, 2) == 0.0);
-  REQUIRE(lattice.R(1, 0) == 0.0);
-  REQUIRE(lattice.R(1, 1) == 1.0);
-  REQUIRE(lattice.R(1, 2) == 0.0);
-  REQUIRE(lattice.R(2, 0) == 0.0);
-  REQUIRE(lattice.R(2, 1) == 0.0);
-  REQUIRE(lattice.R(2, 2) == 1.0);
+  REQUIRE(Lattice.R(0, 0) == 1.0);
+  REQUIRE(Lattice.R(0, 1) == 0.0);
+  REQUIRE(Lattice.R(0, 2) == 0.0);
+  REQUIRE(Lattice.R(1, 0) == 0.0);
+  REQUIRE(Lattice.R(1, 1) == 1.0);
+  REQUIRE(Lattice.R(1, 2) == 0.0);
+  REQUIRE(Lattice.R(2, 0) == 0.0);
+  REQUIRE(Lattice.R(2, 1) == 0.0);
+  REQUIRE(Lattice.R(2, 2) == 1.0);
 }
 
 } // namespace qmcplusplus

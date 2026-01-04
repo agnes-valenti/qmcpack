@@ -15,23 +15,28 @@
 
 #include <memory>
 #include "CPU/SIMD/aligned_allocator.hpp"
-#include "VendorKind.hpp"
-#include "MemManageAlias.hpp"
+#ifdef ENABLE_CUDA
+#include "CUDA/CUDAallocator.hpp"
+#endif
 
 namespace qmcplusplus
 {
+
 /** The fact that the pinned allocators are not always pinned hurts readability elsewhere. */
-#if defined(ENABLE_CUDA) || defined(ENABLE_SYCL)
 template<typename T>
-using PinnedAllocator = compute::MemManage<VendorKind>::PageLockedAllocator<T>;
-template<typename T, size_t ALIGN = QMC_SIMD_ALIGNMENT>
-using PinnedAlignedAllocator = compute::MemManage<VendorKind>::PageLockedAllocator<T, aligned_allocator<T, ALIGN>>;
+#ifdef ENABLE_CUDA
+using PinnedAllocator = CUDALockedPageAllocator<T>;
 #else
-template<typename T>
 using PinnedAllocator = std::allocator<T>;
+#endif
+
 template<typename T, size_t ALIGN = QMC_SIMD_ALIGNMENT>
+#ifdef ENABLE_CUDA
+using PinnedAlignedAllocator = CUDALockedPageAllocator<T, aligned_allocator<T, ALIGN>>;
+#else
 using PinnedAlignedAllocator = aligned_allocator<T, ALIGN>;
 #endif
+
 } // namespace qmcplusplus
 
 #endif

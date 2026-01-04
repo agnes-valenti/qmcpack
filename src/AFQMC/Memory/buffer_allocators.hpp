@@ -21,9 +21,9 @@
 #include "mpi3/shared_communicator.hpp"
 
 // new allocators
-#include "AFQMC/Memory/multi_memory/fallback.hpp"
-#include "AFQMC/Memory/multi_memory/allocator.hpp"
-#include "AFQMC/Memory/multi_memory/stack.hpp"
+#include "multi/memory/fallback.hpp"
+#include "multi/memory/allocator.hpp"
+#include "multi/memory/stack.hpp"
 
 namespace qmcplusplus
 {

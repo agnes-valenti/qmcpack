@@ -44,9 +44,9 @@ class LRHandlerSRCoulomb : public LRHandlerBase
 {
 public:
   //Typedef for the lattice-type.
-  using ParticleLayout   = Lattice;
-  using BreakupBasisType = BreakupBasis;
-  using GridType         = LinearGrid<mRealType>;
+  typedef ParticleSet::ParticleLayout_t ParticleLayout_t;
+  typedef BreakupBasis BreakupBasisType;
+  typedef LinearGrid<mRealType> GridType;
 
   bool FirstTime;
   mRealType rs;
@@ -57,8 +57,7 @@ public:
 
 
   //Constructor
-  LRHandlerSRCoulomb(ParticleSet& ref, mRealType kc_in = -1.0)
-      : LRHandlerBase(kc_in), FirstTime(true), Basis(ref.getLRBox())
+  LRHandlerSRCoulomb(ParticleSet& ref, mRealType kc_in = -1.0) : LRHandlerBase(kc_in), FirstTime(true), Basis(ref.LRBox)
 
   {
     LRHandlerBase::ClassName = "LRHandlerSRCoulomb";
@@ -75,7 +74,7 @@ public:
    * References to ParticleSet or ParticleLayoutout_t are not copied.
    */
   LRHandlerSRCoulomb(const LRHandlerSRCoulomb& aLR, ParticleSet& ref)
-      : LRHandlerBase(aLR), FirstTime(true), Basis(aLR.Basis, ref.getLRBox())
+      : LRHandlerBase(aLR), FirstTime(true), Basis(aLR.Basis, ref.LRBox)
   {}
 
   LRHandlerBase* makeClone(ParticleSet& ref) const override
@@ -87,11 +86,11 @@ public:
 
   void initBreakup(ParticleSet& ref) override
   {
-    InitBreakup(ref.getLRBox(), 1);
-    //    fillYk(ref.getSimulationCell().getKLists());
-    fillYkg(ref.getSimulationCell().getKLists());
+    InitBreakup(ref.LRBox, 1);
+    //    fillYk(ref.SK->getKLists());
+    fillYkg(ref.SK->getKLists());
     //This is expensive to calculate.  Deprecating stresses for now.
-    //filldFk_dk(ref.getSimulationCell().getKLists());
+    //filldFk_dk(ref.SK->getKLists());
     LR_rc = Basis.get_rc();
   }
 
@@ -99,11 +98,11 @@ public:
   {
     rs = rs_ext;
     myFunc.reset(ref, rs);
-    InitBreakup(ref.getLRBox(), 1);
-    //    fillYk(ref.getSimulationCell().getKLists());
-    fillYkg(ref.getSimulationCell().getKLists());
+    InitBreakup(ref.LRBox, 1);
+    //    fillYk(ref.SK->getKLists());
+    fillYkg(ref.SK->getKLists());
     //This is expensive to calculate.  Deprecating stresses for now.
-    //filldFk_dk(ref.getSimulationCell().getKLists());
+    //filldFk_dk(ref.SK->getKLists());
     LR_rc = Basis.get_rc();
   }
 
@@ -170,8 +169,7 @@ public:
   }
 
   //This returns the stress derivative of Fk, except for the explicit volume dependence.  The explicit volume dependence is factored away into V.
-  inline SymTensor<mRealType, OHMMS_DIM> evaluateLR_dstrain(TinyVector<pRealType, OHMMS_DIM> k,
-                                                            pRealType kmag) const override
+  inline SymTensor<mRealType, OHMMS_DIM> evaluateLR_dstrain(TinyVector<pRealType, OHMMS_DIM> k, pRealType kmag) const override
   {
     APP_ABORT("Stresses not supported yet\n");
     SymTensor<mRealType, OHMMS_DIM> deriv_tensor = 0;
@@ -187,8 +185,7 @@ public:
   }
 
 
-  inline SymTensor<mRealType, OHMMS_DIM> evaluateSR_dstrain(TinyVector<pRealType, OHMMS_DIM> r,
-                                                            pRealType rmag) const override
+  inline SymTensor<mRealType, OHMMS_DIM> evaluateSR_dstrain(TinyVector<pRealType, OHMMS_DIM> r, pRealType rmag) const override
   {
     APP_ABORT("Stresses not supported yet\n");
     SymTensor<mRealType, OHMMS_DIM> deriv_tensor = 0;
@@ -274,7 +271,7 @@ private:
    * basis and coefs in a usable state.
    * This method can be re-called later if lattice changes shape.
    */
-  void InitBreakup(const ParticleLayout& ref, int NumFunctions)
+  void InitBreakup(ParticleLayout_t& ref, int NumFunctions)
   {
     //First we send the new Lattice to the Basis, in case it has been updated.
     Basis.set_Lattice(ref);
@@ -399,43 +396,40 @@ private:
 
   void fillYk(KContainer& KList)
   {
-    Fk.resize(KList.getKptsCartWorking().size());
-    const std::vector<int>& kshell(KList.getKShell());
+    Fk.resize(KList.kpts_cart.size());
+    const std::vector<int>& kshell(KList.kshell);
     if (MaxKshell >= kshell.size())
       MaxKshell = kshell.size() - 1;
     Fk_symm.resize(MaxKshell);
-    const auto& ksq = KList.getKSQWorking();
     for (int ks = 0, ki = 0; ks < Fk_symm.size(); ks++)
     {
-      mRealType uk = evalYk(std::sqrt(ksq[ki]));
+      mRealType uk = evalYk(std::sqrt(KList.ksq[ki]));
       Fk_symm[ks]  = uk;
-      while (ki < kshell[ks + 1] && ki < Fk.size())
+      while (ki < KList.kshell[ks + 1] && ki < Fk.size())
         Fk[ki++] = uk;
     }
-    //for(int ki=0; ki<KList.getKptsCartWorking().size(); ki++){
-    //  mRealType k=dot(KList.getKptsCartWorking()[ki],KList.getKptsCartWorking()[ki]);
+    //for(int ki=0; ki<KList.kpts_cart.size(); ki++){
+    //  mRealType k=dot(KList.kpts_cart[ki],KList.kpts_cart[ki]);
     //  k=std::sqrt(k);
     //  Fk[ki] = evalFk(k); //Call derived fn.
     //}
   }
   void fillYkg(const KContainer& KList)
   {
-    const auto& kpts_cart = KList.getKptsCartWorking();
-    Fkg.resize(kpts_cart.size());
+    Fkg.resize(KList.kpts_cart.size());
     //LRHandlerSRCoulomb is the force handler now.  Only want
     //Fourier coefficients optimized for forces being used period.
 
-    Fk.resize(kpts_cart.size());
-    const std::vector<int>& kshell(KList.getKShell());
+    Fk.resize(KList.kpts_cart.size());
+    const std::vector<int>& kshell(KList.kshell);
     if (MaxKshell >= kshell.size())
       MaxKshell = kshell.size() - 1;
 
-    const auto& ksq = KList.getKSQWorking();
     for (int ks = 0, ki = 0; ks < MaxKshell; ks++)
     {
-      mRealType uk = evalYkg(std::sqrt(ksq[ki]));
+      mRealType uk = evalYkg(std::sqrt(KList.ksq[ki]));
 
-      while (ki < kshell[ks + 1] && ki < Fkg.size())
+      while (ki < KList.kshell[ks + 1] && ki < Fkg.size())
         Fkg[ki++] = uk;
     }
     //Have to set this, because evaluate and evaluateGrad for LR piece uses
@@ -447,25 +441,24 @@ private:
   void fillYkgstrain(KContainer& KList)
   {
     APP_ABORT("Stresses not supported yet\n");
-    Fkgstrain.resize(KList.getKptsCartWorking().size());
-    const std::vector<int>& kshell(KList.getKShell());
+    Fkgstrain.resize(KList.kpts_cart.size());
+    const std::vector<int>& kshell(KList.kshell);
     if (MaxKshell >= kshell.size())
       MaxKshell = kshell.size() - 1;
-    const auto& ksq = KList.getKSQWorking();
     for (int ks = 0, ki = 0; ks < MaxKshell; ks++)
     {
-      mRealType uk = evalYkgstrain(std::sqrt(ksq[ki]));
-      while (ki < kshell[ks + 1] && ki < Fkgstrain.size())
+      mRealType uk = evalYkgstrain(std::sqrt(KList.ksq[ki]));
+      while (ki < KList.kshell[ks + 1] && ki < Fkgstrain.size())
         Fkgstrain[ki++] = uk;
     }
   }
   void filldFk_dk(KContainer& KList)
   {
-    throw std::runtime_error("Stresses not supported yet\n");
-    // dFk_dstrain.resize(KList.getKptsCartWorking().size());
+    APP_ABORT("Stresses not supported yet\n");
+    dFk_dstrain.resize(KList.kpts_cart.size());
 
-    // for (int ki = 0; ki < dFk_dstrain.size(); ki++)
-    //   dFk_dstrain[ki] = evaluateLR_dstrain(KList.getKptsCartWorking()[ki], std::sqrt(KList.getKSQWorking()[ki]));
+    for (int ki = 0; ki < dFk_dstrain.size(); ki++)
+      dFk_dstrain[ki] = evaluateLR_dstrain(KList.kpts_cart[ki], std::sqrt(KList.ksq[ki]));
   }
 };
 } // namespace qmcplusplus

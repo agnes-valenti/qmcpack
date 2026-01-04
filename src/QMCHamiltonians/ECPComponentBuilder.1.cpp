@@ -35,7 +35,7 @@ void ECPComponentBuilder::addSemiLocal(xmlNodePtr cur)
     else if (cname == "vps")
     {
       //should be able to overwrite rmax
-      int l           = angMon[getXMLAttributeValue(cur, "l")];
+      int l           = angMon[XMLAttrString{cur, "l"}];
       Lmax            = std::max(l, Lmax);
       xmlNodePtr cur1 = cur->children;
       while (cur1 != NULL)
@@ -45,6 +45,10 @@ void ECPComponentBuilder::addSemiLocal(xmlNodePtr cur)
         {
           pp_nonloc->add(l, createVrWithBasisGroup(cur1, grid_semilocal.get()));
         }
+        //else if(cname1 == "data")
+        //{
+        //  pp_nonloc->add(l,createVrWithData(cur1,grid_semilocal));
+        //}
         cur1 = cur1->next;
       }
       NumNonLocal++;
@@ -58,7 +62,7 @@ void ECPComponentBuilder::addSemiLocal(xmlNodePtr cur)
 ECPComponentBuilder::RadialPotentialType* ECPComponentBuilder::createVrWithBasisGroup(xmlNodePtr cur, mGridType* agrid)
 {
   //todo rcut should be reset if necessary
-  using InFuncType = GaussianTimesRN<RealType>;
+  typedef GaussianTimesRN<RealType> InFuncType;
   InFuncType a;
   a.putBasisGroup(cur);
   bool ignore        = true;
@@ -107,7 +111,7 @@ void ECPComponentBuilder::buildLocal(xmlNodePtr cur)
     return; //something is wrong
 
   std::string vFormat("V");
-  const std::string v_str(getXMLAttributeValue(cur, "format"));
+  const XMLAttrString v_str(cur, "format");
   if (!v_str.empty())
     vFormat = v_str;
 
@@ -121,7 +125,7 @@ void ECPComponentBuilder::buildLocal(xmlNodePtr cur)
   {
     app_log() << "  Local pseudopotential format = V" << std::endl;
   }
-  using InFuncType = GaussianTimesRN<RealType>;
+  typedef GaussianTimesRN<RealType> InFuncType;
   std::unique_ptr<GridType> grid_local;
   std::unique_ptr<mGridType> grid_local_inp;
   InFuncType vr;
@@ -138,6 +142,12 @@ void ECPComponentBuilder::buildLocal(xmlNodePtr cur)
     {
       vr.putBasisGroup(cur, vPowerCorrection);
       bareCoulomb = false;
+    }
+    else if (cname == "data")
+    {
+      pp_loc = std::unique_ptr<RadialPotentialType>(createVrWithData(cur, grid_local_inp.get(), vPowerCorrection));
+      app_log() << "  Local pseduopotential in a <data/>" << std::endl;
+      return;
     }
     cur = cur->next;
   }
@@ -183,7 +193,9 @@ void ECPComponentBuilder::buildLocal(xmlNodePtr cur)
         --last;
       }
       if (last == 0)
-        myComm->barrier_and_abort("ECPComponentBuilder::buildLocal. Illegal Local Pseudopotential");
+      {
+        app_error() << "  Illegal Local Pseudopotential " << std::endl;
+      }
       //Add the reset values here
       int ng = static_cast<int>(r / 1e-3) + 1;
       app_log() << "     Use a Linear Grid: [0," << r << "] Number of points = " << ng << std::endl;
@@ -285,5 +297,59 @@ std::unique_ptr<ECPComponentBuilder::mGridType> ECPComponentBuilder::createGrid(
   }
   return agrid;
 }
+
+/** Disable pseudo/semilocal/vps/data */
+ECPComponentBuilder::RadialPotentialType* ECPComponentBuilder::createVrWithData(xmlNodePtr cur,
+                                                                                mGridType* agrid,
+                                                                                int rCorrection)
+{
+  return nullptr;
+  //  RealType rcIn = agrid->rmax();
+  //  //use the maximum value of the grid
+  //  if(RcutMax<0) RcutMax=rcIn;
+  //  //create a new linear grid if the input grid is not good enough
+  //  GridType *newgrid=0;
+  //  if(agrid->GridTag != LINEAR_1DGRID || RcutMax < rcIn)
+  //  {
+  //    const RealType delta=1000.; // use 1/000
+  //    newgrid = new LinearGrid<RealType>;
+  //    newgrid->set(0.0,RcutMax,static_cast<int>(RcutMax*delta)+1);
+  //  }
+  //  //read the numerical data
+  //  std::vector<RealType> pdata;
+  //  putContent(pdata,cur);
+  //  if(pdata.size() != agrid->size())
+  //  {
+  //    app_error() << "  ECPComponentBuilder::createVrWithData vsp/data size does not match." << std::endl;
+  //    abort(); //FIXABORT
+  //  }
+  //  if(rCorrection == 1)
+  //  {
+  //    for(int i=0; i<agrid->size(); i++) pdata[i] *= (*agrid)[i];
+  //  }
+  //  if(newgrid)
+  //  {
+  //    OneDimCubicSpline<RealType> inFunc(grid_global,pdata);
+  //    inFunc.spline();
+  //    int ng=newgrid->size();
+  //    pdata.resize(ng);
+  //    for(int i=0; i<ng; i++)
+  //    {
+  //      RealType r((*agrid)[i]);
+  //      pdata[i]=inFunc.splint(r);
+  //    }
+  //    if(agrid->rmin()>0.0) pdata[0]=pdata[1];
+  //    RadialPotentialType *app = new RadialPotentialType(newgrid,pdata);
+  //    app->spline();
+  //    return app;
+  //  }
+  //  else
+  //  {//use Radial potential with the input grid
+  //    RadialPotentialType *app = new RadialPotentialType(agrid,pdata);
+  //    app->spline();
+  //    return app;
+  //  }
+}
+
 
 } // namespace qmcplusplus

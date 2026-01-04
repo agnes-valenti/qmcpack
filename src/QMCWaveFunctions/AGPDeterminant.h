@@ -28,12 +28,12 @@ class AGPDeterminant : public WaveFunctionComponent
 {
 public:
   ///define BasisSetType with RealType
-  using BasisSetType = BasisSetBase<RealType>;
-  using IndexVector  = BasisSetType::IndexVector;
-  using ValueVector  = BasisSetType::ValueVector;
-  using ValueMatrix  = BasisSetType::ValueMatrix;
-  using GradVector   = BasisSetType::GradVector;
-  using GradMatrix   = BasisSetType::GradMatrix;
+  typedef BasisSetBase<RealType> BasisSetType;
+  typedef BasisSetType::IndexVector_t IndexVector_t;
+  typedef BasisSetType::ValueVector_t ValueVector_t;
+  typedef BasisSetType::ValueMatrix_t ValueMatrix_t;
+  typedef BasisSetType::GradVector_t GradVector_t;
+  typedef BasisSetType::GradMatrix_t GradMatrix_t;
 
   BasisSetType* GeminalBasis;
 
@@ -46,14 +46,17 @@ public:
   ///default destructor
   ~AGPDeterminant() override;
 
-  std::string getClassName() const override { return "AGPDeterminant"; }
+  void checkInVariables(opt_variables_type& active) override;
+  void checkOutVariables(const opt_variables_type& active) override;
+  void resetParameters(const opt_variables_type& active) override;
+  void reportStatus(std::ostream& os) override;
 
   ///reset the size: with the number of particles and number of orbtials
   void resize(int nup, int ndown);
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
 
@@ -61,7 +64,7 @@ public:
    * @param P current configuration
    * @param iat the particle thas is being moved
    */
-  PsiValue ratio(ParticleSet& P, int iat) override;
+  PsiValueType ratio(ParticleSet& P, int iat) override;
 
   void ratioUp(ParticleSet& P, int iat);
 
@@ -87,17 +90,11 @@ public:
    *contribution of the determinant to G(radient) and L(aplacian)
    *for local energy calculations.
    */
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override;
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
-
-  void evaluateDerivatives(ParticleSet& P,
-                           const opt_variables_type& optvars,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
-  {}
 
   ///Total number of particles
   int NumPtcls;
@@ -115,13 +112,13 @@ public:
   //ValueType CurrentDet;
 
   ///coefficient of the up/down block
-  ValueMatrix Lambda;
+  ValueMatrix_t Lambda;
 
   ///coefficient of the major block
-  ValueMatrix LambdaUP;
+  ValueMatrix_t LambdaUP;
 
   /// psiM(j,i) \f$= \psi_j({\bf r}_i)\f$
-  Matrix<ValueType> psiM, psiM_temp;
+  ValueMatrix_t psiM, psiM_temp;
 
 
   /**  Transient data for gradient and laplacian evaluation
@@ -129,35 +126,34 @@ public:
    * \f$phiD(j,k) = \sum_{j^{'}} \lambda_{j^{'},j} \phi_k(r_j) \f$
    * j runs over the particle index index
    */
-  ValueMatrix phiT;
+  ValueMatrix_t phiT;
 
   /// temporary container for testing
-  ValueMatrix psiMinv;
+  ValueMatrix_t psiMinv;
   /// store gradients
-  GradMatrix dY;
+  GradMatrix_t dY;
   /// store laplacians
-  ValueMatrix d2Y;
+  ValueMatrix_t d2Y;
   /// temporary determinant-related matrix for gradients
-  GradMatrix dpsiU, dpsiD;
+  GradMatrix_t dpsiU, dpsiD;
   /// temporary determinant-related matrix for laplacians
-  ValueMatrix d2psiU, d2psiD;
+  ValueMatrix_t d2psiU, d2psiD;
 
   /// value of single-particle orbital for particle-by-particle update
   /** temporary vector for a particle-by-particle move
    *
    * phiTv = Lambda Y(iat)
    */
-  ValueVector phiTv;
-  ValueVector psiU;
-  Vector<ValueType> psiD;
-  GradVector dpsiUv, dpsiDv;
-  ValueVector d2psiUv, d2psiDv;
-  Vector<ValueType> workV1, workV2;
-  ValueVector WorkSpace;
-  IndexVector Pivot;
+  ValueVector_t phiTv;
+  ValueVector_t psiU, psiD;
+  GradVector_t dpsiUv, dpsiDv;
+  ValueVector_t d2psiUv, d2psiDv;
+  ValueVector_t workV1, workV2;
+  ValueVector_t WorkSpace;
+  IndexVector_t Pivot;
 
   ///current ratio
-  PsiValue curRatio;
+  PsiValueType curRatio;
   ///cummulate ratio for particle-by-particle update
   RealType cumRatio;
   ///address of  dpsiU[0][0]
@@ -169,16 +165,16 @@ public:
   ///address of FirstAddressOfdVD+OHMMS_DIM*Ndown*Nup
   BasisSetType::ValueType* LastAddressOfdVD;
   ///address of myG[0][0]
-  ParticleSet::SingleParticleValue* FirstAddressOfG;
+  ParticleSet::SingleParticleValue_t* FirstAddressOfG;
   ///address of FirstAddressOfG+OHMMS_DIM*NumPtcls
-  ParticleSet::SingleParticleValue* LastAddressOfG;
+  ParticleSet::SingleParticleValue_t* LastAddressOfG;
   ///address of dY[0][0]
   BasisSetType::ValueType* FirstAddressOfdY;
   ///address of FirstAddressOfdY+NumPtcls*BasisSize
   BasisSetType::ValueType* LastAddressOfdY;
 
-  ParticleSet::ParticleGradient myG, myG_temp;
-  ParticleSet::ParticleLaplacian myL, myL_temp;
+  ParticleSet::ParticleGradient_t myG, myG_temp;
+  ParticleSet::ParticleLaplacian_t myL, myL_temp;
 
   void evaluateLogAndStore(const ParticleSet& P);
 };

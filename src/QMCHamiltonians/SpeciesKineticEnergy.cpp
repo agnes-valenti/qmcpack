@@ -79,15 +79,16 @@ void SpeciesKineticEnergy::addObservables(PropertySetType& plist, BufferType& co
   }
 }
 
-void SpeciesKineticEnergy::registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const
+void SpeciesKineticEnergy::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
-  if (!hdf5_out)
-    return;
-
-  std::vector<int> ndim(1, num_species);
-  h5desc.emplace_back(hdf_path{name_});
-  auto& h5o = h5desc.back();
-  h5o.set_dimensions(ndim, h5_index);
+  if (hdf5_out)
+  {
+    std::vector<int> ndim(1, num_species);
+    h5desc.emplace_back(name_);
+    auto& h5o = h5desc.back();
+    h5o.set_dimensions(ndim, h5_index);
+    h5o.open(gid);
+  }
 }
 
 void SpeciesKineticEnergy::setObservables(PropertySetType& plist)

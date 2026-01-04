@@ -19,90 +19,120 @@
 #include "ParticleSetPool.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "ParticleIO/XMLParticleIO.h"
-#include "ParticleIO/LatticeIO.h"
+#include "ParticleIO/ParticleLayoutIO.h"
 #include "Utilities/ProgressReportEngine.h"
 #include "OhmmsData/AttributeSet.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "Particle/InitMolecularSystem.h"
 #include "LongRange/LRCoulombSingleton.h"
-#include <Message/UniformCommunicateError.h>
-#include <PlatformSelector.hpp>
 
 namespace qmcplusplus
 {
-ParticleSetPool::ParticleSetPool(Communicate* c, const char* aname)
-    : MPIObjectBase(c), simulation_cell_(std::make_unique<SimulationCell>())
+ParticleSetPool::ParticleSetPool(Communicate* c, const char* aname) : MPIObjectBase(c), TileMatrix(0)
 {
+  TileMatrix.diagonal(1);
   ClassName = "ParticleSetPool";
   myName    = aname;
 }
 
 ParticleSetPool::ParticleSetPool(ParticleSetPool&& other) noexcept
-    : MPIObjectBase(other.myComm), simulation_cell_(std::move(other.simulation_cell_)), myPool(std::move(other.myPool))
+    : MPIObjectBase(other.myComm),
+      SimulationCell(std::move(other.SimulationCell)),
+      TileMatrix(other.TileMatrix),
+      myPool(std::move(other.myPool))
 {
   ClassName = other.ClassName;
   myName    = other.myName;
 }
 
-ParticleSetPool::~ParticleSetPool() = default;
+ParticleSetPool::~ParticleSetPool()
+{
+  PoolType::const_iterator it(myPool.begin()), it_end(myPool.end());
+  while (it != it_end)
+  {
+    delete (*it).second;
+    it++;
+  }
+}
 
 ParticleSet* ParticleSetPool::getParticleSet(const std::string& pname)
 {
-  if (auto pit = myPool.find(pname); pit == myPool.end())
-    return nullptr;
+  std::map<std::string, ParticleSet*>::iterator pit(myPool.find(pname));
+  if (pit == myPool.end())
+  {
+    return 0;
+  }
   else
-    return pit->second.get();
+  {
+    return (*pit).second;
+  }
 }
 
 MCWalkerConfiguration* ParticleSetPool::getWalkerSet(const std::string& pname)
 {
-  auto mc = dynamic_cast<MCWalkerConfiguration*>(getParticleSet(pname));
-  if (mc == nullptr)
+  ParticleSet* mc = 0;
+  if (myPool.size() == 1)
+    mc = (*myPool.begin()).second;
+  else
+    mc = getParticleSet(pname);
+  if (mc == 0)
   {
-    throw std::runtime_error("ParticleSePool::getWalkerSet missing " + pname);
+    APP_ABORT("ParticleSePool::getWalkerSet missing " + pname);
   }
-  return mc;
+  return dynamic_cast<MCWalkerConfiguration*>(mc);
 }
 
 void ParticleSetPool::addParticleSet(std::unique_ptr<ParticleSet>&& p)
 {
-  const auto pit(myPool.find(p->getName()));
+  PoolType::iterator pit(myPool.find(p->getName()));
   if (pit == myPool.end())
   {
     auto& pname = p->getName();
     LOGMSG("  Adding " << pname << " ParticleSet to the pool")
-    if (&p->getSimulationCell() != simulation_cell_.get())
-      throw std::runtime_error("Bug detected! ParticleSetPool::addParticleSet requires p created with the simulation "
-                               "cell from ParticleSetPool.");
-    myPool.emplace(pname, std::move(p));
+    myPool[pname] = p.release();
   }
   else
-    throw std::runtime_error(p->getName() + " exists. Cannot be added again.");
+  {
+    WARNMSG("  " << p->getName() << " exists. Ignore addition")
+  }
 }
 
-bool ParticleSetPool::readSimulationCellXML(xmlNodePtr cur)
+bool ParticleSetPool::putTileMatrix(xmlNodePtr cur)
+{
+  TileMatrix = 0;
+  TileMatrix.diagonal(1);
+  OhmmsAttributeSet pAttrib;
+  pAttrib.add(TileMatrix, "tilematrix");
+  pAttrib.put(cur);
+  return true;
+}
+
+bool ParticleSetPool::putLattice(xmlNodePtr cur)
 {
   ReportEngine PRE("ParticleSetPool", "putLattice");
-
-  bool lattice_defined = false;
-  try
+  bool printcell = false;
+  if (!SimulationCell)
   {
-    LatticeParser a(simulation_cell_->lattice_);
-    lattice_defined = a.put(cur);
+    app_debug() << "  Creating global supercell " << std::endl;
+    SimulationCell = std::make_unique<ParticleSet::ParticleLayout_t>();
+    printcell      = true;
   }
-  catch (const UniformCommunicateError& ue)
-  {
-    myComm->barrier_and_abort(ue.what());
-  }
-
-  if (lattice_defined)
+  else
   {
     app_log() << "  Overwriting global supercell " << std::endl;
-    simulation_cell_->resetLRBox();
+  }
+  LatticeParser a(*SimulationCell);
+  bool lattice_defined = a.put(cur);
+  if (printcell && lattice_defined)
+  {
     if (outputManager.isHighActive())
-      simulation_cell_->lattice_.print(app_log(), 2);
+    {
+      SimulationCell->print(app_log(), 2);
+    }
     else
-      simulation_cell_->lattice_.print(app_summary(), 1);
+    {
+      SimulationCell->print(app_summary(), 1);
+    }
   }
   return lattice_defined;
 }
@@ -116,7 +146,12 @@ bool ParticleSetPool::readSimulationCellXML(xmlNodePtr cur)
  */
 bool ParticleSetPool::put(xmlNodePtr cur)
 {
+  std::cout<<"AV entering ParticleSetPool::put"<<std::endl;
+  std::flush(std::cout);
+
   ReportEngine PRE("ParticleSetPool", "put");
+  //const ParticleSet::ParticleLayout_t* sc=DistanceTable::getSimulationCell();
+  //ParticleSet::ParticleLayout_t* sc=0;
   std::string id("e");
   std::string role("none");
   std::string randomR("no");
@@ -131,38 +166,63 @@ bool ParticleSetPool::put(xmlNodePtr cur)
   pAttrib.add(randomsrc, "randomsrc");
   pAttrib.add(randomsrc, "random_source");
   pAttrib.add(spinor, "spinor", {"no", "yes"});
-  pAttrib.add(useGPU, "gpu", CPUOMPTargetSelector::candidate_values);
+#if defined(ENABLE_OFFLOAD)
+  pAttrib.add(useGPU, "gpu", {"yes", "no"});
+#endif
+
+  xmlNodePtr AVtestnode3=xmlCopyNode(cur, 1);
+  std::cout<<"AV in ParticleSetPool::put, before pAttrib.put, after AVtestnode3"<<std::endl;
+  std::flush(std::cout);
+  
   pAttrib.put(cur);
+
+  std::cout<<"AV in ParticleSetPool::put, after pAttrib.put"<<std::endl;
+  std::flush(std::cout);
+  xmlNodePtr AVtestnode4=xmlCopyNode(cur, 1);
+  std::cout<<"AV in ParticleSetPool::put, after pAttrib.put, after AVtestnode4"<<std::endl;
+  std::flush(std::cout);
+
   //backward compatibility
   if (id == "e" && role == "none")
     role = "MC";
   ParticleSet* pTemp = getParticleSet(id);
   if (pTemp == 0)
   {
-    const bool use_offload = CPUOMPTargetSelector::selectPlatform(useGPU) == PlatformKind::OMPTARGET;
     app_summary() << std::endl;
     app_summary() << " Particle Set" << std::endl;
     app_summary() << " ------------" << std::endl;
-    app_summary() << "  Name: " << id << "   Offload : " << (use_offload ? "yes" : "no") << std::endl;
+    app_summary() << "  Name: " << id << "   Offload : " << useGPU << std::endl;
     app_summary() << std::endl;
 
     // select OpenMP offload implementation in ParticleSet.
-    if (use_offload)
-      pTemp = new MCWalkerConfiguration(*simulation_cell_, DynamicCoordinateKind::DC_POS_OFFLOAD);
+    if (useGPU == "yes")
+      pTemp = new MCWalkerConfiguration(DynamicCoordinateKind::DC_POS_OFFLOAD);
     else
-      pTemp = new MCWalkerConfiguration(*simulation_cell_, DynamicCoordinateKind::DC_POS);
-
-    myPool.emplace(id, pTemp);
-
-    try
+      pTemp = new MCWalkerConfiguration(DynamicCoordinateKind::DC_POS);
+    //if(role == "MC")
+    //  pTemp = new MCWalkerConfiguration;
+    //else
+    //  pTemp = new ParticleSet;
+    if (SimulationCell)
     {
-      XMLParticleParser pread(*pTemp);
-      pread.readXML(cur);
+      app_log() << "  Initializing the lattice by the global supercell" << std::endl;
+      pTemp->Lattice = *SimulationCell;
     }
-    catch (const UniformCommunicateError& ue)
-    {
-      myComm->barrier_and_abort(ue.what());
-    }
+    myPool[id] = pTemp;
+    XMLParticleParser pread(*pTemp, TileMatrix);
+
+    //xmlNodePtr AVtestnode32=xmlCopyNode(cur, 1);
+    //std::cout<<"AV in ParticleSetPool::put, before pread.put, after AVtestnode32"<<std::endl;
+    //std::flush(std::cout);
+
+    bool success = pread.put(cur);  //AV: something undefined/wrong is happening to cur here!!
+ 
+    //std::cout<<success<<" AV in ParticleSetPool::put, after pread.put"<<std::endl;
+    //std::flush(std::cout);
+    //xmlNodePtr AVtestnode42=xmlCopyNode(cur, 1);
+    //std::cout<<"AV in ParticleSetPool::put, after pread.put, after AVtestnode42"<<std::endl;
+    //std::flush(std::cout);
+
 
     //if random_source is given, create a node <init target="" soruce=""/>
     if (randomR == "yes" && !randomsrc.empty())
@@ -173,16 +233,26 @@ bool ParticleSetPool::put(xmlNodePtr cur)
       randomize_nodes.push_back(anode);
     }
     pTemp->setName(id);
-    pTemp->setSpinor(spinor == "yes");
-    app_summary() << "  Particle set size: " << pTemp->getTotalNum() << "   Groups : " << pTemp->groups() << std::endl;
+    pTemp->is_spinor_ = spinor == "yes";
+    app_summary() << "  Particle set size: " << pTemp->getTotalNum() << std::endl;
     app_summary() << std::endl;
-    return true;
+
+
+    //std::cout<<"AV in ParticleSetPool::put, before return, before AVtestnode5"<<std::endl;
+    //std::flush(std::cout);
+    //xmlNodePtr AVtestnode5=xmlCopyNode(cur, 1);
+    //std::cout<<"AV in ParticleSetPool::put, before return, after AVtestnode5"<<std::endl<<std::endl;
+    //std::flush(std::cout);
+    return success;
   }
   else
   {
     app_warning() << "Particle set " << id << " is already created. Ignoring this section." << std::endl;
   }
   app_summary() << std::endl;
+  
+  std::cout<<"AV exiting ParticleSetPool::put"<<std::endl;
+  std::flush(std::cout);
   return true;
 }
 
@@ -199,7 +269,7 @@ void ParticleSetPool::randomize()
   }
   randomize_nodes.clear();
   if (!success)
-    throw std::runtime_error("ParticleSePool::randomize failed to randomize some Particlesets!");
+    APP_ABORT("ParticleSePool::randomize failed to randomize some Particlesets!");
 }
 
 bool ParticleSetPool::get(std::ostream& os) const
@@ -207,11 +277,12 @@ bool ParticleSetPool::get(std::ostream& os) const
   os << "ParticleSetPool has: " << std::endl << std::endl;
   os.setf(std::ios::scientific, std::ios::floatfield);
   os.precision(14);
-  for (const auto& [name, pset] : myPool)
-    if (outputManager.isDebugActive())
-      pset->print(os, 0);
-    else
-      pset->print(os, 10 /* maxParticlesToPrint */);
+  PoolType::const_iterator it(myPool.begin()), it_end(myPool.end());
+  while (it != it_end)
+  {
+    (*it).second->get(os);
+    ++it;
+  }
   return true;
 }
 
@@ -232,8 +303,13 @@ void ParticleSetPool::output_particleset_info(Libxml2Document& doc, xmlNodePtr r
  */
 void ParticleSetPool::reset()
 {
-  for (const auto& [key, pset] : myPool)
-    pset->update();
+  PoolType::iterator it(myPool.begin()), it_end(myPool.end());
+  while (it != it_end)
+  {
+    ParticleSet* pt((*it).second);
+    pt->update();
+    ++it;
+  }
 }
 
 } // namespace qmcplusplus

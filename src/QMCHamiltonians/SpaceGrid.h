@@ -26,14 +26,14 @@ namespace qmcplusplus
 class SpaceGrid : public QMCTraits, public PtclOnLatticeTraits
 {
 public:
-  using Point      = TinyVector<RealType, DIM>;
-  using BufferType = PooledData<RealType>;
-  using Matrix_t   = Matrix<RealType>;
+  typedef TinyVector<RealType, DIM> Point;
+  typedef PooledData<RealType> BufferType;
+  typedef Matrix<RealType> Matrix_t;
 
   SpaceGrid(int& nvalues);
   bool put(xmlNodePtr cur,
            std::map<std::string, Point>& points,
-           ParticlePos& R,
+           ParticlePos_t& R,
            std::vector<RealType>& Z,
            int ndp,
            bool is_periodic,
@@ -49,8 +49,8 @@ public:
   bool initialize_voronoi(std::map<std::string, Point>& points);
   void write_description(std::ostream& os, std::string& indent);
   int allocate_buffer_space(BufferType& buf);
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file, const hdf_path& enclosing_path, int grid_index) const;
-  void evaluate(const ParticlePos& R,
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid, int grid_index) const;
+  void evaluate(const ParticlePos_t& R,
                 const Matrix<RealType>& values,
                 BufferType& buf,
                 std::vector<bool>& particles_outside,
@@ -110,7 +110,7 @@ public:
   bool periodic;
 
   //voronoi grids
-  ParticlePos* Rptcl;
+  ParticlePos_t* Rptcl;
   std::vector<RealType>* Zptcl;
   struct irpair
   {

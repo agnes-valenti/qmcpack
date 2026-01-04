@@ -20,7 +20,6 @@
 #include "QMCWaveFunctions/Jastrow/PadeFunctors.h"
 #include "QMCWaveFunctions/Jastrow/RadialJastrowBuilder.h"
 #include "QMCWaveFunctions/WaveFunctionFactory.h"
-#include "Utilities/RuntimeOptions.h"
 
 
 #include <stdio.h>
@@ -34,13 +33,13 @@ TEST_CASE("Pade functor", "[wavefunction]")
 {
   double A = -0.25;
   double B = 0.1;
-  PadeFunctor<double> pf("test_functor");
+  PadeFunctor<double> pf;
   pf.B0 = B;
   pf.setCusp(A);
 
   double r = 1.2;
   double u = pf.evaluate(r);
-  CHECK(u == Approx(2.232142857142857));
+  REQUIRE(u == Approx(2.232142857142857));
 }
 
 TEST_CASE("Pade2 functor", "[wavefunction]")
@@ -48,7 +47,7 @@ TEST_CASE("Pade2 functor", "[wavefunction]")
   double A = 0.8;
   double B = 5.0;
   double C = -0.1;
-  Pade2ndOrderFunctor<double> pf2("test_functor");
+  Pade2ndOrderFunctor<double> pf2;
   pf2.A = A;
   pf2.B = B;
   pf2.C = C;
@@ -56,26 +55,36 @@ TEST_CASE("Pade2 functor", "[wavefunction]")
 
   double r = 1.2;
   double u = pf2.evaluate(r);
-  CHECK(u == Approx(0.11657142857142856));
+  REQUIRE(u == Approx(0.11657142857142856));
 }
 
 
 TEST_CASE("Pade Jastrow", "[wavefunction]")
 {
-  Communicate* c = OHMMS::Controller;
+  Communicate* c;
+  c = OHMMS::Controller;
 
-  const SimulationCell simulation_cell;
-  ParticleSet ions_(simulation_cell);
-  ParticleSet elec_(simulation_cell);
+  ParticleSet ions_;
+  ParticleSet elec_;
 
-  // Need 1 electron and 1 proton, somehow
   ions_.setName("ion");
-  ions_.create({1});
-  ions_.R[0] = {0.0, 0.0, 0.0};
+  ions_.create(1);
+  ions_.R[0][0] = 0.0;
+  ions_.R[0][1] = 0.0;
+  ions_.R[0][2] = 0.0;
+
   elec_.setName("elec");
-  elec_.create({2, 0});
-  elec_.R[0]                   = {-0.28, 0.0225, -2.709};
-  elec_.R[1]                   = {-1.08389, 1.9679, -0.0128914};
+  std::vector<int> ud(2);
+  ud[0] = 2;
+  ud[1] = 0;
+  elec_.create(ud);
+  elec_.R[0][0] = -0.28;
+  elec_.R[0][1] = 0.0225;
+  elec_.R[0][2] = -2.709;
+  elec_.R[1][0] = -1.08389;
+  elec_.R[1][1] = 1.9679;
+  elec_.R[1][2] = -0.0128914;
+
   SpeciesSet& tspecies         = elec_.getSpeciesSet();
   int upIdx                    = tspecies.addSpecies("u");
   int downIdx                  = tspecies.addSpecies("d");
@@ -86,14 +95,18 @@ TEST_CASE("Pade Jastrow", "[wavefunction]")
   tspecies(massIdx, upIdx)     = 1;
   tspecies(massIdx, downIdx)   = 1;
 
-  const char* particles = R"(<tmp>
-<jastrow name="Jee" type="Two-Body" function="pade">
-  <correlation speciesA="u" speciesB="u">
-        <var id="juu_b" name="B">0.1</var>
-  </correlation>
-</jastrow>
-</tmp>
-)";
+  // Need 1 electron and 1 proton, somehow
+  //ParticleSet target = ParticleSet();
+  ParticleSetPool ptcl = ParticleSetPool(c);
+
+  const char* particles = "<tmp> \
+<jastrow name=\"Jee\" type=\"Two-Body\" function=\"pade\"> \
+  <correlation speciesA=\"u\" speciesB=\"u\"> \
+        <var id=\"juu_b\" name=\"B\">0.1</var> \
+  </correlation> \
+</jastrow> \
+</tmp> \
+";
   Libxml2Document doc;
   bool okay = doc.parseFromString(particles);
   REQUIRE(okay);
@@ -111,23 +124,19 @@ TEST_CASE("Pade Jastrow", "[wavefunction]")
   elec_.update();
 
   double logpsi_real = std::real(jas->evaluateLog(elec_, elec_.G, elec_.L));
-  CHECK(logpsi_real == Approx(-1.862821769493147));
+  REQUIRE(logpsi_real == Approx(-1.862821769493147));
 }
 
 TEST_CASE("Pade2 Jastrow", "[wavefunction]")
 {
   Communicate* c = OHMMS::Controller;
-
-  ParticleSetPool ptcl = ParticleSetPool(c);
-  auto& simulation_cell(ptcl.getSimulationCell());
-  auto ions_uptr = std::make_unique<ParticleSet>(simulation_cell);
-  auto elec_uptr = std::make_unique<ParticleSet>(simulation_cell);
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
   ParticleSet& ions_(*ions_uptr);
   ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion0");
-  ptcl.addParticleSet(std::move(ions_uptr));
-  ions_.create({1});
+  ions_.create(1);
   ions_.R[0]                 = {0.0, 0.0, 0.0};
   SpeciesSet& ispecies       = ions_.getSpeciesSet();
   int HIdx                   = ispecies.addSpecies("H");
@@ -135,7 +144,6 @@ TEST_CASE("Pade2 Jastrow", "[wavefunction]")
   ispecies(ichargeIdx, HIdx) = 1.0;
 
   elec_.setName("e");
-  ptcl.addParticleSet(std::move(elec_uptr));
   elec_.create({1, 1});
   elec_.R[0] = {0.5, 0.5, 0.5};
   elec_.R[1] = {-0.5, -0.5, -0.5};
@@ -152,21 +160,26 @@ TEST_CASE("Pade2 Jastrow", "[wavefunction]")
   // Necessary to set mass
   elec_.resetGroups();
 
+  ParticleSetPool ptcl = ParticleSetPool(c);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
+
+
   ions_.update();
   elec_.addTable(elec_);
   elec_.addTable(ions_);
   elec_.update();
 
-  const char* jasxml = R"(<wavefunction name="psi0" target="e">
-  <jastrow name="J1" type="One-Body" function="pade2" print="yes" source="ion0">
-    <correlation elementType="H">
-        <var id="J1H_A" name="A">0.8</var>
-        <var id="J1H_B" name="B">5.0</var>
-        <var id="J1H_C" name="C">-0.1</var>
-    </correlation>
-  </jastrow>
-</wavefunction>
-)";
+  const char* jasxml = "<wavefunction name=\"psi0\" target=\"e\"> \
+  <jastrow name=\"J1\" type=\"One-Body\" function=\"pade2\" print=\"yes\" source=\"ion0\"> \
+    <correlation elementType=\"H\"> \
+        <var id=\"J1H_A\" name=\"A\">0.8</var> \
+        <var id=\"J1H_B\" name=\"B\">5.0</var> \
+        <var id=\"J1H_C\" name=\"C\">-0.1</var> \
+    </correlation> \
+  </jastrow> \
+</wavefunction> \
+";
   Libxml2Document doc;
   bool okay = doc.parseFromString(jasxml);
   REQUIRE(okay);
@@ -175,10 +188,9 @@ TEST_CASE("Pade2 Jastrow", "[wavefunction]")
 
   // update all distance tables
   elec_.update();
-  WaveFunctionFactory wf_factory(elec_, ptcl.getPool(), c);
-  RuntimeOptions runtime_options;
-  auto twf_ptr = wf_factory.buildTWF(jas1, runtime_options);
-  auto& twf(*twf_ptr);
+  WaveFunctionFactory wf_factory("psi0", elec_, ptcl.getPool(), c);
+  wf_factory.put(jas1);
+  auto& twf(*wf_factory.getTWF());
   twf.setMassTerm(elec_);
   twf.evaluateLog(elec_);
   twf.prepareGroup(elec_, 0);
@@ -187,13 +199,13 @@ TEST_CASE("Pade2 Jastrow", "[wavefunction]")
 
   opt_variables_type active;
   twf.checkInVariables(active);
-  active.resetIndex();
+  active.removeInactive();
   int nparam = active.size_of_active();
   REQUIRE(nparam == 3);
 
   using ValueType = QMCTraits::ValueType;
-  Vector<ValueType> dlogpsi(nparam);
-  Vector<ValueType> dhpsioverpsi(nparam);
+  std::vector<ValueType> dlogpsi(nparam);
+  std::vector<ValueType> dhpsioverpsi(nparam);
   //twf.evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
   twf_component_list[0]->evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
 

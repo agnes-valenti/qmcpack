@@ -18,22 +18,19 @@
 
 #include <vector>
 #include "Configuration.h"
-#include "WaveFunctionComponentBuilder.h"
-#include <hdf/hdf_archive.h>
+#include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
+#include "QMCWaveFunctions/SPOSetBuilderFactory.h"
+#include "QMCWaveFunctions/Fermion/SlaterDet.h"
+#include "QMCWaveFunctions/Fermion/MultiSlaterDeterminant.h"
+#include "QMCWaveFunctions/Fermion/MultiSlaterDeterminantFast.h"
+#include "QMCWaveFunctions/Fermion/ci_configuration.h"
+#include "QMCWaveFunctions/Fermion/ci_configuration2.h"
+#include "QMCWaveFunctions/Fermion/BackflowBuilder.h"
 
 namespace qmcplusplus
 {
 class TrialWaveFunction;
 class BackflowTransformation;
-class DiracDeterminantBase;
-class MultiSlaterDetTableMethod;
-struct CSFData;
-template<typename T>
-class SPOSetT;
-using SPOSet = SPOSetT<QMCTraits::QTBase::ValueType>;
-class SPOSetBuilder;
-class SPOSetBuilderFactory;
-struct ci_configuration;
 
 /** derived class from WaveFunctionComponentBuilder
  *
@@ -42,6 +39,7 @@ struct ci_configuration;
 class SlaterDetBuilder : public WaveFunctionComponentBuilder
 {
 public:
+  typedef MultiSlaterDeterminant MultiSlaterDeterminant_t;
   /** constructor
    * \param els reference to the electrons
    * \param psi reference to the wavefunction
@@ -51,7 +49,7 @@ public:
                    SPOSetBuilderFactory& factory,
                    ParticleSet& els,
                    TrialWaveFunction& psi,
-                   const PSetMap& psets);
+                   PtclPoolType& psets);
 
   /** initialize the Antisymmetric wave function for electrons
    *@param cur the current xml node
@@ -64,24 +62,31 @@ private:
   SPOSetBuilderFactory& sposet_builder_factory_;
   ///reference to TrialWaveFunction, should go away as the CUDA code.
   TrialWaveFunction& targetPsi;
-  ///reference to a PSetMap
-  const PSetMap& ptclPool;
+  ///reference to a PtclPoolType
+  PtclPoolType& ptclPool;
 
   /** process a determinant element
    * @param cur xml node
-   * @param spin_group the spin group of the created determinant
-   * @return BFTrans backflow transformations
+   * @param firstIndex index of the determinant
+   * @return firstIndex+number of orbitals
    */
   std::unique_ptr<DiracDeterminantBase> putDeterminant(xmlNodePtr cur,
                                                        int spin_group,
-                                                       std::vector<std::unique_ptr<SPOSet>>& unique_sposets,
                                                        const std::unique_ptr<BackflowTransformation>& BFTrans);
 
-  std::unique_ptr<MultiSlaterDetTableMethod> createMSDFast(xmlNodePtr cur,
-                                                           ParticleSet& target_ptcl,
-                                                           std::vector<std::unique_ptr<SPOSet>>&& spo_clones,
-                                                           const bool spinor,
-                                                           const bool use_precompute) const;
+  bool createMSD(MultiSlaterDeterminant& multiSD, xmlNodePtr cur, BackflowTransformation* const BFTrans) const;
+
+  bool createMSDFast(std::vector<std::unique_ptr<MultiDiracDeterminant>>& Dets,
+                     std::vector<std::vector<size_t>>& C2node,
+                     std::vector<ValueType>& C,
+                     std::vector<ValueType>& CSFcoeff,
+                     std::vector<size_t>& DetsPerCSF,
+                     std::vector<RealType>& CSFexpansion,
+                     bool& usingCSF,
+                     opt_variables_type& myVars,
+                     bool& Optimizable,
+                     bool& CI_Optimizable,
+                     xmlNodePtr cur) const;
 
 
   bool readDetList(xmlNodePtr cur,
@@ -90,8 +95,11 @@ private:
                    std::vector<std::string>& CItags,
                    std::vector<ValueType>& coeff,
                    bool& optimizeCI,
-                   const std::vector<int>& nptcls,
-                   std::unique_ptr<CSFData>& csf_data_ptr) const;
+                   std::vector<int>& nptcls,
+                   std::vector<ValueType>& CSFcoeff,
+                   std::vector<size_t>& DetsPerCSF,
+                   std::vector<RealType>& CSFexpansion,
+                   bool& usingCSF) const;
 
   bool readDetListH5(xmlNodePtr cur,
                      std::vector<std::vector<ci_configuration>>& uniqueConfgs,
@@ -99,7 +107,7 @@ private:
                      std::vector<std::string>& CItags,
                      std::vector<ValueType>& coeff,
                      bool& optimizeCI,
-                     const std::vector<int>& nptcls) const;
+                     std::vector<int>& nptcls) const;
 
   template<typename VT,
            std::enable_if_t<(std::is_same<VT, ValueType>::value) && (std::is_floating_point<VT>::value), int> = 0>
@@ -115,7 +123,8 @@ private:
     else
       extVar = "Coeff_" + std::to_string(ext_level);
 
-    hin.read(ci_coeff, extVar);
+    if (!hin.readEntry(ci_coeff, extVar))
+      APP_ABORT("Could not read CI coefficients from HDF5");
   }
 
   template<typename VT,
@@ -141,7 +150,8 @@ private:
       extVar = "Coeff_" + std::to_string(ext_level);
 
 
-    hin.read(CIcoeff_real, extVar);
+    if (!hin.readEntry(CIcoeff_real, extVar))
+      APP_ABORT("Could not read CI coefficients from HDF5")
 
     extVar = extVar + "_imag";
     if (!hin.readEntry(CIcoeff_imag, extVar))

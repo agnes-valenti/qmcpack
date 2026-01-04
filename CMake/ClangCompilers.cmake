@@ -1,7 +1,7 @@
 # Check compiler version
 if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0)
   message(STATUS "Compiler Version ${CMAKE_CXX_COMPILER_VERSION}")
-  message(FATAL_ERROR "Requires Clang 7.0 or higher.")
+  message(FATAL_ERROR "Requires clang 7.0 or higher ")
 endif()
 
 if(CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 11.0.0
@@ -12,26 +12,17 @@ endif()
 
 # Enable OpenMP
 if(QMC_OMP)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-
+  set(ENABLE_OPENMP 1)
   if(ENABLE_OFFLOAD)
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16.0)
-      message(FATAL_ERROR "Requires Clang 16.0 or higher for OpenMP offload")
-    endif()
-
-    if(OFFLOAD_TARGET)
-      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-fopenmp-targets=${OFFLOAD_TARGET}")
-      if(OFFLOAD_ARCH)
-        set(OPENMP_OFFLOAD_COMPILE_OPTIONS
-            "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -Xopenmp-target=${OFFLOAD_TARGET} -march=${OFFLOAD_ARCH}")
-      endif()
-    elseif(QMC_GPU_ARCHS)
-      string(REGEX REPLACE ";" "," QMC_GPU_ARCHS_COMMA_SEPARATED "${QMC_GPU_ARCHS}")
-      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "--offload-arch=${QMC_GPU_ARCHS_COMMA_SEPARATED}")
+    if (QMC_CUDA2HIP)
+      set(OFFLOAD_TARGET_DEFAULT "amdgcn-amd-amdhsa")
     else()
-      message(FATAL_ERROR "Require QMC_GPU_ARCHS or OFFLOAD_TARGET set for OpenMP offload using Clang.")
+      set(OFFLOAD_TARGET_DEFAULT "nvptx64-nvidia-cuda")
     endif()
+    set(OFFLOAD_TARGET
+        ${OFFLOAD_TARGET_DEFAULT}
+        CACHE STRING "Offload target architecture")
+    set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-fopenmp-targets=${OFFLOAD_TARGET}")
 
     include(CheckCXXCompilerFlag)
     check_cxx_compiler_flag("-Wno-linker-warnings" LINKER_WARNING_SUPPORTED)
@@ -39,38 +30,32 @@ if(QMC_OMP)
       set(OPENMP_OFFLOAD_COMPILE_OPTIONS "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -Wno-linker-warnings")
     endif()
 
-    # additional customization for NVIDIA toolchain
-    if(OPENMP_OFFLOAD_COMPILE_OPTIONS MATCHES "sm_")
+    if(NOT DEFINED OFFLOAD_ARCH AND OFFLOAD_TARGET MATCHES "amdgcn")
+      set(OFFLOAD_ARCH gfx906)
+    endif()
+
+    if(NOT DEFINED OFFLOAD_ARCH AND OFFLOAD_TARGET MATCHES "nvptx64" AND DEFINED CMAKE_CUDA_ARCHITECTURES)
+      list(LENGTH CMAKE_CUDA_ARCHITECTURES NUMBER_CUDA_ARCHITECTURES)
+      if(NUMBER_CUDA_ARCHITECTURES EQUAL "1")
+        set(OFFLOAD_ARCH sm_${CMAKE_CUDA_ARCHITECTURES})
+      else()
+        message(FATAL_ERROR "LLVM does not yet support offload to multiple architectures! "
+                            "Deriving OFFLOAD_ARCH from CMAKE_CUDA_ARCHITECTURES failed. "
+                            "Please keep only one entry in CMAKE_CUDA_ARCHITECTURES or set OFFLOAD_ARCH.")
+      endif()
+    endif()
+
+    if(DEFINED OFFLOAD_ARCH)
+      set(OPENMP_OFFLOAD_COMPILE_OPTIONS
+          "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -Xopenmp-target=${OFFLOAD_TARGET} -march=${OFFLOAD_ARCH}")
+    endif()
+
+    if(OFFLOAD_TARGET MATCHES "nvptx64")
       set(OPENMP_OFFLOAD_COMPILE_OPTIONS "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -Wno-unknown-cuda-version")
-      # unfortunately this removes standalone-debug altogether for offload builds
-      # but until we discover how to use the ${OPENMP_OFFLOAD_COMPILE_OPTIONS} more selectively
-      # this is the only way to avoid a warning per compilation unit that contains an omp symbol.
-      message(STATUS "QMCPACK adds -fstandalone-debug for Debug builds")
-      set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstandalone-debug")
-      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstandalone-debug")
-    endif()
-
-    check_cxx_compiler_flag(-fopenmp-assume-no-thread-state OPENMP_ASSUME_NO_THREAD_STATE_WORKS)
-    option(OMPTARGET_ASSUME_NO_THREAD_STATE "Use -fopenmp-assume-no-thread-state compile option" ${OPENMP_ASSUME_NO_THREAD_STATE_WORKS})
-    if(OMPTARGET_ASSUME_NO_THREAD_STATE)
-      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -fopenmp-assume-no-thread-state")
-    endif()
-
-    check_cxx_compiler_flag(-fopenmp-assume-no-nested-parallelism OPENMP_ASSUME_NO_NESTED_PAR_WORKS)
-    option(OMPTARGET_ASSUME_NO_NESTED_PAR "Use -fopenmp-assume-no-nested-parallelism compile option" ${OPENMP_ASSUME_NO_NESTED_PAR_WORKS})
-    if(OMPTARGET_ASSUME_NO_NESTED_PAR)
-      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -fopenmp-assume-no-nested-parallelism")
-    endif()
-
-    # AOMP/ROCM special option -fdisable-host-devmem to disable unecessary data transfers
-    # The down side of using this option is that it disables printf from offload regions.
-    # see https://github.com/ROCm-Developer-Tools/aomp/issues/526
-    check_cxx_compiler_flag(-fdisable-host-devmem DISABLE_HOST_DEVMEM_WORKS)
-    option(AMDGPU_DISABLE_HOST_DEVMEM "Use -fdisable-host-devmem link option" ${DISABLE_HOST_DEVMEM_WORKS})
-    if(AMDGPU_DISABLE_HOST_DEVMEM)
-      string(APPEND CMAKE_EXE_LINKER_FLAGS " -fdisable-host-devmem")
     endif()
   endif()
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif(QMC_OMP)
 
 # Set clang specific flags (which we always want)
@@ -84,8 +69,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=vla")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wvla")
 
 # set compiler warnings
-string(APPEND CMAKE_CXX_FLAGS
-       " -Wall -Wno-unused-variable -Wno-overloaded-virtual -Wno-unused-private-field -Wno-unused-local-typedef")
+string(APPEND CMAKE_CXX_FLAGS " -Wall -Wno-unused-variable -Wno-overloaded-virtual -Wno-unused-private-field -Wno-unused-local-typedef")
 
 if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 11.0)
   string(APPEND CMAKE_CXX_FLAGS " -Wsuggest-override")
@@ -101,8 +85,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffast-math")
 
 # Set extra debug flags
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer -fstandalone-debug")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fstandalone-debug")
 
 #--------------------------------------
 # Special architectural flags
@@ -149,6 +133,15 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64" OR CMAKE_SYSTEM_PROCESSOR MATCHES 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=native")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
   endif() #(CMAKE_CXX_FLAGS MATCHES "-mcpu=" OR CMAKE_C_FLAGS MATCHES "-mcpu=")
+
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64")
+    # Ensure PowerPC builds include optimization flags in release and release-with-debug builds
+    # Otherwise these are missing (2020-06-22)
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3 -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -DNDEBUG")
+  endif()
 endif()
 
 # Add static flags if necessary
@@ -158,9 +151,11 @@ endif(QMC_BUILD_STATIC)
 
 # Coverage
 if(ENABLE_GCOV)
-  set(GCOV_SUPPORTED TRUE)
+  set(GCOV_COVERAGE TRUE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
 endif(ENABLE_GCOV)
 
 set(XRAY_PROFILE

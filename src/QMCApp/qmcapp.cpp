@@ -25,11 +25,10 @@
 #include "Platforms/Host/OutputManager.h"
 #include "OhmmsData/FileUtility.h"
 #include "Host/sysutil.h"
+#include "Platforms/CUDA_legacy/devices.h"
 #include "ProjectData.h"
 #include "QMCApp/QMCMain.h"
 #include "Utilities/qmc_common.h"
-
-#include <array>
 
 void output_hardware_info(Communicate* comm, Libxml2Document& doc, xmlNodePtr root);
 
@@ -45,21 +44,33 @@ void output_hardware_info(Communicate* comm, Libxml2Document& doc, xmlNodePtr ro
 int main(int argc, char** argv)
 {
   using namespace qmcplusplus;
+
 #ifdef HAVE_MPI
   mpi3::environment env(argc, argv);
-  OHMMS::Controller = new Communicate(env.world());
+  OHMMS::Controller->initialize(env);
 #endif
   try
   {
+    std::cout << "AV 2 in try OMP 1st level threads     = " << omp_get_num_threads() << std::endl;
     //qmc_common  and MPI is initialized
     qmcplusplus::qmc_common.initialize(argc, argv);
-    std::vector<std::string> fgroup_names_cmd, fgroup_names_txt;
+    int clones = 1;
+#ifdef QMC_CUDA
+    bool useGPU(true);
+#else
+    bool useGPU(false);
+#endif
+    std::vector<std::string> fgroup1, fgroup2;
     int i = 1;
     while (i < argc)
     {
       std::string c(argv[i]);
       if (c[0] == '-')
       {
+        if (c.find("gpu") < c.size())
+          useGPU = true;
+        if (c.find("clones") < c.size())
+          clones = atoi(argv[++i]);
         if (c == "-debug")
           ReportEngine::enableOutput();
 
@@ -76,7 +87,7 @@ int main(int argc, char** argv)
           if (pos != std::string::npos)
           {
             std::string timer_level = c.substr(pos + 1);
-            getGlobalTimerManager().set_timer_threshold(timer_level);
+            timer_manager.set_timer_threshold(timer_level);
           }
         }
         if (c.find("-verbosity") < c.size())
@@ -106,8 +117,8 @@ int main(int argc, char** argv)
       }
       else
       {
-        if (c.find(".xml") == c.size() - 4)
-          fgroup_names_cmd.push_back(argv[i]);
+        if (c.find("xml") < c.size())
+          fgroup1.push_back(argv[i]);
         else
         {
           std::ifstream fin(argv[i], std::ifstream::in);
@@ -118,8 +129,17 @@ int main(int argc, char** argv)
             getwords(words, fin);
             if (words.size())
             {
-              if (words[0].find(".xml") == words[0].size() - 4)
-                  fgroup_names_txt.push_back(words[0]);
+              if (words[0].find("xml") < words[0].size())
+              {
+                int nc = 1;
+                if (words.size() > 1)
+                  nc = atoi(words[1].c_str());
+                while (nc)
+                {
+                  fgroup2.push_back(words[0]);
+                  --nc;
+                }
+              }
             }
             else
               valid = false;
@@ -128,26 +148,29 @@ int main(int argc, char** argv)
       }
       ++i;
     }
-    std::vector<std::string> inputs(fgroup_names_cmd.size() + fgroup_names_txt.size());
-    copy(fgroup_names_txt.begin(), fgroup_names_txt.end(), inputs.begin());
-    i = fgroup_names_txt.size();
-    for (int k = 0; k < fgroup_names_cmd.size(); ++k)
-      inputs[i++] = fgroup_names_cmd[k];
+    int in_files = fgroup1.size();
+    std::vector<std::string> inputs(in_files * clones + fgroup2.size());
+    copy(fgroup2.begin(), fgroup2.end(), inputs.begin());
+    i = fgroup2.size();
+   
+    for (int k = 0; k < in_files; ++k)
+      for (int c = 0; c < clones; ++c)
+        inputs[i++] = fgroup1[k];
     if (inputs.empty())
     {
       if (OHMMS::Controller->rank() == 0)
       {
-        std::cerr << "No valid input file is given." << std::endl;
-        std::cerr << "Usage: qmcpack [options] <input-files.xml> " << std::endl;
-        std::cerr << "Ensemble runs may be initialized by specifying either multiple .xml files or text files "
-                     "containing lists of .xml input files."
-                  << std::endl;
+        std::cerr << "No input file is given." << std::endl;
+        std::cerr << "Usage: qmcpack <input-files> " << std::endl;
       }
       OHMMS::Controller->finalize();
       return 1;
     }
+    if (useGPU)
+      Init_CUDA();
     //safe to move on
-    Communicate* qmcComm = OHMMS::Controller;
+    Communicate* qmcComm = OHMMS::Controller; 
+    
     if (inputs.size() > 1)
     {
       if (inputs.size() > OHMMS::Controller->size())
@@ -166,7 +189,7 @@ int main(int argc, char** argv)
     std::string myinput = inputs[qmcComm->getGroupID()];
     myinput             = myinput.substr(0, myinput.size() - 4);
     logname << myinput;
-
+  
     if (qmcComm->rank() != 0)
     {
       outputManager.shutOff();
@@ -174,13 +197,21 @@ int main(int argc, char** argv)
     }
     if (inputs.size() > 1 && qmcComm->rank() == 0)
     {
-      std::array<char, 128> fn;
-      if (std::snprintf(fn.data(), fn.size(), "%s.g%03d.qmc", logname.str().c_str(), qmcComm->getGroupID()) < 0)
-        throw std::runtime_error("Error generating filename");
-      infoSummary.redirectToFile(fn.data());
+      char fn[128];
+      snprintf(fn, 127, "%s.g%03d.qmc", logname.str().c_str(), qmcComm->getGroupID());
+      fn[127] = '\0';
+      infoSummary.redirectToFile(fn);
       infoLog.redirectToSameStream(infoSummary);
       infoError.redirectToSameStream(infoSummary);
     }
+
+    //#if defined(MPIRUN_EXTRA_ARGUMENTS)
+    //  //broadcast the input file name to other nodes
+    //  MPI_Bcast(fname.c_str(),fname.size(),MPI_CHAR,0,OHMMS::Controller->getID());
+    //#endif
+
+    
+    //std::cout << "AV 6 OMP 1st level threads     = " << omp_get_num_threads() << std::endl;
 
     bool validInput = false;
     app_log() << "  Input file(s): ";
@@ -188,8 +219,15 @@ int main(int argc, char** argv)
       app_log() << inputs[k] << " ";
     app_log() << std::endl;
 
+    //if (1==1)
+    //   std::cout << "AV 7 OMP 1st level threads     = " << omp_get_num_threads() << std::endl;
+    std::cout<<"AV in int main (qmcapp.cpp), before std::make_unique<QMCMain> "<<std::endl;
+
+    //QMCMain constructor, set omp/MPI threads/ranks
     auto qmc = std::make_unique<QMCMain>(qmcComm);
 
+    std::cout<<"AV in int main (qmcapp.cpp), after std::make_unique<QMCMain> "<<std::endl;
+    //std::cout << "AV 7.5 OMP 1st level threads     = " << omp_get_num_threads() << std::endl;
     if (inputs.size() > 1)
       validInput = qmc->parse(inputs[qmcComm->getGroupID()]);
     else
@@ -198,37 +236,51 @@ int main(int argc, char** argv)
     if (!validInput)
       qmcComm->barrier_and_abort("main(). Input invalid.");
 
+    //QMCMain::execute (set initial Particle positions etc.) -> QMCMain::execute ->  QMCMain::executeLoop (loop corresponds to optimization iterations?? niter number optimization steps?) -> loop over niter, QMCMain::executeQMCSection in each iteration -> set targets (e here), getWalkerSet(targets), then QMCMain::runQMC
     bool qmcSuccess = qmc->execute();
+
     if (!qmcSuccess)
       qmcComm->barrier_and_abort("main(). QMC Execution failed.");
+ 
+    if (1==1)
+       std::cout << "AV 8 OMP 1st level threads     = " << omp_get_num_threads() << std::endl;
 
     Libxml2Document timingDoc;
     timingDoc.newDoc("resources");
     output_hardware_info(qmcComm, timingDoc, timingDoc.getRoot());
-    getGlobalTimerManager().output_timing(qmcComm, timingDoc, timingDoc.getRoot());
-    qmc->getParticlePool().output_particleset_info(timingDoc, timingDoc.getRoot());
+    timer_manager.output_timing(qmcComm, timingDoc, timingDoc.getRoot());
+    qmc->ptclPool->output_particleset_info(timingDoc, timingDoc.getRoot());
     if (OHMMS::Controller->rank() == 0)
     {
       timingDoc.dump(qmc->getTitle() + ".info.xml");
     }
-    getGlobalTimerManager().print(qmcComm);
+    timer_manager.print(qmcComm);
 
     qmc.reset();
+
+    if (useGPU)
+      Finalize_CUDA();
   }
   catch (const std::exception& e)
   {
-    std::cerr << e.what() << std::endl;
+    app_error() << e.what() << std::endl;
     APP_ABORT("Unhandled Exception");
   }
   catch (...)
   {
-    APP_ABORT("Unhandled Exception (not derived from std::exception)");
+    app_error() << "Exception not derived from std::exception thrown" << std::endl;
+    APP_ABORT("Unhandled Exception");
   }
 
   if (OHMMS::Controller->rank() == 0)
     std::cout << std::endl << "QMCPACK execution completed successfully" << std::endl;
 
+
+
   OHMMS::Controller->finalize();
+   if (1==1)
+       std::cout << "AV 9 OMP 1st level threads     = " << omp_get_num_threads() << std::endl;
+
 
   return 0;
 }
@@ -245,9 +297,15 @@ void output_hardware_info(Communicate* comm, Libxml2Document& doc, xmlNodePtr ro
   doc.addChild(hardware, "mpi", using_mpi);
 
   bool using_openmp = false;
-#ifdef _OPENMP
+#ifdef ENABLE_OPENMP
   using_openmp = true;
   doc.addChild(hardware, "openmp_threads", omp_get_max_threads());
 #endif
   doc.addChild(hardware, "openmp", using_openmp);
+
+  bool using_gpu = false;
+#ifdef QMC_CUDA
+  using_gpu = true;
+#endif
+  doc.addChild(hardware, "gpu", using_gpu);
 }

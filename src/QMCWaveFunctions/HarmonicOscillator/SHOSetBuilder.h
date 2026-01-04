@@ -46,7 +46,7 @@ struct SHOSetBuilder : public SPOSetBuilder
   void reset();
 
   //SPOSetBuilder interface
-  std::unique_ptr<SPOSet> createSPOSetFromXML(xmlNodePtr cur) override;
+  std::unique_ptr<SPOSet> createSPOSetFromXML(xmlNodePtr cur, int particletype=0) override;
 
   std::unique_ptr<SPOSet> createSPOSet(xmlNodePtr cur, SPOSetInputInfo& input) override;
 

@@ -17,7 +17,6 @@
 
 #include "Libxml2Doc.h"
 #include "Utilities/Timer.h"
-#include <array>
 #include <fstream>
 #include <iostream>
 
@@ -41,10 +40,9 @@ OhmmsXPathObject::OhmmsXPathObject(const char* expression, xmlNodePtr cur)
   }
   else
   {
-    std::array<char, 128> local;
-    if (std::snprintf(local.data(), local.size(), ".%s", expression) < 0)
-      throw std::runtime_error("Error generating expression");
-    put(local.data(), m_context);
+    char local[128];
+    sprintf(local, ".%s", expression);
+    put(local, m_context);
   }
 }
 
@@ -80,7 +78,7 @@ void OhmmsXPathObject::put(const char* expression, xmlXPathContextPtr context)
 
 Libxml2Document::Libxml2Document() : m_doc(NULL), m_root(NULL), m_context(NULL) {}
 
-Libxml2Document::Libxml2Document(const std::string& xmlfile) : m_doc(NULL), m_root(NULL), m_context(NULL) { parse(xmlfile); }
+Libxml2Document::Libxml2Document(const std::string& xmlfile) { parse(xmlfile); }
 
 Libxml2Document::~Libxml2Document()
 {
@@ -201,7 +199,7 @@ bool Libxml2Document::parse(const std::string& xmlfile)
   return true;
 }
 
-bool Libxml2Document::parseFromString(const std::string_view data)
+bool Libxml2Document::parseFromString(const std::string& data)
 {
   if (m_doc != NULL)
     xmlFreeDoc(m_doc);
@@ -209,7 +207,8 @@ bool Libxml2Document::parseFromString(const std::string_view data)
   // read xml document w/o memory limits
   // note that XML_PARSE_HUGE is part of an enum in libxml2
   // it is only available in libxml 2.7+
-  m_doc = xmlReadMemory(data.data(), data.length(), NULL, NULL, XML_PARSE_HUGE);
+  m_doc = xmlReadMemory(data.c_str(), data.length(), NULL, NULL, XML_PARSE_HUGE);
+  //m_doc = xmlParseFile(xmlfile.c_str());
 
   if (m_doc == NULL)
   {

@@ -15,13 +15,15 @@
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
-
+#include <string>   //AV included
+#include <sstream>  //AV included
 #include "VMC.h"
 #include "QMCDrivers/VMC/VMCUpdatePbyP.h"
 #include "QMCDrivers/VMC/VMCUpdateAll.h"
 #include "QMCDrivers/VMC/SOVMCUpdatePbyP.h"
 #include "QMCDrivers/VMC/SOVMCUpdateAll.h"
-#include "Concurrency/OpenMP.h"
+#include "RandomNumberControl.h"
+#include "Message/OpenMP.h"
 #include "Message/CommOperators.h"
 #include "Utilities/RunTimeManager.h"
 #include "Utilities/qmc_common.h"
@@ -30,21 +32,14 @@
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
-#include "WalkerLogManager.h"
 
 namespace qmcplusplus
 {
 /// Constructor.
-VMC::VMC(const ProjectData& project_data,
-         MCWalkerConfiguration& w,
-         TrialWaveFunction& psi,
-         QMCHamiltonian& h,
-         const UPtrVector<RandomBase<QMCTraits::FullPrecRealType>>& rngs,
-         Communicate* comm,
-         bool enable_profiling)
-    : QMCDriver(project_data, w, psi, h, comm, "VMC", enable_profiling), UseDrift("yes"), rngs_(rngs)
+VMC::VMC(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, Communicate* comm, bool enable_profiling)
+    : QMCDriver(w, psi, h, comm, "VMC", enable_profiling), UseDrift("yes")
 {
   RootName = "vmc";
   qmc_driver_mode.set(QMC_UPDATE_MODE, 1);
@@ -59,33 +54,61 @@ VMC::VMC(const ProjectData& project_data,
 
 bool VMC::run()
 {
+  std::cout<<"AV run VMC"<<std::endl;
+
+  //VMC::resetRun
+  //CloneManager::makeClones, make clones for Psi, H
+  //QMCUpdateBase::resetRun, resize vectors (G,L etc.), set properties (tau, tauoverm etc.)
+  //QMCUpdateBase::initWalkersForPbyP, set initial values for psi, logpis, G, L, eloc etc.
+  //QMCUpdateBase::advanceWalkers->VMCUpdatePbyP::advanceWalker, run warmup steps (thermalization)
   resetRun();
+
   //start the main estimator
-  Estimators->start(nBlocks);
-  for (int ip = 0; ip < NumThreads; ++ip)
-    Movers[ip]->startRun(nBlocks, false);
+  //where are G and L initialized??? Track lifetime of G and L! ->initialized above, through initWalkersForPbyP (other functions called inside, Psi.copyfromBuffer. There also inverse of determinant is initialized)
+  //EstimatorManagerBase::start, resize and clear caches to store energy, variance (etc.). RegisterObservables (?) (LocalEnergyEstimator, but nothing done there since !UseHDF5)
+  Estimators->start(nBlocks);  
+
+  for (int ip = 0; ip < NumThreads; ++ip){
+    
+    //QMCUpdateBase::startRun-> (Estimators->start) (for each thread)
+    Movers[ip]->startRun(nBlocks, false);  }
 #if !defined(REMOVE_TRACEMANAGER)
+  //TraceManager::startRun, check clones, ->TraceManager::initialize_traces (resize and order internal buffer)
   Traces->startRun(nBlocks, traceClones);
 #endif
-  wlog_manager_->startRun(getWalkerLogCollectorRefs());
 
   LoopTimer<> vmc_loop;
   RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs, myComm->getName(), myComm->rank() == 0);
 
   const bool has_collectables = W.Collectables.size();
+
+
+  //AV energies to 0
+  //AVenergies.clear();
+  //AVdistances.clear();
+  //AVdistancesPtcl0.clear();
+  //AVdistancesPtcl1.clear();
+
+  //std::vector<FullPrecRealType> energies;  //AV, remove!
+  //one OPTIMIZATION step done here, looped through optimization steps in QMCMain::executeLoop (VMC loop)
   for (int block = 0; block < nBlocks; ++block)
   {
+    //start loop timer
     vmc_loop.start();
-#pragma omp parallel
+#pragma omp parallel //AV uncomment!!!
     {
       int ip = omp_get_thread_num();
       //IndexType updatePeriod=(qmc_driver_mode[QMC_UPDATE_MODE])?Period4CheckProperties:(nBlocks+1)*nSteps;
       IndexType updatePeriod = (qmc_driver_mode[QMC_UPDATE_MODE]) ? Period4CheckProperties : 0;
       //assign the iterators and resuse them
       MCWalkerConfiguration::iterator wit(W.begin() + wPerRank[ip]), wit_end(W.begin() + wPerRank[ip + 1]);
+
+
       Movers[ip]->startBlock(nSteps);
       int now_loc    = CurrentStep;
       RealType cnorm = 1.0 / static_cast<RealType>(wPerRank[ip + 1] - wPerRank[ip]);
+      
+      std::cout<<"AV VMC.cpp start MC Markov Chain nSteps block"<<std::endl;
       for (int step = 0; step < nSteps; ++step)
       {
         Movers[ip]->set_step(now_loc);
@@ -93,7 +116,11 @@ bool VMC::run()
         wClones[ip]->resetCollectables();
         bool recompute = (nBlocksBetweenRecompute && (step + 1) == nSteps &&
                           (1 + block) % nBlocksBetweenRecompute == 0 && qmc_driver_mode[QMC_UPDATE_MODE]);
-        Movers[ip]->advanceWalkers(wit, wit_end, recompute);
+        //std::cout<<"AV: before advanceWalkers"<<std::endl;
+
+        //QMCUpdateBase::advanceWalkers->VMCUpdatePbyP::advanceWalker
+        Movers[ip]->advanceWalkers(wit, wit_end, recompute); //change!
+        //std::cout<<"AV: after advanceWalkers"<<std::endl;
         if (has_collectables)
           wClones[ip]->Collectables *= cnorm;
         Movers[ip]->accumulate(wit, wit_end);
@@ -111,8 +138,8 @@ bool VMC::run()
 #if !defined(REMOVE_TRACEMANAGER)
     Traces->write_buffers(traceClones, block);
 #endif
-    wlog_manager_->writeBuffers();
-    recordBlock(block);
+    if (storeConfigs)
+      recordBlock(block);
     vmc_loop.stop();
 
     bool stop_requested = false;
@@ -127,23 +154,79 @@ bool VMC::run()
       run_time_manager.markStop();
       break;
     }
+  std::cout<<"AV VMC.cpp stop MC Markov Chain nSteps block"<<std::endl<<std::endl;
   } //block
+
+  /*
+  double AVmean=0;
+  for (int ind_i=0; ind_i<AVenergies.size(); ind_i++){
+     AVmean=AVmean+AVenergies[ind_i];
+     }
+  AVmean=AVmean/AVenergies.size();
+  std::cout<<"AV in VMC::run, local energy average: "<<AVmean<<std::endl;
+  */
+  //----------- AV, for testing, remove later!!!
+  /*
+  std::ofstream file_b;
+  std::ostringstream fileNameStream_b("");
+  fileNameStream_b<<"distances.txt";
+  std::string fileName_b=fileNameStream_b.str();
+  file_b.open(fileName_b.c_str());
+  for (int ind_i=0; ind_i<AVdistances.size(); ind_i++){
+    file_b<<AVdistances[ind_i]<<std::endl;
+  }
+  file_b.close();
+  */
+  //--------------------------------------------
+
+  //----------- AV, for testing, remove later!!!
+  /*
+  std::ofstream file_c;
+  std::ostringstream fileNameStream_c("");
+  fileNameStream_c<<"DistancesPtcl0.txt";
+  std::string fileName_c=fileNameStream_c.str();
+  file_c.open(fileName_c.c_str());
+
+  std::ofstream file_d;
+  std::ostringstream fileNameStream_d("");
+  fileNameStream_d<<"DistancesPtcl1.txt";
+  std::string fileName_d=fileNameStream_d.str();
+  file_d.open(fileName_d.c_str());
+
+  for (int ind_i=0; ind_i<AVdistancesPtcl1.size(); ind_i++){
+    file_c<<AVdistancesPtcl0[ind_i][0]<<" "<< AVdistancesPtcl0[ind_i][1]<<std::endl;
+    file_d<<AVdistancesPtcl1[ind_i][0]<<" "<< AVdistancesPtcl1[ind_i][1]<<std::endl;
+
+  }
+  file_c.close();
+  file_d.close();
+  */
+  //--------------------------------------------
+
+
   Estimators->stop(estimatorClones);
   for (int ip = 0; ip < NumThreads; ++ip)
     Movers[ip]->stopRun2();
 #if !defined(REMOVE_TRACEMANAGER)
   Traces->stopRun();
 #endif
-  wlog_manager_->stopRun();
+  //copy back the random states
+#ifndef USE_FAKE_RNG
+  for (int ip = 0; ip < NumThreads; ++ip)
+    *RandomNumberControl::Children[ip] = *Rng[ip];
+#endif
   ///write samples to a file
   bool wrotesamples = DumpConfig;
   if (DumpConfig)
   {
-    wrotesamples = MCWalkerConfiguration::dumpEnsemble(wClones, *wOut, myComm->size(), nBlocks);
+    wrotesamples = W.dumpEnsemble(wClones, *wOut, myComm->size(), nBlocks);
     if (wrotesamples)
       app_log() << "  samples are written to the config.h5" << std::endl;
   }
   //finalize a qmc section
+  std::cout<<"AV exiting VMC::run, finalizing one optimization step (one loop iteration)"<<std::endl<<std::endl;
+
+  //SimpleFixedNodeBranch::finalize
   return finalize(nBlocks, !wrotesamples);
 }
 
@@ -152,8 +235,14 @@ void VMC::resetRun()
   ////only VMC can overwrite this
   if (nTargetPopulation > 0)
     branchEngine->iParam[SimpleFixedNodeBranch::B_TARGETWALKERS] = static_cast<int>(std::ceil(nTargetPopulation));
+  
+  //CloneManager::makeClones, make clones of W, Psi, H for each thread (NumThreads in total)
   makeClones(W, Psi, H);
+
+  //FairDivide.h FairDivideLow, divide walkers fairly over numthreads (?), create partition of walkers
   FairDivideLow(W.getActiveWalkers(), NumThreads, wPerRank);
+
+  std::cout<<"AV in VMC::resetRun, NumThreads: "<<NumThreads<<" wPerRank: "<<wPerRank[0]<<std::endl;
   app_log() << "  Initial partition of walkers ";
   copy(wPerRank.begin(), wPerRank.end(), std::ostream_iterator<int>(app_log(), " "));
   app_log() << std::endl;
@@ -163,47 +252,49 @@ void VMC::resetRun()
   if (Movers.empty())
   {
     movers_created = true;
-    Movers.resize(NumThreads, nullptr);
-    estimatorClones.resize(NumThreads, nullptr);
-    traceClones.resize(NumThreads, nullptr);
-    wlog_collectors.resize(NumThreads);
-
-    // hdf_archive::hdf_archive() is not thread-safe
-    for (int ip = 0; ip < NumThreads; ++ip)
-      estimatorClones[ip] = new EstimatorManagerBase(*Estimators);
-
+    Movers.resize(NumThreads, 0);
+    estimatorClones.resize(NumThreads, 0);
+    traceClones.resize(NumThreads, 0);
+    Rng.resize(NumThreads);
 #pragma omp parallel for
     for (int ip = 0; ip < NumThreads; ++ip)
     {
       std::ostringstream os;
+      estimatorClones[ip] = new EstimatorManagerBase(*Estimators); //,*hClones[ip]);
+
+
       estimatorClones[ip]->resetTargetParticleSet(*wClones[ip]);
       estimatorClones[ip]->setCollectionMode(false);
 #if !defined(REMOVE_TRACEMANAGER)
       traceClones[ip] = Traces->makeClone();
 #endif
-      wlog_collectors[ip] = wlog_manager_->makeCollector();
-      hClones[ip]->setRandomGenerator(rngs_[ip].get());
-      if (W.isSpinor())
+#ifdef USE_FAKE_RNG
+      Rng[ip] = std::make_unique<FakeRandom>();
+#else
+      Rng[ip] = std::make_unique<RandomGenerator_t>(*RandomNumberControl::Children[ip]);
+#endif
+      hClones[ip]->setRandomGenerator(Rng[ip].get());
+      if (W.is_spinor_)
       {
         spinors = true;
         if (qmc_driver_mode[QMC_UPDATE_MODE])
         {
-          Movers[ip] = new SOVMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *rngs_[ip]);
+          Movers[ip] = new SOVMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
         }
         else
         {
-          Movers[ip] = new SOVMCUpdateAll(*wClones[ip], *psiClones[ip], *hClones[ip], *rngs_[ip]);
+          Movers[ip] = new SOVMCUpdateAll(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
         }
       }
       else
       {
         if (qmc_driver_mode[QMC_UPDATE_MODE])
         {
-          Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *rngs_[ip]);
+          Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
         }
         else
         {
-          Movers[ip] = new VMCUpdateAll(*wClones[ip], *psiClones[ip], *hClones[ip], *rngs_[ip]);
+          Movers[ip] = new VMCUpdateAll(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
         }
       }
       Movers[ip]->nSubSteps = nSubSteps;
@@ -216,7 +307,9 @@ void VMC::resetRun()
   {
 #pragma omp parallel for
     for (int ip = 0; ip < NumThreads; ++ip)
+    {
       traceClones[ip]->transfer_state_from(*Traces);
+    }
   }
 #endif
   if (qmc_driver_mode[QMC_UPDATE_MODE])
@@ -261,16 +354,21 @@ void VMC::resetRun()
   {
     //int ip=omp_get_thread_num();
     Movers[ip]->put(qmcNode);
-    //Movers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
-    Movers[ip]->resetRun2(branchEngine.get(), estimatorClones[ip], traceClones[ip],  wlog_collectors[ip].get(), DriftModifier);
-    if (qmc_driver_mode[QMC_UPDATE_MODE])
-      Movers[ip]->initWalkersForPbyP(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1]);
+
+    //QMCUpdateBase::resetRun, set NumPtcl, resize G,L,dG,dL, set tau, tauovermass (mass inverse used, print if want to know mass evtl.!)
+    Movers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
+
+    if (qmc_driver_mode[QMC_UPDATE_MODE]){
+      
+      //QMCUpdateBase::initWalkersForPbyP, set initial Psi, logPsi (and G, L via called functions), localenergy (Psi.copyFromBuffer(W, awalker.DataSet) (e.g. dirac determinant inverse initialized); Psi.evaluateLog(W); RealType logpsi = Psi.updateBuffer(W, awalker.DataSet, false); RealType eloc = H.evaluate(W);
+      Movers[ip]->initWalkersForPbyP(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1]);}
     else
       Movers[ip]->initWalkers(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1]);
     //       if (UseDrift != "rn")
     //       {
-    for (int prestep = 0; prestep < nWarmupSteps; ++prestep)
-      Movers[ip]->advanceWalkers(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1], false);
+    for (int prestep = 0; prestep < nWarmupSteps; ++prestep){        
+      //QMCUpdateBase::advanceWalkers->VMCUpdatePbyP::advanceWalker (does one 'sweep (step)' consisting of n substeps), calculate Psi, observables etc.
+      Movers[ip]->advanceWalkers(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1], false);}
     //       }
   }
 
@@ -281,7 +379,47 @@ void VMC::resetRun()
     qmc_common.memory_allocated += W.getActiveWalkers() * W[0]->DataSet.byteSize();
     qmc_common.print_memory_change("VMC::resetRun", before);
   }
-
+  //     //JNKIM: THIS IS BAD AND WRONG
+  //     if (UseDrift == "rn")
+  //     {
+  //       RealType avg_w(0);
+  //       RealType n_w(0);
+  // #pragma omp parallel
+  //       {
+  //         int ip=omp_get_thread_num();
+  //         for (int step=0; step<nWarmupSteps; ++step)
+  //         {
+  //           avg_w=0;
+  //           n_w=0;
+  //           for (int prestep=0; prestep<myRNWarmupSteps; ++prestep)
+  //           {
+  //             Movers[ip]->advanceWalkers(W.begin()+wPerNode[ip],W.begin()+wPerNode[ip+1],true);
+  //             #pragma omp single
+  //             {
+  //               MCWalkerConfiguration::iterator wit(W.begin()), wit_end(W.end());
+  //               while (wit!=wit_end)
+  //               {
+  //                 avg_w += (*wit)->Weight;
+  //                 n_w +=1;
+  //                 wit++;
+  //               }
+  //             }
+  //             #pragma omp barrier
+  //            }
+  //            #pragma omp single
+  //            {
+  //              avg_w *= 1.0/n_w;
+  //              RealType w_m = avg_w/(1.0-avg_w);
+  //              w_m = std::log(0.5+0.5*w_m);
+  //              if (std::abs(w_m)>0.01)
+  //                logepsilon += w_m;
+  //            }
+  //           }
+  //
+  //         for (int prestep=0; prestep<nWarmupSteps; ++prestep)
+  //           Movers[ip]->advanceWalkers(W.begin()+wPerNode[ip],W.begin()+wPerNode[ip+1],false);
+  //       }
+  //     }
   for (int ip = 0; ip < NumThreads; ++ip)
     wClones[ip]->clearEnsemble();
   if (nSamplesPerThread)
@@ -292,6 +430,7 @@ void VMC::resetRun()
 
 bool VMC::put(xmlNodePtr q)
 {
+  std::cout<<"AV entering VMC::put"<<std::endl;
   //grep minimumTargetWalker
   int target_min = -1;
   ParameterSet p;
@@ -315,7 +454,7 @@ bool VMC::put(xmlNodePtr q)
     int Nthreads = omp_get_max_threads();
     int Nprocs   = myComm->size();
 
-
+    std::cout<<" Nthreads: "<<Nthreads<<" nSamplesPerThread: "<<nSamplesPerThread<<std::endl;
     //target samples set by samples or samplesperthread/dmcwalkersperthread
     nTargetPopulation = std::max(nTargetPopulation, nSamplesPerThread * Nprocs * Nthreads);
     nTargetSamples    = static_cast<int>(std::ceil(nTargetPopulation));
@@ -372,7 +511,7 @@ bool VMC::put(xmlNodePtr q)
 
   app_log() << "</vmc>" << std::endl;
   app_log().flush();
-
+  std::cout<<"AV exiting VMC::put"<<std::endl<<std::endl;
   return true;
 }
 } // namespace qmcplusplus

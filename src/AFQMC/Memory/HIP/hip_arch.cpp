@@ -19,10 +19,10 @@
 #include "AFQMC/Memory/device_pointers.hpp"
 #include "mpi3/communicator.hpp"
 #include "mpi3/shared_communicator.hpp"
-#include <hipblas/hipblas.h>
-#include <hipsparse/hipsparse.h>
-#include <rocsolver/rocsolver.h>
-#include <rocrand/rocrand.h>
+#include "hipblas.h"
+#include "hipsparse.h"
+#include "rocsolver.h"
+#include "rocrand/rocrand.h"
 
 namespace arch
 {
@@ -118,7 +118,6 @@ void free(void* p, const std::string& message)
       std::cerr << " Error from : " << message << std::endl;
     }
     std::cerr << " Error when calling hipFree: " << hipGetErrorString(status) << std::endl;
-    throw std::runtime_error("Error: hipFree returned error code.");
   }
 }
 

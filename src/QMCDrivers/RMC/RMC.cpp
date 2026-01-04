@@ -18,9 +18,9 @@
 #include "QMCDrivers/RMC/RMCUpdatePbyP.h"
 #include "QMCDrivers/RMC/RMCUpdateAll.h"
 #include "QMCDrivers/DriftOperators.h"
-#include "CPU/VectorOps.h"
+#include "ParticleBase/ParticleAttribOps.h"
 #include "RandomNumberControl.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 #include "Message/CommOperators.h"
 #include "Particle/Reptile.h"
 #include "Utilities/FairDivide.h"
@@ -28,24 +28,15 @@
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
 
 
 namespace qmcplusplus
 {
 /// Constructor.
-RMC::RMC(const ProjectData& project_data,
-         MCWalkerConfiguration& w,
-         TrialWaveFunction& psi,
-         QMCHamiltonian& h,
-         Communicate* comm)
-    : QMCDriver(project_data, w, psi, h, comm, "RMC"),
-      prestepsVMC(-1),
-      rescaleDrift("no"),
-      beta(-1),
-      beads(-1),
-      fromScratch(true)
+RMC::RMC(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, Communicate* comm)
+    : QMCDriver(w, psi, h, comm, "RMC"), prestepsVMC(-1), rescaleDrift("no"), beta(-1), beads(-1), fromScratch(true)
 {
   RootName = "rmc";
   qmc_driver_mode.set(QMC_UPDATE_MODE, 1);
@@ -114,7 +105,9 @@ bool RMC::run()
     } //end-of-parallel for
     CurrentStep += nSteps;
     Estimators->stopBlock(estimatorClones);
-    recordBlock(block);
+    //why was this commented out? Are checkpoints stored some other way?
+    if (storeConfigs)
+      recordBlock(block);
     rmc_loop.stop();
 
     bool stop_requested = false;
@@ -134,7 +127,7 @@ bool RMC::run()
   Estimators->stop(estimatorClones);
   //copy back the random states
   for (int ip = 0; ip < NumThreads; ++ip)
-    RandomNumberControl::Children[ip] = Rng[ip]->makeClone();
+    *RandomNumberControl::Children[ip] = *Rng[ip];
   //return nbeads and stuff to its original unset state;
   resetVars();
   return finalize(nBlocks);
@@ -189,7 +182,7 @@ void RMC::resetRun()
   {
     //Initialize on whatever walkers are in MCWalkerConfiguration.
     app_log() << "Using walkers from previous non-RMC run.\n";
-    std::vector<ParticlePos> wSamps(0);
+    std::vector<ParticlePos_t> wSamps(0);
     MCWalkerConfiguration::iterator wit(W.begin()), wend(W.end());
     for (IndexType sampid = 0; wit != wend && sampid < nReptiles; wit++)
       wSamps.push_back((**wit).R);
@@ -207,23 +200,19 @@ void RMC::resetRun()
 
   if (Movers.empty())
   {
-    Movers.resize(NumThreads, nullptr);
-    estimatorClones.resize(NumThreads, nullptr);
-    traceClones.resize(NumThreads, nullptr);
+    Movers.resize(NumThreads, 0);
+    estimatorClones.resize(NumThreads, 0);
+    traceClones.resize(NumThreads, 0);
     Rng.resize(NumThreads);
     branchEngine->initReptile(W);
-
-    // hdf_archive::hdf_archive() is not thread-safe
-    for (int ip = 0; ip < NumThreads; ++ip)
-      estimatorClones[ip] = new EstimatorManagerBase(*Estimators);
-
 #pragma omp parallel for
     for (int ip = 0; ip < NumThreads; ++ip)
     {
       std::ostringstream os;
+      estimatorClones[ip] = new EstimatorManagerBase(*Estimators); //,*hClones[ip]);
       estimatorClones[ip]->resetTargetParticleSet(*wClones[ip]);
       estimatorClones[ip]->setCollectionMode(false);
-      Rng[ip] = RandomNumberControl::Children[ip]->makeClone();
+      Rng[ip] = std::make_unique<RandomGenerator_t>(*RandomNumberControl::Children[ip]);
 #if !defined(REMOVE_TRACEMANAGER)
       traceClones[ip] = Traces->makeClone();
 #endif
@@ -346,11 +335,11 @@ void RMC::resetReptiles(std::vector<ReptileConfig_t>& reptile_samps, RealType ta
   }
 }
 //For # of walker samples, create that many reptiles with nbeads each.  Initialize each reptile to have the value of the walker "seed".
-void RMC::resetReptiles(std::vector<ParticlePos>& walker_samps, int nBeads_in, RealType tau)
+void RMC::resetReptiles(std::vector<ParticlePos_t>& walker_samps, int nBeads_in, RealType tau)
 {
   if (walker_samps.empty())
   {
-    APP_ABORT("RMC::resetReptiles(std::vector< ParticlePos > walker_samps):  No samples!\n");
+    APP_ABORT("RMC::resetReptiles(std::vector< ParticlePos_t > walker_samps):  No samples!\n");
   }
   else
   {

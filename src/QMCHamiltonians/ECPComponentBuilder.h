@@ -27,10 +27,10 @@ namespace qmcplusplus
 {
 struct ECPComponentBuilder : public MPIObjectBase, public QMCTraits
 {
-  using GridType            = LocalECPotential::GridType;
-  using mRealType           = ParticleSet::Scalar_t;
-  using mGridType           = OneDimGridBase<mRealType>;
-  using RadialPotentialType = LocalECPotential::RadialPotentialType;
+  typedef LocalECPotential::GridType GridType;
+  typedef ParticleSet::Scalar_t mRealType;
+  typedef OneDimGridBase<mRealType> mGridType;
+  typedef LocalECPotential::RadialPotentialType RadialPotentialType;
 
   int NumNonLocal;
   int Lmax, Llocal, Nrule, Srule;
@@ -48,10 +48,7 @@ struct ECPComponentBuilder : public MPIObjectBase, public QMCTraits
   std::unique_ptr<L2RadialPotential> pp_L2;
   std::map<std::string, int> angMon;
 
-  /** constructor
-   * spin grid used for numerical integration. use 0 for exact integration.
-   */
-  ECPComponentBuilder(const std::string& aname, Communicate* c, int nrule = -1, int llocal = -1, int srule = 8);
+  ECPComponentBuilder(const std::string& aname, Communicate* c, int nrule = -1);
 
   bool parse(const std::string& fname, xmlNodePtr cur);
   bool put(xmlNodePtr cur);
@@ -77,6 +74,7 @@ struct ECPComponentBuilder : public MPIObjectBase, public QMCTraits
 
   std::unique_ptr<mGridType> createGrid(xmlNodePtr cur, bool useLinear = false);
   RadialPotentialType* createVrWithBasisGroup(xmlNodePtr cur, mGridType* agrid);
+  RadialPotentialType* createVrWithData(xmlNodePtr cur, mGridType* agrid, int rCorrection = 0);
 
   void doBreakUp(const std::vector<int>& angList,
                  const Matrix<mRealType>& vnn,

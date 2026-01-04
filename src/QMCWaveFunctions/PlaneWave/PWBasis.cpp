@@ -17,12 +17,14 @@
  * @brief Definition of member functions of Plane-wave basis set
  */
 #include "PWBasis.h"
+#include "Numerics/HDFSTLAttrib.h"
+#include "Numerics/HDFNumericAttrib.h"
 
 namespace qmcplusplus
 {
-int PWBasis::readbasis(hdf_archive& h5basisgroup,
+int PWBasis::readbasis(hid_t h5basisgroup,
                        RealType ecutoff,
-                       const ParticleLayout& lat,
+                       ParticleLayout_t& lat,
                        const std::string& pwname,
                        const std::string& pwmultname,
                        bool resizeContainer)
@@ -31,11 +33,14 @@ int PWBasis::readbasis(hdf_archive& h5basisgroup,
   Lattice = lat;
   ecut    = ecutoff;
   app_log() << "  PWBasis::" << pwmultname << " is found " << std::endl;
-  h5basisgroup.read(gvecs, "/electrons/kpoint_0/gvectors");
+  HDFAttribIO<std::vector<GIndex_t>> hdfvtv(gvecs);
+  hdfvtv.read(h5basisgroup, "/electrons/kpoint_0/gvectors");
   NumPlaneWaves = std::max(gvecs.size(), kplusgvecs_cart.size());
   if (NumPlaneWaves == 0)
-    throw std::runtime_error("  PWBasis::readbasis Basis is missing.");
-
+  {
+    app_error() << "  PWBasis::readbasis Basis is missing. Abort " << std::endl;
+    abort(); //FIX_ABORT
+  }
   if (kplusgvecs_cart.empty())
   {
     kplusgvecs_cart.resize(NumPlaneWaves);

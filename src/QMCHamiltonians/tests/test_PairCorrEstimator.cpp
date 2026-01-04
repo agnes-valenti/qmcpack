@@ -34,32 +34,29 @@ using std::string;
 */
 
 // Lattice block
-const char* lat_xml = R"(<simulationcell>
-                        <parameter name="lattice" units="bohr">
-                          2.0 0.0 0.0
-                          0.0 2.0 0.0
-                          0.0 0.0 2.0
-                        </parameter>
-                        <parameter name="bconds">
-                           p p p
-                        </parameter>
-                        <parameter name="LR_dim_cutoff" >     6  </parameter>
-                       </simulationcell>)";
+const char* lat_xml = "<simulationcell> \
+                         <parameter name=\"bconds\"> \
+                           p p p \
+                        </parameter> \
+                        <parameter name=\"LR_dim_cutoff\" >     6  </parameter> \
+                        <parameter name=\"rs\"            >   1.0  </parameter> \
+                        <parameter name=\"nparticles\"    >     8  </parameter> \
+                        </simulationcell>";
 
 // Particleset block
-const char* pset_xml = R"(<particleset name="e" random="yes">
-                          <group name="u" size="4" mass="1.0">
-                            <parameter name="charge" >   -1  </parameter>
-                            <parameter name="mass"   >  1.0  </parameter>
-                          </group>
-                          <group name="d" size="4" mass="1.0">
-                            <parameter name="charge" >   -1  </parameter>
-                            <parameter name="mass"   >  1.0  </parameter>
-                          </group>
-                        </particleset>)";
+const char* pset_xml = "<particleset name=\"e\" random=\"yes\"> \
+                          <group name=\"u\" size=\"4\" mass=\"1.0\"> \
+                            <parameter name=\"charge\" >   -1  </parameter> \
+                            <parameter name=\"mass\"   >  1.0  </parameter> \
+                          </group> \
+                          <group name=\"d\" size=\"4\" mass=\"1.0\"> \
+                            <parameter name=\"charge\" >   -1  </parameter> \
+                            <parameter name=\"mass\"   >  1.0  </parameter> \
+                          </group> \
+                        </particleset>";
 
 // PairCorrEstimator block
-const char* gofr_xml = R"(<estimator type="gofr" name="gofr" rmax="2.0" num_bin="99" />)";
+const char* gofr_xml = "<estimator type=\"gofr\" name=\"gofr\" rmax=\"2.0\" num_bin=\"99\" />";
 
 
 namespace qmcplusplus
@@ -68,9 +65,15 @@ TEST_CASE("Pair Correlation", "[hamiltonian]")
 {
   std::cout << std::fixed;
   std::cout << std::setprecision(8);
-  using RealType = QMCTraits::RealType;
+  typedef QMCTraits::RealType RealType;
 
-  Communicate* c = OHMMS::Controller;
+  Communicate* c;
+  c = OHMMS::Controller;
+
+  CrystalLattice<OHMMS_PRECISION, OHMMS_DIM> lattice;
+  lattice.BoxBConds = true; // periodic
+  lattice.R.diagonal(2.0);
+  lattice.reset();
 
   // XML parser
   Libxml2Document doc;
@@ -83,7 +86,7 @@ TEST_CASE("Pair Correlation", "[hamiltonian]")
   xmlNodePtr lat_xml_root = doc.getRoot();
 
   ParticleSetPool pset_builder(c, "pset_builder");
-  pset_builder.readSimulationCellXML(lat_xml_root); // Builds lattice
+  pset_builder.putLattice(lat_xml_root); // Builds lattice
 
   bool pset_okay = doc.parseFromString(pset_xml);
   REQUIRE(pset_okay);
@@ -92,9 +95,9 @@ TEST_CASE("Pair Correlation", "[hamiltonian]")
 
   // Get the (now assembled) ParticleSet, do simple sanity checks, then print info
   ParticleSet* elec = pset_builder.getParticleSet("e");
+  elec->Lattice     = lattice; // copy in the new Lattice
 
-  std::cout << "cheeeee " << elec->getLattice().R << std::endl;
-  REQUIRE(elec->isSameMass());
+  REQUIRE(elec->SameMass);
   REQUIRE(elec->getName() == "e");
 
   // Move the particles manually onto B1 lattice

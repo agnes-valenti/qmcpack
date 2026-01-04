@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -17,9 +17,6 @@
 
 namespace qmcplusplus
 {
-
-class SpinDensityNew;
-
 /** Native representation for Spin Density Estimators inputs
  *
  *  This class servers three purposes all related to properly handling
@@ -32,25 +29,21 @@ class SpinDensityNew;
 class SpinDensityInput
 {
 public:
-  static constexpr std::string_view type_tag{"SpinDensity"};
   using Real               = QMCTraits::RealType;
+  using POLT               = PtclOnLatticeTraits;
+  using Lattice            = POLT::ParticleLayout_t;
   using PosType            = QMCTraits::PosType;
-  using Consumer           = SpinDensityNew;
   static constexpr int DIM = QMCTraits::DIM;
 
-  SpinDensityInput(xmlNodePtr node);
-  /** default copy constructor
-   *  This is required due to SDI being part of a variant used as a vector element.
-   */
-  SpinDensityInput(const SpinDensityInput&) = default;
+public:
+  SpinDensityInput(){};
+  void readXML(xmlNodePtr cur);
   Lattice get_cell() const { return cell_; }
   PosType get_corner() const { return corner_; }
   TinyVector<int, DIM> get_grid() const { return grid_; }
   int get_npoints() const { return npoints_; }
   bool get_write_report() const { return write_report_; }
   bool get_save_memory() const { return save_memory_; }
-  const std::string& get_name() const { return name_; }
-  const std::string& get_type() const { return type_; }
 
   struct DerivedParameters
   {
@@ -70,11 +63,8 @@ public:
   DerivedParameters calculateDerivedParameters(const Lattice& lattice) const;
 
 private:
-  void readXML(xmlNodePtr cur);
-
   ///name of this Estimator
-  std::string name_{type_tag};
-  std::string type_{type_tag};
+  std::string myName_;
 
   Lattice cell_;
   PosType corner_;
@@ -85,7 +75,7 @@ private:
   bool write_report_;
   bool save_memory_;
   /** these are necessary for calculateDerivedParameters
-   *
+   *  
    *  If we are going to later write out a canonical input for
    *  this input then they are needed as well.
    */

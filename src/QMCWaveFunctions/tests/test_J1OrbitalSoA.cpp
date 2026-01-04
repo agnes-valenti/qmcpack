@@ -15,24 +15,19 @@
 #include "QMCWaveFunctions/Jastrow/J1OrbitalSoA.h"
 #include "QMCWaveFunctions/Jastrow/RadialJastrowBuilder.h"
 #include "QMCWaveFunctions/WaveFunctionFactory.h"
-#include "Utilities/RuntimeOptions.h"
-#include "OhmmsData/Libxml2Doc.h"
 
 namespace qmcplusplus
 {
 TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
 {
   Communicate* c = OHMMS::Controller;
-
-  ParticleSetPool ptcl = ParticleSetPool(c);
-  auto ions_uptr       = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
-  auto elec_uptr       = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
   ParticleSet& ions_(*ions_uptr);
   ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion0");
-  ptcl.addParticleSet(std::move(ions_uptr));
-  ions_.create({1});
+  ions_.create(1);
   ions_.R[0]                 = {0.0, 0.0, 0.0};
   SpeciesSet& ispecies       = ions_.getSpeciesSet();
   int HIdx                   = ispecies.addSpecies("H");
@@ -40,7 +35,6 @@ TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
   ispecies(ichargeIdx, HIdx) = 1.0;
 
   elec_.setName("e");
-  ptcl.addParticleSet(std::move(elec_uptr));
   elec_.create({1, 1});
   elec_.R[0] = {0.5, 0.5, 0.5};
   elec_.R[1] = {-0.5, -0.5, -0.5};
@@ -57,6 +51,11 @@ TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
   // Necessary to set mass
   elec_.resetGroups();
 
+  ParticleSetPool ptcl = ParticleSetPool(c);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
+
+
   ions_.update();
   elec_.addTable(elec_);
   elec_.addTable(ions_);
@@ -65,14 +64,14 @@ TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
   ions_.get(app_log());
   elec_.get(app_log());
 
-  const char* jasxml = R"(<wavefunction name="psi0" target="e">
-  <jastrow name="J1" type="One-Body" function="Bspline" print="yes" source="ion0">
-    <correlation elementType="H" cusp="0.0" size="2" rcut="5.0">
-      <coefficients id="J1H" type="Array"> 0.5 0.1 </coefficients>
-    </correlation>
-  </jastrow>
-</wavefunction>
-)";
+  const char* jasxml = "<wavefunction name=\"psi0\" target=\"e\"> \
+  <jastrow name=\"J1\" type=\"One-Body\" function=\"Bspline\" print=\"yes\" source=\"ion0\"> \
+    <correlation elementType=\"H\" cusp=\"0.0\" size=\"2\" rcut=\"5.0\"> \
+      <coefficients id=\"J1H\" type=\"Array\"> 0.5 0.1 </coefficients> \
+    </correlation> \
+  </jastrow> \
+</wavefunction> \
+";
   Libxml2Document doc;
   bool okay = doc.parseFromString(jasxml);
   REQUIRE(okay);
@@ -81,10 +80,9 @@ TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
 
   // update all distance tables
   elec_.update();
-  RuntimeOptions runtime_options;
-  WaveFunctionFactory wf_factory(elec_, ptcl.getPool(), c);
-  auto twf_ptr = wf_factory.buildTWF(jas1, runtime_options);
-  auto& twf(*twf_ptr);
+  WaveFunctionFactory wf_factory("psi0", elec_, ptcl.getPool(), c);
+  wf_factory.put(jas1);
+  auto& twf(*wf_factory.getTWF());
   twf.setMassTerm(elec_);
   twf.evaluateLog(elec_);
   twf.prepareGroup(elec_, 0);
@@ -93,13 +91,13 @@ TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
 
   opt_variables_type active;
   twf.checkInVariables(active);
-  active.resetIndex();
+  active.removeInactive();
   int nparam = active.size_of_active();
   REQUIRE(nparam == 2);
 
   using ValueType = QMCTraits::ValueType;
-  Vector<ValueType> dlogpsi(nparam);
-  Vector<ValueType> dhpsioverpsi(nparam);
+  std::vector<ValueType> dlogpsi(nparam);
+  std::vector<ValueType> dhpsioverpsi(nparam);
   //twf.evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
   twf_component_list[0]->evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
 
@@ -115,15 +113,13 @@ TEST_CASE("J1 evaluate derivatives Jastrow", "[wavefunction]")
 
 TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
 {
-  Communicate* c       = OHMMS::Controller;
-  ParticleSetPool ptcl = ParticleSetPool(c);
-  auto ions_uptr       = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
-  auto elec_uptr       = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
+  Communicate* c = OHMMS::Controller;
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
   ParticleSet& ions_(*ions_uptr);
   ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion0");
-  ptcl.addParticleSet(std::move(ions_uptr));
   ions_.create({1, 1});
   ions_.R[0]                 = {0.0, 0.0, 1.0};
   ions_.R[1]                 = {0.0, 0.0, 0.0};
@@ -138,7 +134,6 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
   ispecies(imassIdx, OIdx)   = 16.0;
 
   elec_.setName("e");
-  ptcl.addParticleSet(std::move(elec_uptr));
   elec_.create({1, 1});
   elec_.R[0] = {0.5, 0.5, 0.5};
   elec_.R[1] = {-0.5, -0.5, -0.5};
@@ -155,6 +150,11 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
   // Necessary to set mass
   elec_.resetGroups();
 
+  ParticleSetPool ptcl = ParticleSetPool(c);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
+
+
   ions_.update();
   elec_.addTable(elec_);
   elec_.addTable(ions_);
@@ -163,17 +163,17 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
   ions_.get(app_log());
   elec_.get(app_log());
 
-  const char* jasxml = R"(<wavefunction name="psi0" target="e">
-  <jastrow name="J1" type="One-Body" function="Bspline" print="yes" source="ion0">
-    <correlation elementType="H" cusp="0.0" size="2" rcut="5.0">
-      <coefficients id="J1H" type="Array"> 0.5 0.1 </coefficients>
-    </correlation>
-    <correlation elementType="O" cusp="0.0" size="2" rcut="5.0">
-      <coefficients id="J1O" type="Array"> 0.2 0.1 </coefficients>
-    </correlation>
-  </jastrow>
-</wavefunction>
-)";
+  const char* jasxml = "<wavefunction name=\"psi0\" target=\"e\"> \
+  <jastrow name=\"J1\" type=\"One-Body\" function=\"Bspline\" print=\"yes\" source=\"ion0\"> \
+    <correlation elementType=\"H\" cusp=\"0.0\" size=\"2\" rcut=\"5.0\"> \
+      <coefficients id=\"J1H\" type=\"Array\"> 0.5 0.1 </coefficients> \
+    </correlation> \
+    <correlation elementType=\"O\" cusp=\"0.0\" size=\"2\" rcut=\"5.0\"> \
+      <coefficients id=\"J1O\" type=\"Array\"> 0.2 0.1 </coefficients> \
+    </correlation> \
+  </jastrow> \
+</wavefunction> \
+";
   Libxml2Document doc;
   bool okay = doc.parseFromString(jasxml);
   REQUIRE(okay);
@@ -182,10 +182,9 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
 
   // update all distance tables
   elec_.update();
-  RuntimeOptions runtime_options;
-  WaveFunctionFactory wf_factory(elec_, ptcl.getPool(), c);
-  auto twf_ptr = wf_factory.buildTWF(jas1, runtime_options);
-  auto& twf(*twf_ptr);
+  WaveFunctionFactory wf_factory("psi0", elec_, ptcl.getPool(), c);
+  wf_factory.put(jas1);
+  auto& twf(*wf_factory.getTWF());
   twf.setMassTerm(elec_);
   twf.evaluateLog(elec_);
   twf.prepareGroup(elec_, 0);
@@ -194,13 +193,13 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
 
   opt_variables_type active;
   twf.checkInVariables(active);
-  active.resetIndex();
+  active.removeInactive();
   int nparam = active.size_of_active();
   REQUIRE(nparam == 4);
 
   using ValueType = QMCTraits::ValueType;
-  Vector<ValueType> dlogpsi(nparam);
-  Vector<ValueType> dhpsioverpsi(nparam);
+  std::vector<ValueType> dlogpsi(nparam);
+  std::vector<ValueType> dhpsioverpsi(nparam);
   //twf.evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
   twf_component_list[0]->evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
 
@@ -216,15 +215,13 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species", "[wavefunction]")
 
 TEST_CASE("J1 evaluate derivatives Jastrow with two species one without Jastrow", "[wavefunction]")
 {
-  Communicate* c       = OHMMS::Controller;
-  ParticleSetPool ptcl = ParticleSetPool(c);
-  auto ions_uptr       = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
-  auto elec_uptr       = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
+  Communicate* c = OHMMS::Controller;
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
   ParticleSet& ions_(*ions_uptr);
   ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion0");
-  ptcl.addParticleSet(std::move(ions_uptr));
   ions_.create({1, 1});
   ions_.R[0]                 = {0.0, 0.0, 1.0};
   ions_.R[1]                 = {0.0, 0.0, 0.0};
@@ -239,7 +236,6 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species one without Jastrow"
   ispecies(imassIdx, OIdx)   = 16.0;
 
   elec_.setName("e");
-  ptcl.addParticleSet(std::move(elec_uptr));
   elec_.create({1, 1});
   elec_.R[0] = {0.5, 0.5, 0.5};
   elec_.R[1] = {-0.5, -0.5, -0.5};
@@ -256,6 +252,11 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species one without Jastrow"
   // Necessary to set mass
   elec_.resetGroups();
 
+  ParticleSetPool ptcl = ParticleSetPool(c);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
+
+
   ions_.update();
   elec_.addTable(elec_);
   elec_.addTable(ions_);
@@ -264,14 +265,14 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species one without Jastrow"
   ions_.get(app_log());
   elec_.get(app_log());
 
-  const char* jasxml = R"(<wavefunction name="psi0" target="e">
-  <jastrow name="J1" type="One-Body" function="Bspline" print="yes" source="ion0">
-    <correlation elementType="H" cusp="0.0" size="2" rcut="5.0">
-      <coefficients id="J1H" type="Array"> 0.5 0.1 </coefficients>
-    </correlation>
-  </jastrow>
-</wavefunction>
-)";
+  const char* jasxml = "<wavefunction name=\"psi0\" target=\"e\"> \
+  <jastrow name=\"J1\" type=\"One-Body\" function=\"Bspline\" print=\"yes\" source=\"ion0\"> \
+    <correlation elementType=\"H\" cusp=\"0.0\" size=\"2\" rcut=\"5.0\"> \
+      <coefficients id=\"J1H\" type=\"Array\"> 0.5 0.1 </coefficients> \
+    </correlation> \
+  </jastrow> \
+</wavefunction> \
+";
   Libxml2Document doc;
   bool okay = doc.parseFromString(jasxml);
   REQUIRE(okay);
@@ -280,10 +281,9 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species one without Jastrow"
 
   // update all distance tables
   elec_.update();
-  RuntimeOptions runtime_options;
-  WaveFunctionFactory wf_factory(elec_, ptcl.getPool(), c);
-  auto twf_ptr = wf_factory.buildTWF(jas1, runtime_options);
-  auto& twf(*twf_ptr);
+  WaveFunctionFactory wf_factory("psi0", elec_, ptcl.getPool(), c);
+  wf_factory.put(jas1);
+  auto& twf(*wf_factory.getTWF());
   twf.setMassTerm(elec_);
   twf.evaluateLog(elec_);
   twf.prepareGroup(elec_, 0);
@@ -292,13 +292,13 @@ TEST_CASE("J1 evaluate derivatives Jastrow with two species one without Jastrow"
 
   opt_variables_type active;
   twf.checkInVariables(active);
-  active.resetIndex();
+  active.removeInactive();
   int nparam = active.size_of_active();
   REQUIRE(nparam == 2);
 
   using ValueType = QMCTraits::ValueType;
-  Vector<ValueType> dlogpsi(nparam);
-  Vector<ValueType> dhpsioverpsi(nparam);
+  std::vector<ValueType> dlogpsi(nparam);
+  std::vector<ValueType> dhpsioverpsi(nparam);
   //twf.evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
   twf_component_list[0]->evaluateDerivatives(elec_, active, dlogpsi, dhpsioverpsi);
 

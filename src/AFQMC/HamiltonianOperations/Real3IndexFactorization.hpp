@@ -116,8 +116,7 @@ public:
         vn0(std::move(vn0_)),
         SM_TMats({1, 1}, shared_allocator<SPComplexType>{TG.TG_local()})
   {
-    using std::get;
-    local_nCV = get<1>(Likn.sizes());
+    local_nCV = Likn.size(1);
     TG.Node().barrier();
   }
 
@@ -130,7 +129,7 @@ public:
 
   CMatrix getOneBodyPropagatorMatrix(TaskGroup_& TG, boost::multi::array<ComplexType, 1> const& vMF)
   {
-    int NMO = hij.size();
+    int NMO = hij.size(0);
     // in non-collinear case with SO, keep SO matrix here and add it
     // for now, stay collinear
     CMatrix H1({NMO, NMO});
@@ -186,8 +185,7 @@ public:
               bool addEJ  = true,
               bool addEXX = true)
   {
-    using std::get;
-    assert(get<1>(E.sizes()) >= 3);
+    assert(E.size(1) >= 3);
     assert(nd >= 0);
     assert(nd < haj.size());
     if (walker_type == COLLINEAR)
@@ -195,27 +193,24 @@ public:
     else
       assert(nd < Lank.size());
 
-    int nwalk = Gc.size();
+    int nwalk = Gc.size(0);
     int nspin = (walker_type == COLLINEAR ? 2 : 1);
-    int NMO   = hij.size();
+    int NMO   = hij.size(0);
     int nel[2];
-    nel[0] = Lank[nspin * nd].size();
-    nel[1] = ((nspin == 2) ? Lank[nspin * nd + 1].size() : 0);
-    using std::get;
-    assert(get<1>(Lank[nspin * nd].sizes()) == local_nCV);
-    assert(get<2>(Lank[nspin * nd].sizes()) == NMO);
+    nel[0] = Lank[nspin * nd].size(0);
+    nel[1] = ((nspin == 2) ? Lank[nspin * nd + 1].size(0) : 0);
+    assert(Lank[nspin * nd].size(1) == local_nCV);
+    assert(Lank[nspin * nd].size(2) == NMO);
     if (nspin == 2)
     {
-      assert(get<1>(Lank[nspin * nd + 1].sizes()) == local_nCV);
-      assert(get<2>(Lank[nspin * nd + 1].sizes()) == NMO);
+      assert(Lank[nspin * nd + 1].size(1) == local_nCV);
+      assert(Lank[nspin * nd + 1].size(2) == NMO);
     }
     assert(Gc.num_elements() == nwalk * (nel[0] + nel[1]) * NMO);
 
     int getKr = KEright != nullptr;
     int getKl = KEleft != nullptr;
-
-    using std::get;
-    if (get<0>(E.sizes()) != nwalk || get<1>(E.sizes()) < 3)
+    if (E.size(0) != nwalk || E.size(1) < 3)
       APP_ABORT(
           " Error in AFQMC/HamiltonianOperations/Real3IndexFactorization::energy(...). Incorrect matrix dimensions \n");
 
@@ -246,28 +241,26 @@ public:
     // messy
     SPComplexType* Klptr(nullptr);
     long Knr = 0, Knc = 0;
-
-    using std::get;
     if (addEJ)
     {
       Knr = nwalk;
       Knc = local_nCV;
       if (getKr)
       {
-        assert(get<0>(KEright->sizes()) == nwalk && get<1>(KEright->sizes()) == local_nCV);
-        assert(KEright->stride(0) == get<1>(KEright->sizes()));
+        assert(KEright->size(0) == nwalk && KEright->size(1) == local_nCV);
+        assert(KEright->stride(0) == KEright->size(1));
       }
 #if defined(MIXED_PRECISION)
       if (getKl)
       {
-        assert(get<0>(KEleft->sizes()) == nwalk && get<1>(KEleft->sizes()) == local_nCV);
-        assert(KEleft->stride(0) == get<1>(KEleft->sizes()));
+        assert(KEleft->size(0) == nwalk && KEleft->size(1) == local_nCV);
+        assert(KEleft->stride(0) == KEleft->size(1));
       }
 #else
       if (getKl)
       {
-        assert(get<0>(KEleft->sizes()) == nwalk && get<1>(KEleft->sizes()) == local_nCV);
-        assert(KEleft->stride(0) == get<1>(KEleft->sizes()));
+        assert(KEleft->size(0) == nwalk && KEleft->size(1) == local_nCV);
+        assert(KEleft->stride(0) == KEleft->size(1));
         Klptr = to_address(KEleft->origin());
       }
       else
@@ -430,10 +423,8 @@ public:
   {
     using BType = typename std::decay<MatB>::type::element;
     using AType = typename std::decay<MatA>::type::element;
-
-    using std::get;
-    boost::multi::array_ref<      BType, 2> v_(to_address(v.origin()), {get<0>(v.sizes()), 1});
-    boost::multi::array_ref<const AType, 2> X_(to_address(X.origin()), {get<0>(X.sizes()), 1});
+    boost::multi::array_ref<BType, 2> v_(to_address(v.origin()), {v.size(0), 1});
+    boost::multi::array_ref<const AType, 2> X_(to_address(X.origin()), {X.size(0), 1});
     return vHS(X_, v_, a, c);
   }
 
@@ -445,13 +436,11 @@ public:
   {
     using XType = typename std::decay_t<typename MatA::element>;
     using vType = typename std::decay<MatB>::type::element;
-
-    using std::get;
-    assert(get<1>(Likn.sizes()) == get<0>(X.sizes()));
-    assert(get<0>(Likn.sizes()) == get<0>(v.sizes()));
-    assert(get<1>(X.sizes()) == get<1>(v.sizes()));
+    assert(Likn.size(1) == X.size(0));
+    assert(Likn.size(0) == v.size(0));
+    assert(X.size(1) == v.size(1));
     long ik0, ikN;
-    std::tie(ik0, ikN) = FairDivideBoundary(long(TG.TG_local().rank()), long(Likn.size()), long(TG.TG_local().size()));
+    std::tie(ik0, ikN) = FairDivideBoundary(long(TG.TG_local().rank()), long(Likn.size(0)), long(TG.TG_local().size()));
     // setup buffer space if changing precision in X or v
     size_t vmem(0), Xmem(0);
     if (not std::is_same<XType, SPComplexType>::value)
@@ -495,10 +484,9 @@ public:
 
     ma::product(SPValueType(a), Likn.sliced(ik0, ikN), Xsp, SPValueType(c), vsp.sliced(ik0, ikN));
 
-    using std::get;
     if (not std::is_same<vType, SPComplexType>::value)
     {
-      copy_n_cast(to_address(vsp[ik0].origin()), get<1>(vsp.sizes()) * (ikN - ik0), to_address(v[ik0].origin()));
+      copy_n_cast(to_address(vsp[ik0].origin()), vsp.size(1) * (ikN - ik0), to_address(v[ik0].origin()));
     }
     TG.TG_local().barrier();
   }
@@ -510,12 +498,10 @@ public:
            typename = void>
   void vbias(const MatA& G, MatB&& v, double a = 1., double c = 0., int k = 0)
   {
-    using std::get;
-
     using BType = typename std::decay<MatB>::type::element;
     using AType = typename std::decay<MatA>::type::element;
-    boost::multi::array_ref<BType, 2> v_(to_address(v.origin()), {get<0>(v.sizes()), 1});
-    boost::multi::array_cref<AType, 2> G_(to_address(G.origin()), {get<0>(G.sizes()), 1});
+    boost::multi::array_ref<BType, 2> v_(to_address(v.origin()), {v.size(0), 1});
+    boost::multi::array_cref<AType, 2> G_(to_address(G.origin()), {G.size(0), 1});
     return vbias(G_, v_, a, c, k);
   }
 
@@ -570,14 +556,13 @@ public:
     boost::multi::array_ref<SPComplexType, 2> vsp(vptr, v.extensions());
     TG.TG_local().barrier();
 
-    using std::get;
-    if (haj.size() == 1)
+    if (haj.size(0) == 1)
     {
-      assert(get<0>(Lakn.sizes()) == get<0>(G.sizes()));
-      assert(get<1>(Lakn.sizes()) == get<0>(v.sizes()));
-      assert(get<1>(G.sizes()) == get<1>(v.sizes()));
+      assert(Lakn.size(0) == G.size(0));
+      assert(Lakn.size(1) == v.size(0));
+      assert(G.size(1) == v.size(1));
       std::tie(ic0, icN) =
-          FairDivideBoundary(long(TG.TG_local().rank()), long(get<1>(Lakn.sizes())), long(TG.TG_local().size()));
+          FairDivideBoundary(long(TG.TG_local().rank()), long(Lakn.size(1)), long(TG.TG_local().size()));
 
       if (walker_type == CLOSED)
         a *= 2.0;
@@ -587,11 +572,11 @@ public:
     else
     {
       // multideterminant is not half-rotated, so use Likn
-      assert(get<0>(Likn.sizes()) == get<0>(G.sizes()));
-      assert(get<1>(Likn.sizes()) == get<0>(v.sizes()));
-      assert(get<1>(G.sizes()) == get<1>(v.sizes()));
+      assert(Likn.size(0) == G.size(0));
+      assert(Likn.size(1) == v.size(0));
+      assert(G.size(1) == v.size(1));
       std::tie(ic0, icN) =
-          FairDivideBoundary(long(TG.TG_local().rank()), long(get<1>(Likn.sizes())), long(TG.TG_local().size()));
+          FairDivideBoundary(long(TG.TG_local().rank()), long(Likn.size(1)), long(TG.TG_local().size()));
 
       if (walker_type == CLOSED)
         a *= 2.0;
@@ -599,10 +584,9 @@ public:
                   vsp.sliced(ic0, icN));
     }
     // copy data back if changing precision
-    using std::get;
     if (not std::is_same<vType, SPComplexType>::value)
     {
-      copy_n_cast(to_address(vsp[ic0].origin()), get<1>(vsp.sizes()) * (icN - ic0), to_address(v[ic0].origin()));
+      copy_n_cast(to_address(vsp[ic0].origin()), vsp.size(1) * (icN - ic0), to_address(v[ic0].origin()));
     }
     TG.TG_local().barrier();
   }
@@ -649,11 +633,11 @@ private:
   //Cholesky Tensor Lik[i][k][n]
   shmSpRMatrix Likn;
 
-  // permuted half-transformed Cholesky tensor
+  // permuted half-tranformed Cholesky tensor
   // Lank[ 2*idet + ispin ]
   std::vector<shmSpC3Tensor> Lank;
 
-  // half-transformed Cholesky tensor
+  // half-tranformed Cholesky tensor
   // only used in single determinant case, haj.size(0)==1.
   shmSpCMatrix Lakn;
 
@@ -669,7 +653,7 @@ private:
   void set_shm_buffer(size_t N)
   {
     if (SM_TMats.num_elements() < N)
-      SM_TMats.reextent({static_cast<shmSpCMatrix::size_type>(N), 1});
+      SM_TMats.reextent({N, 1});
   }
 };
 

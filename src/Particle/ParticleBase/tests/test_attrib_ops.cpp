@@ -17,7 +17,7 @@
 #include "OhmmsPETE/TinyVector.h"
 #include "Lattice/CrystalLattice.h"
 #include "ParticleBase/ParticleAttrib.h"
-#include "CPU/VectorOps.h"
+#include "ParticleBase/ParticleAttribOps.h"
 #include "ParticleBase/ParticleUtility.h"
 
 #include <stdio.h>
@@ -33,7 +33,7 @@ void double_test_case()
   TinyVector<double, D> v1;
   v1          = 2.0;
   double val1 = dot(v1, v1);
-  CHECK(val1 == Approx(4.0 * D));
+  REQUIRE(val1 == Approx(4.0 * D));
 
 
   ParticleAttrib<TinyVector<double, D>> PA1;
@@ -44,7 +44,7 @@ void double_test_case()
   PA1 = 1.0;
 
   double val = Dot(PA1, PA1);
-  CHECK(val == Approx(3 * 1.0 * D));
+  REQUIRE(val == Approx(3 * 1.0 * D));
 }
 
 
@@ -63,10 +63,10 @@ void complex_test_case()
 
   v1          = std::complex<double>(2.0, 1.0);
   double val1 = OTCDot<double, double, D>::apply(v1, v1);
-  CHECK(val1 == Approx(3.0 * D));
+  REQUIRE(val1 == Approx(3.0 * D));
 
   double val1_cc = OTCDot_CC<double, double, D>::apply(v1, v1);
-  CHECK(val1_cc == Approx(5.0 * D));
+  REQUIRE(val1_cc == Approx(5.0 * D));
 
 
   ParticleAttrib<TinyVector<std::complex<double>, D>> PA1;
@@ -77,10 +77,10 @@ void complex_test_case()
   PA1 = std::complex<double>(1.0, 2.0);
 
   double val = Dot(PA1, PA1);
-  CHECK(val == Approx(-3.0 * 3 * D));
+  REQUIRE(val == Approx(-3.0 * 3 * D));
 
   double val_cc = Dot_CC(PA1, PA1);
-  CHECK(val_cc == Approx(5.0 * 3 * D));
+  REQUIRE(val_cc == Approx(5.0 * 3 * D));
 }
 
 TEST_CASE("particle_attrib_ops_complex", "[particle_base]")

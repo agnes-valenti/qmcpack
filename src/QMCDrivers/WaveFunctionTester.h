@@ -43,11 +43,10 @@ class WaveFunctionTester : public QMCDriver
 {
 public:
   /// type definition
-  using LogValue = WaveFunctionComponent::LogValue;
+  using LogValueType = WaveFunctionComponent::LogValueType;
 
   /// Constructor.
-  WaveFunctionTester(const ProjectData& project_data,
-                     MCWalkerConfiguration& w,
+  WaveFunctionTester(MCWalkerConfiguration& w,
                      TrialWaveFunction& psi,
                      QMCHamiltonian& h,
                      ParticleSetPool& ptclPool,
@@ -60,7 +59,7 @@ public:
 
 private:
   ParticleSetPool& PtclPool;
-  ParticleSet::ParticlePos deltaR;
+  ParticleSet::ParticlePos_t deltaR;
   std::string checkRatio, checkClone, checkHamPbyP, sourceName, wftricks, checkEloc;
   std::string checkBasic, checkRatioV;
   xmlNodePtr myNode;
@@ -90,18 +89,21 @@ private:
   void runDerivCloneTest();
   void runGradSourceTest();
   void runZeroVarianceTest();
+  void runwftricks();
   void runNodePlot();
   void printEloc();
 
   // compute numerical gradient and laplacian
-  void computeNumericalGrad(RealType delta, ParticleSet::ParticleGradient& G_fd, ParticleSet::ParticleLaplacian& L_fd);
+  void computeNumericalGrad(RealType delta,
+                            ParticleSet::ParticleGradient_t& G_fd,
+                            ParticleSet::ParticleLaplacian_t& L_fd);
 
   bool checkGradients(int lower_iat,
                       int upper_iat,
-                      ParticleSet::ParticleGradient& G,
-                      ParticleSet::ParticleLaplacian& L,
-                      ParticleSet::ParticleGradient& G_fd,
-                      ParticleSet::ParticleLaplacian& L_fd,
+                      ParticleSet::ParticleGradient_t& G,
+                      ParticleSet::ParticleLaplacian_t& L,
+                      ParticleSet::ParticleGradient_t& G_fd,
+                      ParticleSet::ParticleLaplacian_t& L_fd,
                       std::stringstream& log,
                       int indent = 0);
 
@@ -111,7 +113,6 @@ private:
   //vector<RealType> Mv3(std::vector<std::vector<RealType> >& M, std::vector<RealType>& v);
 
   std::ofstream fout;
-  const size_t ndim;
 };
 } // namespace qmcplusplus
 #endif

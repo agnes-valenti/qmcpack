@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -22,17 +22,11 @@ namespace testing
 template<typename T>
 class OneBodyDensityMatricesTests;
 }
-
-class OneBodyDensityMatrices;
-
 /** Native representation for DensityMatrices1B Estimator's inputs
  */
 class OneBodyDensityMatricesInput
 {
 public:
-  static constexpr std::string_view type_tag{"OneBodyDensityMatrices"};
-  using Consumer = OneBodyDensityMatrices;
-
   enum class Integrator
   {
     UNIFORM_GRID,
@@ -64,14 +58,14 @@ public:
                               {"evaluator-loop", Evaluator::LOOP},
                               {"evaluator-matrix", Evaluator::MATRIX}};
 
-  class OneBodyDensityMatricesInputSection : public InputSection
+  class OneBodyDensityMatrixInputSection : public InputSection
   {
   public:
     /** parse time definition of input parameters */
-    OneBodyDensityMatricesInputSection()
+    OneBodyDensityMatrixInputSection()
     {
       // clang-format off
-      section_name  = "OneBodyDensityMatrices";
+      section_name  = "OneBodyDensityMatrix";
       attributes    = {"name", "type"};
       parameters    = {"basis", "energy_matrix", "integrator", "evaluator", "scale",
                        "corner", "center", "points", "samples", "warmup", "timestep",
@@ -89,23 +83,20 @@ public:
       // I'd much rather see the default defined in simple native c++ as below
       // clang-format on
     }
-    OneBodyDensityMatricesInputSection(const OneBodyDensityMatricesInputSection&) = default;
+
     /** do parse time checks of input */
     void checkParticularValidity() override;
     std::any assignAnyEnum(const std::string& name) const override;
   };
 
-  using Real     = QMCTraits::FullPrecRealType;
-  using Position = TinyVector<Real, OHMMS_DIM>;
+  using Position = QMCTraits::PosType;
+  using Real     = QMCTraits::RealType;
 
-  /** default copy constructor
-   *  This is required due to OBDMI being part of a variant used as a vector element.
-   */
-  OneBodyDensityMatricesInput(const OneBodyDensityMatricesInput&) = default;
+  OneBodyDensityMatricesInput() = default;
   OneBodyDensityMatricesInput(xmlNodePtr cur);
 
 private:
-  OneBodyDensityMatricesInputSection input_section_;
+  OneBodyDensityMatrixInputSection input_section_;
 
   // Default parameters for OneBodyDensityMatrices
   bool energy_matrix_          = false;
@@ -130,12 +121,8 @@ private:
   int samples_        = 10;
   int warmup_samples_ = 30;
   std::vector<std::string> basis_sets_;
-  std::string name_{type_tag};
-  std::string type_{type_tag};
 
 public:
-  const std::string& get_name() const { return name_; }
-  const std::string& get_type() const { return type_; }
   bool get_energy_matrix() const { return energy_matrix_; }
   bool get_use_drift() const { return use_drift_; }
   bool get_normalized() const { return normalized_; }
@@ -159,10 +146,6 @@ public:
   template<typename T>
   friend class testing::OneBodyDensityMatricesTests;
 };
-
-extern template bool InputSection::setIfInInput<qmcplusplus::OneBodyDensityMatricesInput::Integrator>(
-    qmcplusplus::OneBodyDensityMatricesInput::Integrator& var,
-    const std::string& tag);
 
 } // namespace qmcplusplus
 

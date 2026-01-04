@@ -26,8 +26,8 @@ namespace qmcplusplus
 template<class T>
 struct OneDimNumGridFunctor
 {
-  using GridType = NumericalGrid<T>;
-  using FuncType = OneDimCubicSpline<T>;
+  typedef NumericalGrid<T> GridType;
+  typedef OneDimCubicSpline<T> FuncType;
 
   FuncType myFunc;
 

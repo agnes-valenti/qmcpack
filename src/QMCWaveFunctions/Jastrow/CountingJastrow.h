@@ -20,7 +20,7 @@
 namespace qmcplusplus
 {
 template<class RegionType>
-class CountingJastrow : public WaveFunctionComponent, public OptimizableObject
+class CountingJastrow : public WaveFunctionComponent
 {
 protected:
   // number of electrons
@@ -91,27 +91,18 @@ protected:
 
 public:
   // constructor
-  CountingJastrow(ParticleSet& P,
-                  std::unique_ptr<RegionType> c,
-                  const Matrix<RealType>& f,
-                  bool opt_C_flag,
-                  bool opt_F_flag)
-      : OptimizableObject("countingjas"), F(f), C(std::move(c)), opt_F(opt_F_flag), opt_C(opt_C_flag)
+  CountingJastrow(ParticleSet& P, std::unique_ptr<RegionType> c, const Matrix<RealType>& f)
+      : WaveFunctionComponent("CountingJastrow"), F(f), C(std::move(c))
   {
     num_els = P.getTotalNum();
   }
 
-  std::string getClassName() const override { return "CountingJastrow"; }
-
-  bool isOptimizable() const override { return opt_C || opt_F; }
-
-  void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override { opt_obj_refs.push_back(*this); }
-
-  void checkInVariablesExclusive(opt_variables_type& active) final
+  void checkInVariables(opt_variables_type& active) override
   {
     active.insertFrom(myVars);
     C->checkInVariables(active);
   }
+
 
   void checkOutVariables(const opt_variables_type& active) override
   {
@@ -120,7 +111,7 @@ public:
   }
 
 
-  void resetParametersExclusive(const opt_variables_type& active) override
+  void resetParameters(const opt_variables_type& active) override
   {
     int ia, IJ, JI;
     std::string id;
@@ -218,9 +209,9 @@ public:
   }
 
 
-  LogValue evaluateLog(const ParticleSet& P,
-                       ParticleSet::ParticleGradient& G,
-                       ParticleSet::ParticleLaplacian& L) override
+  LogValueType evaluateLog(const ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override
   {
     evaluateExponents(P);
     for (int i = 0; i < num_els; ++i)
@@ -385,11 +376,11 @@ public:
     return Jgrad[iat];
   }
 
-  PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override
   {
     evaluateTempExponents(P, iat);
     grad_iat += Jgrad_t[iat];
-    return std::exp(static_cast<PsiValue>(Jval_t - Jval));
+    return std::exp(static_cast<PsiValueType>(Jval_t - Jval));
   }
 
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override
@@ -404,7 +395,7 @@ public:
       FClap(I, iat)  = FClap_t[I];
     }
     // update exponent values to that at proposed position
-    Jval       = Jval_t;
+    Jval     = Jval_t;
     log_value_ = Jval;
     for (int i = 0; i < num_els; ++i)
     {
@@ -415,15 +406,16 @@ public:
 
   void restore(int iat) override { C->restore(iat); }
 
-  PsiValue ratio(ParticleSet& P, int iat) override
+  PsiValueType ratio(ParticleSet& P, int iat) override
   {
+    std::cout<<"AV CountingJastrow ratio"<<std::endl;
     evaluateTempExponents(P, iat);
-    return std::exp(static_cast<PsiValue>(Jval_t - Jval));
+    return std::exp(static_cast<PsiValueType>(Jval_t - Jval));
   }
 
   void registerData(ParticleSet& P, WFBufferType& buf) override
   {
-    LogValue logValue     = evaluateLog(P, P.G, P.L);
+    LogValueType logValue = evaluateLog(P, P.G, P.L);
     RealType* Jlap_begin  = &Jlap[0];
     RealType* Jlap_end    = Jlap_begin + Jlap.size();
     RealType* Jgrad_begin = &Jgrad[0][0];
@@ -435,9 +427,9 @@ public:
     DEBUG_PSIBUFFER(" CountingJastrow::registerData", buf.current());
   }
 
-  LogValue updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override
   {
-    LogValue logValue     = evaluateLog(P, P.G, P.L);
+    LogValueType logValue = evaluateLog(P, P.G, P.L);
     RealType* Jlap_begin  = &Jlap[0];
     RealType* Jlap_end    = Jlap_begin + Jlap.size();
     RealType* Jgrad_begin = &Jgrad[0][0];
@@ -466,7 +458,9 @@ public:
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override
   {
-    auto cjc = std::make_unique<CountingJastrow>(tqp, C->makeClone(), F, opt_C, opt_F);
+    auto cjc = std::make_unique<CountingJastrow>(tqp, C->makeClone(), F);
+    cjc->setOptimizable(opt_C || opt_F);
+    cjc->addOpt(opt_C, opt_F);
     cjc->addDebug(debug, debug_seqlen, debug_period);
     cjc->initialize();
     return cjc;
@@ -474,8 +468,8 @@ public:
 
   void evaluateDerivatives(ParticleSet& P,
                            const opt_variables_type& active,
-                           Vector<ValueType>& dlogpsi,
-                           Vector<ValueType>& dhpsioverpsi) override
+                           std::vector<ValueType>& dlogpsi,
+                           std::vector<ValueType>& dhpsioverpsi) override
   {
 #ifdef QMC_COMPLEX
     APP_ABORT("CountingJastrow::evaluateDerivatives is not available on complex builds.");
@@ -588,10 +582,10 @@ public:
           app_log() << "  Indices: ";
           std::copy(I_vars.Index.begin(), I_vars.Index.end(), std::ostream_iterator<int>(app_log(), ", "));
           app_log() << std::endl << "  Names: ";
-          for (auto it = I_vars.begin(); it != I_vars.end(); ++it)
+          for (auto it = I_vars.NameAndValue.begin(); it != I_vars.NameAndValue.end(); ++it)
             app_log() << (*it).first << ", ";
           app_log() << std::endl << "  Values: ";
-          for (auto it = I_vars.begin(); it != I_vars.end(); ++it)
+          for (auto it = I_vars.NameAndValue.begin(); it != I_vars.NameAndValue.end(); ++it)
             app_log() << (*it).second << ", ";
           // print out values from evaluate derivatives
           app_log() << std::endl << "  dCsum: ";
@@ -675,6 +669,12 @@ public:
       deriv_print_index++;
     }
 #endif
+  }
+
+  void addOpt(bool opt_C_flag, bool opt_F_flag)
+  {
+    opt_F = opt_F_flag;
+    opt_C = opt_C_flag;
   }
 
   void addDebug(bool debug_flag, int seqlen, int period)

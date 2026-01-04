@@ -17,12 +17,24 @@
 #include "QMCHamiltonians/OperatorBase.h"
 #include "QMCWaveFunctions/CompositeSPOSet.h"
 #include "ParticleBase/RandomSeqGenerator.h"
+#include "QMCWaveFunctions/WaveFunctionFactory.h"
 
 namespace qmcplusplus
 {
 class DensityMatrices1B : public OperatorBase
 {
 protected:
+  enum DMTimers
+  {
+    DM_eval,
+    DM_gen_samples,
+    DM_gen_sample_basis,
+    DM_gen_sample_ratios,
+    DM_gen_particle_basis,
+    DM_matrix_products,
+    DM_accumulate,
+  };
+
   TimerList_t timers;
 
 public:
@@ -31,15 +43,15 @@ public:
     DIM = OHMMS_DIM
   };
 
-  using Value_t     = ValueType;
-  using Grad_t      = GradType;
-  using ValueVector = SPOSet::ValueVector;
-  using GradVector  = SPOSet::GradVector;
-  using Lattice_t   = Lattice;
-  using Vector_t    = Vector<Value_t>;
-  using Matrix_t    = Matrix<Value_t>;
-  using pts_t       = std::vector<PosType>;
-  using dens_t      = std::vector<RealType>;
+  typedef ValueType Value_t;
+  typedef GradType Grad_t;
+  typedef SPOSet::ValueVector_t ValueVector_t;
+  typedef SPOSet::GradVector_t GradVector_t;
+  typedef ParticleSet::ParticleLayout_t Lattice_t;
+  typedef Vector<Value_t> Vector_t;
+  typedef Matrix<Value_t> Matrix_t;
+  typedef std::vector<PosType> pts_t;
+  typedef std::vector<RealType> dens_t;
 
   enum integrators
   {
@@ -65,12 +77,12 @@ public:
 
   //data members
   bool energy_mat;
-  CompositeSPOSet<Value_t> basis_functions;
-  ValueVector basis_values;
-  ValueVector basis_norms;
-  GradVector basis_gradients;
-  ValueVector basis_laplacians;
-  ValueVector integrated_values;
+  CompositeSPOSet basis_functions;
+  ValueVector_t basis_values;
+  ValueVector_t basis_norms;
+  GradVector_t basis_gradients;
+  ValueVector_t basis_laplacians;
+  ValueVector_t integrated_values;
   bool warmed_up;
   std::vector<PosType> rsamples;
   Vector<RealType> sample_weights;
@@ -79,7 +91,7 @@ public:
   PosType drift;
   int nindex;
   int eindex;
-  const Lattice_t& lattice_;
+  Lattice_t& Lattice;
   TrialWaveFunction& Psi;
   ParticleSet& Pq;
   const ParticleSet* Pc;
@@ -140,16 +152,14 @@ public:
   PosType dpcur;
   RealType rhocur;
 
-  RandomBase<FullPrecRealType>* uniform_random;
+  RandomGenerator_t* uniform_random;
 
 
   //constructor/destructor
-  DensityMatrices1B(ParticleSet& P, TrialWaveFunction& psi, ParticleSet* Pcl);
+  DensityMatrices1B(ParticleSet& P, TrialWaveFunction& psi, ParticleSet* Pcl, const WaveFunctionFactory& factory);
   DensityMatrices1B(DensityMatrices1B& master, ParticleSet& P, TrialWaveFunction& psi);
   ~DensityMatrices1B() override;
 
-  bool dependsOnWaveFunction() const override { return true; }
-  std::string getClassName() const override { return "DensityMatrices1B"; }
   //standard interface
   std::unique_ptr<OperatorBase> makeClone(ParticleSet& P, TrialWaveFunction& psi) final;
   bool put(xmlNodePtr cur) override;
@@ -157,11 +167,11 @@ public:
 
   //optional standard interface
   void getRequiredTraces(TraceManager& tm) override;
-  void setRandomGenerator(RandomBase<FullPrecRealType>* rng) override;
+  void setRandomGenerator(RandomGenerator_t* rng) override;
 
   //required for Collectables interface
   void addObservables(PropertySetType& plist, BufferType& olist) override;
-  void registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const override;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const override;
 
   //should be empty for Collectables interface
   void resetTargetParticleSet(ParticleSet& P) override {}
@@ -188,9 +198,9 @@ public:
   //  sample generation
   void warmup_sampling();
   void generate_samples(RealType weight, int steps = 0);
-  void generate_uniform_grid(RandomBase<FullPrecRealType>& rng);
-  void generate_uniform_samples(RandomBase<FullPrecRealType>& rng);
-  void generate_density_samples(bool save, int steps, RandomBase<FullPrecRealType>& rng);
+  void generate_uniform_grid(RandomGenerator_t& rng);
+  void generate_uniform_samples(RandomGenerator_t& rng);
+  void generate_density_samples(bool save, int steps, RandomGenerator_t& rng);
   void diffusion(RealType sqt, PosType& diff);
   void density_only(const PosType& r, RealType& dens);
   void density_drift(const PosType& r, RealType& dens, PosType& drift);
@@ -220,6 +230,8 @@ public:
   void compare(const std::string& name, Matrix_t& m1, Matrix_t& m2, bool write = false, bool diff_only = true);
 
 private:
+  /// reference to the sposet_builder_factory
+  const WaveFunctionFactory& wf_factory_;
 };
 
 } // namespace qmcplusplus

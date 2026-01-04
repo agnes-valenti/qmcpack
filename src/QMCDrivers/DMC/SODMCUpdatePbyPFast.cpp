@@ -19,7 +19,7 @@
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
 //#define TEST_INNERBRANCH
 
@@ -28,21 +28,22 @@ namespace qmcplusplus
 {
 using WP = WalkerProperties::Indexes;
 
-const TimerNameList_t<SODMCTimers> SODMCTimerNames = {{SODMC_buffer, "SODMCUpdatePbyP::Buffer"},
-                                                      {SODMC_movePbyP, "SODMCUpdatePbyP::movePbyP"},
-                                                      {SODMC_hamiltonian, "SODMCUpdatePbyP::Hamiltonian"},
-                                                      {SODMC_collectables, "SODMCUpdatePbyP::Collectables"},
-                                                      {SODMC_tmoves, "SODMCUpdatePbyP::Tmoves"}};
+TimerNameList_t<SODMCTimers> SODMCTimerNames = {{SODMC_buffer, "SODMCUpdatePbyP::Buffer"},
+                                                {SODMC_movePbyP, "SODMCUpdatePbyP::movePbyP"},
+                                                {SODMC_hamiltonian, "SODMCUpdatePbyP::Hamiltonian"},
+                                                {SODMC_collectables, "SODMCUpdatePbyP::Collectables"},
+                                                {SODMC_tmoves, "SODMCUpdatePbyP::Tmoves"}};
 
 
 /// Constructor.
 SODMCUpdatePbyPWithRejectionFast::SODMCUpdatePbyPWithRejectionFast(MCWalkerConfiguration& w,
                                                                    TrialWaveFunction& psi,
                                                                    QMCHamiltonian& h,
-                                                                   RandomBase<FullPrecRealType>& rg)
-    : QMCUpdateBase(w, psi, h, rg), myTimers(getGlobalTimerManager(), SODMCTimerNames, timer_level_medium)
-
-{}
+                                                                   RandomGenerator_t& rg)
+    : QMCUpdateBase(w, psi, h, rg)
+{
+  setup_timers(myTimers, SODMCTimerNames, timer_level_medium);
+}
 
 /// destructor
 SODMCUpdatePbyPWithRejectionFast::~SODMCUpdatePbyPWithRejectionFast() {}
@@ -109,8 +110,8 @@ void SODMCUpdatePbyPWithRejectionFast::advanceWalker(Walker_t& thisWalker, bool 
           //Use the force of the particle iat
           DriftModifier->getDrift(tauovermass, grad_iat, dr);
           DriftModifier->getDrift(tauovermass / spinMass, spingrad_iat, ds);
-          dr                     = W.R[iat] - W.getActivePos() - dr;
-          ds                     = W.spins[iat] - W.getActiveSpinVal() - ds;
+          dr                     = W.R[iat] - W.activePos - dr;
+          ds                     = W.spins[iat] - W.activeSpinVal - ds;
           FullPrecRealType logGb = -oneover2tau * dot(dr, dr);
           logGb += -spinMass * oneover2tau * ds * ds;
           RealType prob    = std::norm(ratio) * std::exp(logGb - logGf);
@@ -151,7 +152,7 @@ void SODMCUpdatePbyPWithRejectionFast::advanceWalker(Walker_t& thisWalker, bool 
     }
     {
       ScopedTimer local_timer(myTimers[SODMC_hamiltonian]);
-      enew = non_local_ops_.getMoveKind() == TmoveKind::OFF ? H.evaluate(W) : H.evaluateWithToperator(W);
+      enew = H.evaluateWithToperator(W);
     }
     thisWalker.resetProperty(logpsi, Psi.getPhase(), enew, rr_accepted, rr_proposed, 1.0);
     thisWalker.Weight *= branchEngine->branchWeight(enew, eold);
@@ -181,7 +182,7 @@ void SODMCUpdatePbyPWithRejectionFast::advanceWalker(Walker_t& thisWalker, bool 
 #endif
   {
     ScopedTimer local_timer(myTimers[SODMC_tmoves]);
-    const int NonLocalMoveAcceptedTemp = H.makeNonLocalMoves(W, non_local_ops_);
+    const int NonLocalMoveAcceptedTemp = H.makeNonLocalMoves(W);
     if (NonLocalMoveAcceptedTemp > 0)
     {
       RealType logpsi = Psi.updateBuffer(W, w_buffer, false);

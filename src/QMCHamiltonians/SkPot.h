@@ -29,10 +29,9 @@ class SkPot : public OperatorBase
 public:
   SkPot(ParticleSet& elns);
 
-  std::string getClassName() const override { return "SkPot"; }
   void resetTargetParticleSet(ParticleSet& P) override;
 
-  [[noreturn]] Return_t evaluate(ParticleSet& P) override;
+  Return_t evaluate(ParticleSet& P) override;
 
   bool put(xmlNodePtr cur) override;
   bool get(std::ostream& os) const override;
@@ -42,8 +41,7 @@ public:
   {
     for (int ki = 0; ki < NumK; ki++)
     {
-      RealType k = dot(sourcePtcl->getSimulationCell().getKLists().getKptsCartWorking()[ki],
-                       sourcePtcl->getSimulationCell().getKLists().getKptsCartWorking()[ki]);
+      RealType k = dot(sourcePtcl->SK->getKLists().kpts_cart[ki], sourcePtcl->SK->getKLists().kpts_cart[ki]);
       k          = std::sqrt(k) - K_0;
       Fk[ki]     = OneOverN * V_0 * std::exp(-k * k);
       //         app_log()<<ki<<": "<<Fk[ki] << std::endl;

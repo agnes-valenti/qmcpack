@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="qmc_short-MD-C4_AE_Mol_Excited_QP" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="qmc_short-MD-C4_AE_Mol_Excited_QP" series="0"/>
 
   <include href="C4_AE_Mol_QP.structure.xml"/>
   <include href="C4_AE_Mol_QP_Excited.wfnoj.xml"/>

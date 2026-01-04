@@ -19,10 +19,8 @@
 #include "OhmmsData/RecordProperty.h"
 #include "Utilities/RandomGenerator.h"
 #include "QMCHamiltonians/ObservableHelper.h"
-#include "QMCHamiltonians/QMCHamiltonian.h"
 #include "QMCWaveFunctions/OrbitalSetTraits.h"
 #include "type_traits/DataLocality.h"
-#include "hdf/hdf_archive.h"
 #include <bitset>
 
 namespace qmcplusplus
@@ -39,184 +37,10 @@ class OEBAccessor;
 class OperatorEstBase
 {
 public:
-  using QMCT             = QMCTraits;
-  using FullPrecRealType = QMCT::FullPrecRealType;
-  using MCPWalker        = Walker<QMCTraits, PtclOnLatticeTraits>;
-  using Real             = QMCT::RealType;
-  using Data             = std::vector<Real>;
+  using QMCT      = QMCTraits;
+  using MCPWalker = Walker<QMCTraits, PtclOnLatticeTraits>;
 
-  ///constructor
-  OperatorEstBase(DataLocality data_locality, const std::string& name, const std::string& type);
-  ///virtual destructor
-  virtual ~OperatorEstBase() = default;
-
-  /** Accumulate whatever it is you are accumulating with respect to walkers
-   *
-   *  This method is assumed to be called from the crowd context
-   *  It provides parallelism with respect to computational effort of the estimator
-   *  without causing a global sync.
-   *  Depending on data locality the accumlation of the result may be different from
-   *  the single thread write directly into the OperatorEstimator
-   *  data.
-   *
-   *  Assumptions:
-   *  * when accumulate is not called for a step, the estimator still
-   *  receives reports to its listener's from Hamiltonian operators.
-   *  Existing estimators deal with this by using reporting functions
-   *  that maintain only the last step per walker per operator
-   *  (sometimes per particle)
-   *
-   *  \param[in]      walkers
-   *  \param[inout]   pset_target   crowd scope target pset (should be returned to starting state after call)
-   *  \param[in]      psets         per walker psets
-   *  \param[in]      wnfs          per walker TrialWaveFunction
-   *  \param[inout]   rng           crowd scope RandomGenerator
-   */
-  virtual void accumulate(const RefVector<MCPWalker>& walkers,
-                          const RefVector<ParticleSet>& psets,
-                          const RefVector<TrialWaveFunction>& wfns,
-                          const RefVector<QMCHamiltonian>& hams,
-                          RandomBase<FullPrecRealType>& rng) = 0;
-
-  /** Reduce estimator result data from crowds to rank
-   *
-   *  This is assumed to be called from only from one thread per crowds->rank
-   *  reduction. Implied is this is during a global sync or there is a guarantee
-   *  that the crowd operator estimators accumulation data is not
-   *  being written to.
-   *
-   *  It is assumed by derived classes and it is necessary to support
-   *  derived type data locality schemes that the OperatorEstBase
-   *  derived types in the refvector match.
-   *
-   *  The input operators are not zeroed after collect is called,
-   *  the owner of the operators must handle the accumulated state explicitly.
-   *
-   *  A side effect is walker_weights_ are collected
-   *  as well, so if this is not called from an override the
-   *  walker_weights_ must be collected there.  If it is called they
-   *  must not be collected there.
-   *
-   *  There could be concurrent operations inside the scope of the collect call.
-   */
-  virtual void collect(const RefVector<OperatorEstBase>& oebs);
-
-  virtual void normalize(QMCT::RealType invToWgt);
-
-  /** Entry point for an estimator  to do something at the start of each block.
-   *
-   *  Called on rank scope estimator from
-   *  EstimatorManagerNew::startBlock()
-   *  Called on crowd scope estimators from
-   *  Crowd::startBlock())
-   */
-  virtual void startBlock(int steps) = 0;
-
-  /** Entry point for estimator to do something at the end of each block.
-   *
-   *  Called on rank scope estimator from
-   *  EstimatorManagerNew::stopBlock()
-   *  Called on crowd scope estimators from
-   *  Crowd::stopBlock())
-   */
-  virtual void stopBlock() {};
-
-  const std::vector<QMCT::RealType>& get_data() const { return data_; }
-  std::vector<QMCT::RealType>& get_data() { return data_; }
-
-  virtual std::size_t getFullDataSize() const { return data_.size(); }
-
-  /** @ingroup Functions to add or remove estimator data from PooledData<Real>
-   *  @brief   used for MPI reduction.
-   *           These are only used on the rank estimator owned by EstimatorManagerNew.
-   *           The rank EstimatorManagerNew owns the buffer.
-   *           It is not intended to store the state of the estimator.
-   *           The packing and unpacking functions must follow the same sequence of adds or gets
-   *           as PooledData is a stateful sequence of bytes with an internal position cursor.
-   *  @{
-   */
-
-  /** Packs data from native container types in a subtype of Operator est base
-   *  to buffer of type Real for reduction over MPI.
-   *  I.e. writes to pooled data.
-   */
-  virtual void packData(PooledData<Real>& buffer) const;
-  /** Unpacks data from mpi buffer of type Real into native container types
-   *  after a reduction over MPI.
-   *  i.e. reads from pooled data.
-   */
-  virtual void unpackData(PooledData<Real>& buffer);
-  ///@}
-
-  /*** create and tie OperatorEstimator's observable_helper hdf5 wrapper to stat.h5 file
-   * @param gid hdf5 group to which the observables belong
-   *
-   * The default implementation does nothing. The derived classes which compute
-   * big data, e.g. density, should overwrite this function.
-   */
-  virtual void registerOperatorEstimator(hdf_archive& file) {}
-
-  virtual std::unique_ptr<OperatorEstBase> spawnCrowdClone() const = 0;
-
-  /** Write to previously registered observable_helper hdf5 wrapper.
-   *
-   *  if you haven't registered Operator Estimator
-   *  this will do nothing.
-   */
-  virtual void write(hdf_archive& file);
-
-  /** Calls zero on every OperatorEstBase in refvector
-   *
-   *  like collect this is intended to be called with a refvector
-   *  where the OperatorEstBase derived types are all the same.
-   *  Derived types overriding this can assume this.
-   */
-  virtual void zero(RefVector<OperatorEstBase>& oebs) const;
-
-  /** zero data appropriately for the DataLocality
-   *
-   *  Derived classes that don't solely rely on data_ for
-   *  their accumulated data must override this function.
-   */
-  virtual void zero();
-
-  /** Return the total walker weight for this block
-   */
-  QMCT::FullPrecRealType get_walkers_weight() const { return walkers_weight_; }
-
-  const std::string& getMyName() const { return my_name_; }
-  const std::string& getMyType() const { return my_type_; }
-
-  /** Register 0-many listeners with a leading QMCHamiltonian instance i.e. a QMCHamiltonian
-   *  that has acquired the crowd scope QMCHamiltonianMultiWalkerResource.
-   *  This must be called for each crowd scope estimator that listens to register listeners into
-   *  the crowd scope QMCHamiltonianMultiWalkerResource.
-   *
-   *  Many estimators don't need per particle values so the default
-   *  implementation is no op.
-   *
-   *  Assumption:
-   *  The form of the listener function registered with the
-   *  QMCHamiltonian deals with reporting being per step while
-   *  accumulation may be step % measurement period.
-   */
-  virtual void registerListeners(QMCHamiltonian& ham_leader) {};
-
-  bool isListenerRequired() { return requires_listener_; }
-
-  DataLocality get_data_locality() const { return data_locality_; }
-
-protected:
-  /** Shallow copy constructor!
-   *  This alows us to keep the default copy constructors for derived classes which
-   *  is quite useful to the spawnCrowdClone design. But this is a
-   *  code smell for sure.
-   *
-   *  Data is likely to be quite large and since the OperatorEstBase design is that the children
-   *  reduce to the parent it is infact undesirable for them to copy the data the parent has.
-   *  Initialization of Data (i.e. call to resize) if any is the responsibility of the derived class.
-   */
-  OperatorEstBase(const OperatorEstBase& oth);
+  using Data = std::vector<QMCT::RealType>;
 
   /** locality for accumulation of estimator data.
    *  This designates the memory scheme used for the estimator
@@ -233,16 +57,87 @@ protected:
 
   ///name of this object -- only used for debugging and h5 output
   std::string my_name_;
-  std::string my_type_;
 
+  QMCT::FullPrecRealType get_walkers_weight() const { return walkers_weight_; }
+  ///constructor
+  OperatorEstBase(DataLocality dl);
+  /** Shallow copy constructor!
+   *  This alows us to keep the default copy constructors for derived classes which
+   *  is quite useful to the spawnCrowdClone design.
+   *  Data is likely to be quite large and since the OperatorEstBase design is that the children 
+   *  reduce to the parent it is infact undesirable for them to copy the data the parent has.
+   *  Initialization of Data (i.e. call to resize) if any is the responsibility of the derived class.
+   */
+  OperatorEstBase(const OperatorEstBase& oth);
+  ///virtual destructor
+  virtual ~OperatorEstBase() = default;
+
+  /** Accumulate whatever it is you are accumulating with respect to walkers
+   * 
+   *  This method is assumed to be called from the crowd context
+   *  It provides parallelism with respect to computational effort of the estimator
+   *  without causing a global sync.
+   *  Depending on data locality the accumlation of the result may be different from
+   *  the single thread write directly into the OperatorEstimator data.
+   *  \param[in]      walkers
+   *  \param[inout]   pset_target   crowd scope target pset (should be returned to starting state after call)
+   *  \param[in]      psets         per walker psets
+   *  \param[in]      wnfs          per walker TrialWaveFunction
+   *  \param[inout]   rng           crowd scope RandomGenerator
+   */
+  virtual void accumulate(const RefVector<MCPWalker>& walkers,
+                          const RefVector<ParticleSet>& psets,
+                          const RefVector<TrialWaveFunction>& wfns,
+                          RandomGenerator_t& rng) = 0;
+
+  /** Reduce estimator result data from crowds to rank
+   *
+   *  This is assumed to be called from only from one thread per crowds->rank
+   *  reduction. Implied is this is during a global sync or there is a guarantee
+   *  that the crowd operator estimators accumulation data is not being written to.
+   *
+   *  There could be concurrent operations inside the scope of the collect call.
+   */
+  virtual void collect(const RefVector<OperatorEstBase>& oebs);
+
+  virtual void normalize(QMCT::RealType invToWgt);
+
+  virtual void startBlock(int steps) = 0;
+
+  std::vector<QMCT::RealType>& get_data() { return data_; }
+
+  /*** create and tie OperatorEstimator's observable_helper hdf5 wrapper to stat.h5 file
+   * @param gid hdf5 group to which the observables belong
+   *
+   * The default implementation does nothing. The derived classes which compute
+   * big data, e.g. density, should overwrite this function.
+   */
+  virtual void registerOperatorEstimator(hid_t gid) {}
+
+  virtual std::unique_ptr<OperatorEstBase> spawnCrowdClone() const = 0;
+
+  /** Write to previously registered observable_helper hdf5 wrapper.
+   *
+   *  if you haven't registered Operator Estimator 
+   *  this will do nothing.
+   */
+  void write();
+
+  /** zero data appropriately for the DataLocality
+   */
+  void zero();
+
+  /** Return the total walker weight for this block
+   */
+  QMCT::FullPrecRealType get_walkers_weight() { return walkers_weight_; }
+
+protected:
   QMCT::FullPrecRealType walkers_weight_;
 
   // convenient Descriptors hdf5 for Operator Estimators only populated for rank scope OperatorEstimator
-  std::vector<ObservableHelper> h5desc_;
+  UPtrVector<ObservableHelper> h5desc_;
 
   Data data_;
-
-  bool requires_listener_ = false;
 
   friend testing::OEBAccessor;
 };

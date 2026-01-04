@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="H2O" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="H2O" series="0"/>
 
   <!-- input from gaussian converter -->
   <include href="ptcl.xml"/>

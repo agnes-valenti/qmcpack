@@ -27,19 +27,19 @@ namespace qmcplusplus
 class BackflowTransformation;
 class Backflow_ee_kSpace;
 template<class T>
-struct BsplineFunctor;
+struct BsplineFunctorBackflow;
 template<class FT>
 class Backflow_ee;
 
 class BackflowBuilder
 {
-  using RealType    = BackflowFunctionBase::RealType;
-  using HandlerType = LRHandlerBase;
-  using GridType    = LinearGrid<RealType>;
-  using PSetMap     = std::map<std::string, const std::unique_ptr<ParticleSet>>;
+  using RealType     = BackflowFunctionBase::RealType;
+  using HandlerType  = LRHandlerBase;
+  using GridType     = LinearGrid<RealType>;
+  using PtclPoolType = std::map<std::string, ParticleSet*>;
 
 public:
-  BackflowBuilder(ParticleSet& p, const PSetMap& pool);
+  BackflowBuilder(ParticleSet& p, PtclPoolType& pool);
 
   std::unique_ptr<BackflowTransformation> buildBackflowTransformation(xmlNodePtr cur);
 
@@ -47,7 +47,7 @@ public:
 
 private:
   ParticleSet& targetPtcl;
-  const PSetMap& ptclPool;
+  PtclPoolType& ptclPool;
   bool IgnoreSpin;
   RealType Rs;
   RealType Kc;
@@ -67,7 +67,7 @@ private:
 
   void makeLongRange_oneBody();
 
-  void makeShortRange_twoBody(xmlNodePtr cur, Backflow_ee<BsplineFunctor<RealType>>* tbf, std::vector<int>& offsets);
+  void makeShortRange_twoBody(xmlNodePtr cur, Backflow_ee<BsplineFunctorBackflow<RealType>>* tbf, std::vector<int>& offsets);
 
   void makeLongRange_twoBody(xmlNodePtr cur, Backflow_ee_kSpace* tbf, std::vector<int>& offsets);
 };

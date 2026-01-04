@@ -53,7 +53,6 @@ c4q = generate_convert4qmc(
     )
 
 opt = generate_qmcpack(
-    driver          = 'legacy',
     block           = True,
     identifier      = 'opt',
     path            = 'diamond/optJ2',
@@ -73,7 +72,6 @@ opt = generate_qmcpack(
     )
 
 qmc = generate_qmcpack(
-    driver       = 'legacy',
     block        = True,
     identifier   = 'vmc',
     path         = 'diamond/vmc',
@@ -88,7 +86,6 @@ qmc = generate_qmcpack(
     )
 
 qmc = generate_qmcpack(
-    driver       = 'legacy',
     block        = True,
     identifier   = 'dmc',
     path         = 'diamond/dmc',

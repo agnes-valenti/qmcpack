@@ -99,7 +99,12 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
       app_error() << " Error opening integral file in THCHamiltonian. \n";
       APP_ABORT("");
     }
-    dump.push("Hamiltonian", false);
+    if (!dump.push("Hamiltonian", false))
+    {
+      app_error() << " Error in THCHamiltonian::getHamiltonianOperations():"
+                  << " Group not Hamiltonian found. \n";
+      APP_ABORT("");
+    }
   }
 
   std::vector<int> Idata(8);
@@ -163,15 +168,13 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
       APP_ABORT("");
     }
     E0 = E_[0] + E_[1];
-
-    using std::get;
     if (nmo_per_kp.size() != nkpts || nchol_per_kp.size() != nkpts || kminus.size() != nkpts ||
-        get<0>(QKtok2.sizes()) != nkpts || get<1>(QKtok2.sizes()) != nkpts)
+        QKtok2.size(0) != nkpts || QKtok2.size(1) != nkpts)
     {
       app_error() << " Error in KPFactorizedHamiltonian::getHamiltonianOperations():"
                   << " Inconsistent dimension (NMOPerKP,NCholPerKP,QKtTok2): " << nkpts << " " << nmo_per_kp.size()
-                  << " " << nchol_per_kp.size() << " " << kminus.size() << " " << get<0>(QKtok2.sizes()) << " "
-                  << get<1>(QKtok2.sizes()) << std::endl;
+                  << " " << nchol_per_kp.size() << " " << kminus.size() << " " << QKtok2.size(0) << " "
+                  << QKtok2.size(1) << std::endl;
       APP_ABORT("");
     }
   }
@@ -254,8 +257,12 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
       ma::add(ComplexType(1.0), h1, ComplexType(0.0), h1, H1[Q]({0, npol * nmo_per_kp[Q]}, {0, npol * nmo_per_kp[Q]}));
     }
     // read LQ
-    dump.push("KPFactorized", false);
-
+    if (!dump.push("KPFactorized", false))
+    {
+      app_error() << " Error in KPFactorizedHamiltonian::getHamiltonianOperations():"
+                  << " Group KPFactorized not found. \n";
+      APP_ABORT("");
+    }
     for (int Q = 0; Q < nkpts; Q++)
     {
       using ma::conj;
@@ -267,11 +274,11 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
                       << " Problems reading /Hamiltonian/KPFactorized/L" << Q << ". \n";
           APP_ABORT("");
         }
-        if (get<0>(LQKikn[Q].sizes()) != nkpts || get<1>(LQKikn[Q].sizes()) != nmo_max * nmo_max * nchol_per_kp[Q])
+        if (LQKikn[Q].size(0) != nkpts || LQKikn[Q].size(1) != nmo_max * nmo_max * nchol_per_kp[Q])
         {
           app_error() << " Error in KPFactorizedHamiltonian::getHamiltonianOperations():"
                       << " Problems reading /Hamiltonian/KPFactorized/L" << Q << ". \n"
-                      << " Unexpected dimensins: " << get<0>(LQKikn[Q].sizes()) << " " << get<1>(LQKikn[Q].sizes()) << std::endl;
+                      << " Unexpected dimensins: " << LQKikn[Q].size(0) << " " << LQKikn[Q].size(1) << std::endl;
           APP_ABORT("");
         }
       }
@@ -443,14 +450,14 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
         {
           { // Alpha
             auto Psi = get_PsiK<boost::multi::array<ComplexType, 2>>(nmo_per_kp, PsiT[2 * nd], K);
-            assert(get<0>(Psi.sizes()) == na);
+            assert(Psi.size(0) == na);
             boost::multi::array_ref<ComplexType, 2> haj_r(to_address(haj[nd * nkpts + K].origin()), {na, ni});
             if (na > 0)
               ma::product(Psi, H1[K]({0, ni}, {0, ni}), haj_r);
           }
           { // Beta
             auto Psi = get_PsiK<boost::multi::array<ComplexType, 2>>(nmo_per_kp, PsiT[2 * nd + 1], K);
-            assert(get<0>(Psi.sizes()) == nb);
+            assert(Psi.size(0) == nb);
             boost::multi::array_ref<ComplexType, 2> haj_r(to_address(haj[nd * nkpts + K].origin()) + na * ni, {nb, ni});
             if (nb > 0)
               ma::product(Psi, H1[K]({0, ni}, {0, ni}), haj_r);
@@ -460,7 +467,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
         {
           RealType scl = (type == CLOSED ? 2.0 : 1.0);
           auto Psi     = get_PsiK<boost::multi::array<ComplexType, 2>>(nmo_per_kp, PsiT[nd], K, npol == 2);
-          assert(get<0>(Psi.sizes()) == na);
+          assert(Psi.size(0) == na);
           boost::multi::array_ref<ComplexType, 2> haj_r(to_address(haj[nd * nkpts + K].origin()), {na, npol * ni});
           if (na > 0)
             ma::product(ComplexType(scl), Psi, H1[K]({0, npol * ni}, {0, npol * ni}), ComplexType(0.0), haj_r);
@@ -487,13 +494,11 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
           int ni    = nmo_per_kp[K];
           int nk    = nmo_per_kp[QK];
           int nchol = nchol_per_kp[Q];
-
-          using std::get;
           if (type == COLLINEAR)
           {
             { // Alpha
               auto Psi = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd], K);
-              assert(get<0>(Psi.sizes()) == nocc_per_kp[nd][K]);
+              assert(Psi.size(0) == nocc_per_kp[nd][K]);
               if (Q <= Qm)
               {
                 Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {ni, nk, nchol});
@@ -509,7 +514,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
             }
             { // Beta
               auto Psi = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd + 1], K);
-              assert(get<0>(Psi.sizes()) == nb);
+              assert(Psi.size(0) == nb);
               if (Q <= Qm)
               {
                 Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {ni, nk, nchol});
@@ -527,8 +532,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
           else
           {
             auto Psi = get_PsiK<SpMatrix>(nmo_per_kp, PsiT[nd], K, npol == 2);
-            using std::get;
-            assert(get<0>(Psi.sizes()) == na);
+            assert(Psi.size(0) == na);
             if (Q <= Qm)
             {
               Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {ni, nk, nchol});
@@ -567,8 +571,6 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
           int nchol = nchol_per_kp[Q];
           Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {ni, nk, nchol});
           // NOTE: LQKbnl is indexed by the K index of 'b', L[Q][Kb]
-          using std::get;
-
           if (type == COLLINEAR)
           {
             { // Alpha
@@ -578,7 +580,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
             }
             { // Beta
               auto PsiQK = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd + 1], QK);
-              assert(get<0>(PsiQK.sizes()) == nb);
+              assert(PsiQK.size(0) == nb);
               Sp3Tensor_ref Lbnl(to_address(LQKbnl[nq0 + number_of_symmetric_Q + Qmap[Q] - 1][QK].origin()),
                                  {nb, nchol, ni});
               ma_rotate::getLank_from_Lkin(PsiQK, Likn, Lbnl, buff);
@@ -587,7 +589,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_shared(b
           else
           {
             auto PsiQK = get_PsiK<SpMatrix>(nmo_per_kp, PsiT[nd], QK, npol == 2);
-            assert(get<0>(PsiQK.sizes()) == na);
+            assert(PsiQK.size(0) == na);
             Sp3Tensor_ref Lbnl(to_address(LQKbnl[nq0 + Qmap[Q] - 1][QK].origin()), {na, nchol, npol * ni});
             ma_rotate::getLank_from_Lkin(PsiQK, Likn, Lbnl, buff, npol == 2);
           }
@@ -832,7 +834,12 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
       app_error() << " Error opening integral file in THCHamiltonian. \n";
       APP_ABORT("");
     }
-    dump.push("Hamiltonian", false);
+    if (!dump.push("Hamiltonian", false))
+    {
+      app_error() << " Error in THCHamiltonian::getHamiltonianOperations():"
+                  << " Group not Hamiltonian found. \n";
+      APP_ABORT("");
+    }
   }
 
   std::vector<int> Idata(8);
@@ -896,16 +903,13 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
       APP_ABORT("");
     }
     E0 = E_[0] + E_[1];
-
-    using std::get;
-
     if (nmo_per_kp.size() != nkpts || nchol_per_kp.size() != nkpts || kminus.size() != nkpts ||
-        get<0>(QKtok2.sizes()) != nkpts || get<1>(QKtok2.sizes()) != nkpts)
+        QKtok2.size(0) != nkpts || QKtok2.size(1) != nkpts)
     {
       app_error() << " Error in KPFactorizedHamiltonian::getHamiltonianOperations():"
                   << " Inconsistent dimension (NMOPerKP,NCholPerKP,QKtTok2): " << nkpts << " " << nmo_per_kp.size()
-                  << " " << nchol_per_kp.size() << " " << kminus.size() << " " << get<0>(QKtok2.sizes()) << " "
-                  << get<1>(QKtok2.sizes()) << std::endl;
+                  << " " << nchol_per_kp.size() << " " << kminus.size() << " " << QKtok2.size(0) << " "
+                  << QKtok2.size(1) << std::endl;
       APP_ABORT("");
     }
   }
@@ -989,7 +993,12 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
     for (auto& v : LQKikn)
       std::fill_n(to_address(v.origin()), v.num_elements(), SPComplexType(0.0));
     // read LQ
-    dump.push("KPFactorized", false);
+    if (!dump.push("KPFactorized", false))
+    {
+      app_error() << " Error in KPFactorizedHamiltonian::getHamiltonianOperations():"
+                  << " Group KPFactorized not found. \n";
+      APP_ABORT("");
+    }
     // read in compact form and transform to padded
     SpMatrix L_({1, 1});
     for (int Q = 0; Q < nkpts; Q++)
@@ -1004,7 +1013,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
                       << " Problems reading /Hamiltonian/KPFactorized/L" << Q << ". \n";
           APP_ABORT("");
         }
-        assert(L_.size() == nkpts);
+        assert(L_.size(0) == nkpts);
         Sp4Tensor_ref L2(to_address(LQKikn[Q].origin()), {nkpts, nmo_max, nmo_max, nchol_max});
         for (int K = 0; K < nkpts; ++K)
         {
@@ -1204,7 +1213,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
         {
           { // Alpha
             auto Psi = get_PsiK<boost::multi::array<ComplexType, 2>>(nmo_per_kp, PsiT[2 * nd], K);
-            assert(Psi.size() == na);
+            assert(Psi.size(0) == na);
             boost::multi::array_ref<ComplexType, 2> haj_r(to_address(haj[nd * nkpts + K].origin()),
                                                           {nocc_max, nmo_max});
             if (na > 0)
@@ -1212,7 +1221,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
           }
           { // Beta
             auto Psi = get_PsiK<boost::multi::array<ComplexType, 2>>(nmo_per_kp, PsiT[2 * nd + 1], K);
-            assert(Psi.size() == nb);
+            assert(Psi.size(0) == nb);
             boost::multi::array_ref<ComplexType, 2> haj_r(to_address(haj[nd * nkpts + K].origin()) + nocc_max * nmo_max,
                                                           {nocc_max, nmo_max});
             if (nb > 0)
@@ -1223,7 +1232,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
         {
           RealType scl = (type == CLOSED ? 2.0 : 1.0);
           auto Psi     = get_PsiK<boost::multi::array<ComplexType, 2>>(nmo_per_kp, PsiT[nd], K, npol == 2);
-          assert(Psi.size() == na);
+          assert(Psi.size(0) == na);
           boost::multi::array_ref<ComplexType, 2> haj_r(to_address(haj[nd * nkpts + K].origin()),
                                                         {nocc_max, npol * nmo_max});
           if (na > 0)
@@ -1254,7 +1263,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
           {
             { // Alpha
               auto Psi = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd], K);
-              assert(Psi.size() == na);
+              assert(Psi.size(0) == na);
               if (Q <= Qm)
               {
                 Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {nmo_max, nmo_max, nchol_max});
@@ -1272,7 +1281,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
             }
             { // Beta
               auto Psi = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd + 1], K);
-              assert(Psi.size() == nb);
+              assert(Psi.size(0) == nb);
               if (Q <= Qm)
               {
                 Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {nmo_max, nmo_max, nchol_max});
@@ -1292,7 +1301,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
           else
           {
             auto Psi = get_PsiK<SpMatrix>(nmo_per_kp, PsiT[nd], K, npol == 2);
-            assert(Psi.size() == na);
+            assert(Psi.size(0) == na);
             if (Q <= Qm)
             {
               Sp3Tensor_ref Likn(to_address(LQKikn[Q][K].origin()), {nmo_max, nmo_max, nchol_max});
@@ -1333,14 +1342,14 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
           {
             { // Alpha
               auto PsiQK = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd], QK);
-              assert(PsiQK.size() == na);
+              assert(PsiQK.size(0) == na);
               Sp3Tensor_ref Lbnl(to_address(LQKbnl[nq0 + Qmap[Q] - 1][QK].origin()), {nocc_max, nchol_max, nmo_max});
               Sp3Tensor_ref Lbln(to_address(LQKbln[nq0 + Qmap[Q] - 1][QK].origin()), {nocc_max, nmo_max, nchol_max});
               ma_rotate_padded::getLakn_Lank_from_Lkin(PsiQK, Likn, Lbln, Lbnl, buff);
             }
             { // Beta
               auto PsiQK = get_PsiK<boost::multi::array<SPComplexType, 2>>(nmo_per_kp, PsiT[2 * nd + 1], QK);
-              assert(PsiQK.size() == nb);
+              assert(PsiQK.size(0) == nb);
               Sp3Tensor_ref Lbnl(to_address(LQKbnl[nq0 + number_of_symmetric_Q + Qmap[Q] - 1][QK].origin()),
                                  {nocc_max, nchol_max, nmo_max});
               Sp3Tensor_ref Lbln(to_address(LQKbln[nq0 + number_of_symmetric_Q + Qmap[Q] - 1][QK].origin()),
@@ -1351,7 +1360,7 @@ HamiltonianOperations KPFactorizedHamiltonian::getHamiltonianOperations_batched(
           else
           {
             auto PsiQK = get_PsiK<SpMatrix>(nmo_per_kp, PsiT[nd], QK, npol == 2);
-            assert(PsiQK.size() == na);
+            assert(PsiQK.size(0) == na);
             Sp3Tensor_ref Lbnl(to_address(LQKbnl[nq0 + Qmap[Q] - 1][QK].origin()),
                                {nocc_max, nchol_max, npol * nmo_max});
             Sp3Tensor_ref Lbln(to_address(LQKbln[nq0 + Qmap[Q] - 1][QK].origin()),

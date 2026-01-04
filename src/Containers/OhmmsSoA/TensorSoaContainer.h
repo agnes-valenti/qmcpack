@@ -29,7 +29,7 @@ struct TensorSoaContainer
 template<typename T>
 struct TensorSoaContainer<T, 3>
 {
-  using Element_t = T;
+  typedef T Element_t;
 
   ///number of elements
   int nLocal;
@@ -147,6 +147,9 @@ struct TensorSoaContainer<T, 3>
   }
 };
 
+//Incorrect: provide wrapper class
+//BOOST_CLASS_TRACKING(Pos3DSoA<double,3>, boost::serialization::track_never)
+//BOOST_CLASS_TRACKING(Pos3DSoA<float,3>, boost::serialization::track_never)
 } // namespace qmcplusplus
 
 #endif

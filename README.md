@@ -4,7 +4,7 @@
 [![Documentation Status](https://readthedocs.org/projects/qmcpack/badge/?version=develop)](https://qmcpack.readthedocs.io/en/develop/?badge=develop)
 
 [![GitHub release](https://img.shields.io/github/release/QMCPACK/qmcpack/all.svg)](https://github.com/QMCPACK/qmcpack/releases)
-[![Spack Version](https://img.shields.io/spack/v/qmcpack)](https://spack.readthedocs.io/en/latest/package_list.html#qmcpack)
+[![Spack Version](https://img.shields.io/spack/v/qmcpack.svg)](https://spack.readthedocs.io/en/latest/package_list.html#qmcpack)
 
 [![GitHub Actions CI](https://github.com/QMCPACK/qmcpack/actions/workflows/ci-github-actions.yaml/badge.svg)](https://github.com/QMCPACK/qmcpack/actions/workflows/ci-github-actions.yaml)
 [![codecov-deterministic](https://codecov.io/gh/QMCPACK/qmcpack/branch/develop/graph/badge.svg?token=35D0u6GlBm)](https://codecov.io/gh/QMCPACK/qmcpack)
@@ -16,109 +16,93 @@ particular emphasis is placed on code quality and reproducibility.
 
 # Obtaining and installing QMCPACK
 
-Obtain the latest release from https://github.com/QMCPACK/qmcpack/releases or clone the development source from
-https://github.com/QMCPACK/qmcpack. A full installation guide and steps to perform an initial QMC calculation are given in the
-[extensive online documentation for QMCPACK](https://qmcpack.readthedocs.io/en/develop/index.html).
+ Obtain the latest release from https://github.com/QMCPACK/qmcpack/releases or clone the development source from
+ https://github.com/QMCPACK/qmcpack. A full installation guide and steps to perform an initial QMC calculation are given in the
+ [extensive online documentation for QMCPACK](https://qmcpack.readthedocs.io/en/develop/index.html).
 
-The [CHANGELOG.md](CHANGELOG.md) describes key changes made in each release as well as any major changes to the development version.
-
-# Documentation and support
-
-For more information, consult QMCPACK pages at http://www.qmcpack.org, the manual at
-https://qmcpack.readthedocs.io/en/develop/index.html, or its sources in the docs directory.
-
-If you have trouble using or building QMCPACK, or have questions about its use, please post to the [Google QMCPACK
-group](https://groups.google.com/forum/#!forum/qmcpack), create a GitHub issue at https://github.com/QMCPACK/qmcpack/issues or
-contact a developer.
-
-# Learning about Quantum Monte Carlo
-
-To learn about the fundamentals of Quantum Monte Carlo through to their practical application to molecular and solid-state systems with
-QMCPACK, see the [materials and tutorials from our most recent QMC workshop](https://github.com/QMCPACK/qmc_workshop_2021). These include a virtual machine
-to run examples without having to install QMCPACK yourself, and slides and recorded videos of introductory talks through to spin-orbit QMC.
-
-# Citing QMCPACK
-
-Please cite J. Kim _et al._ J. Phys. Cond. Mat. **30** 195901 (2018), https://doi.org/10.1088/1361-648X/aab9c3, and if space allows,
-P. Kent _et al._ J. Chem. Phys. **152** 174105 (2020), https://doi.org/10.1063/5.0004860 . These papers are both open access.
-
-# Installing QMCPACK
-
-[Complete instructions for downloading, compiling, and installing QMCPACK are given in the manual](https://qmcpack.readthedocs.io/en/develop/installation.html).
-Guides are provided for [installing QMCPACK on common workstations and supercomputers](https://qmcpack.readthedocs.io/en/develop/installation.html#installation-instructions-for-common-workstations-and-supercomputers). We also provide build
-scripts are for many systems in the config directory. The following sections of this README give a brief overview. 
-
-# Installation Prerequisites
+# Prerequisites
 
  * C++ 17 and C99 capable compilers. 
- * CMake v3.21.0 or later, build utility, http://www.cmake.org
- * BLAS/LAPACK, numerical library. Use vendor and platform-optimized libraries.
+ * CMake v3.15.0 or later, build utility, http://www.cmake.org
+ * BLAS/LAPACK, numerical library. Use platform-optimized libraries.
  * LibXml2, XML parser, http://xmlsoft.org/
- * HDF5 v1.10.0 or later, portable I/O library, http://www.hdfgroup.org/HDF5/
- * BOOST v1.70.0 or newer, peer-reviewed portable C++ source libraries, http://www.boost.org
+ * HDF5, portable I/O library, http://www.hdfgroup.org/HDF5/
+ * BOOST v1.61.0 or newer, peer-reviewed portable C++ source libraries, http://www.boost.org
  * FFTW, FFT library, http://www.fftw.org/
  * MPI, parallel library. Optional, but a near requirement for production calculations.
  * Python3. Older versions are not supported as of January 2020.
- * CUDA v11.0 or later. Optional, but required for builds with NVIDIA GPU support. Use 12.3 or newer if possible. 11.3-12.2 have
-   a bug affecting multideterminant calculations. Single determinant calculations are OK.
 
 We aim to support open source compilers and libraries released within two years of each QMCPACK release. Use of software versions
 over two years old may work but is discouraged and untested. Proprietary compilers (Intel, NVHPC) are generally supported over the
 same period but may require use of an exact version. We also aim to support the standard software environments on machines such as
-Frontier and Summit at OLCF, Aurora and Polaris at ALCF, and Perlmutter at NERSC. Use of the most recently released compilers and
-library versions is particularly encouraged for highest performance and easiest configuration.
+Summit at OLCF, Theta at ALCF, and Cori at NERSC. Use of the most recently released compilers and library versions is particularly
+encouraged for highest performance and easiest configuration.
 
-Details of regularly tested versions are given in the [manual section on installation
-prerequisites](https://qmcpack.readthedocs.io/en/develop/installation.html#prerequisites).
+Nightly testing currently includes the following software versions on x86:
+
+* Compilers
+  * GCC 11.2.0, 9.1.0
+  * Clang/LLVM 12.0.1
+  * Intel 19.1.1.217 configured to use C++ library from GCC 9.1.0 
+  * NVIDIA HPC SDK 21.5 configured to use C++ library from GCC 9.1.0
+* Boost 1.77.0, 1.68.0
+* HDF5 1.12.1, 1.8.19
+* FFTW 3.3.9, 3.3.4
+* CMake 3.21.1, 3.15.0
+* MPI
+  * OpenMPI 4.1.1, 3.1.6
+  * Intel MPI 19.1.1.217
+* CUDA 11.4
+
+Workflow tests are performed with Quantum Espresso v6.8.0 and PySCF v1.7.5. These check trial wavefunction generation and
+conversion through to actual QMC runs.
+
+On a developmental basis we also check the latest Clang and GCC development versions, AMD AOMP and Intel OneAPI compilers.
 
 # Building with CMake
 
-The build system for QMCPACK is based on CMake.  It will auto-configure based on the detected compilers and libraries. When these 
-are installed in standard locations, e.g., /usr, /usr/local, there is no need to set either environment or CMake variables.
+ The build system for QMCPACK is based on CMake.  It will auto-configure based on the detected compilers and libraries. Previously
+ QMCPACK made extensive use of toolchains, but the system has since been updated to eliminate the use of toolchain files for most
+ cases.  Specific compile options can be specified either through specific environment or CMake variables.  When the libraries are
+ installed in standard locations, e.g., /usr, /usr/local, there is no need to set environment or CMake variables for the packages.
 
-See the manual linked at https://qmcpack.readthedocs.io/en/develop/ and https://www.qmcpack.org/documentation or buildable using
-sphinx from the sources in docs/. A PDF version is still available at https://qmcpack.readthedocs.io/_/downloads/en/develop/pdf/
+ See the manual linked at https://qmcpack.readthedocs.io/en/develop/ and https://www.qmcpack.org/documentation or buildable using
+ sphinx from the sources in docs/. A PDF version is still available at https://qmcpack.readthedocs.io/_/downloads/en/develop/pdf/
 
 ## Quick build
 
-On a standard UNIX-like system such as a Linux workstation:
+ If you are feeling lucky and are on a standard UNIX-like system such
+ as a Linux workstation:
 
-* Safest quick build option is to specify the C and C++ compilers
-  through their MPI wrappers. Here we use Intel MPI and Intel
-  compilers. Move to the build directory, run CMake and make
+ * Safest quick build option is to specify the C and C++ compilers
+   through their MPI wrappers. Here we use Intel MPI and Intel
+   compilers. Move to the build directory, run CMake and make
 ```
 cd build
 cmake -DCMAKE_C_COMPILER=mpiicc -DCMAKE_CXX_COMPILER=mpiicpc ..
 make -j 8
 ```
 
-* Substitute mpicc and mpicxx or other wrapped compiler names to suit
-  your system. e.g. With OpenMPI use
+ * Substitute mpicc and mpicxx or other wrapped compiler names to suit
+   your system. e.g. With OpenMPI use
 ```
 cd build
 cmake -DCMAKE_C_COMPILER=mpicc -DCMAKE_CXX_COMPILER=mpicxx ..
 make -j 8
 ```
 
-* Non-MPI build:
-```
-cd build
-cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DQMC_MPI=0 ..
-make -j 8
-```
-
 * If you are feeling particularly lucky, you can skip the compiler
-  specification:
+   specification:
 ```
 cd build
 cmake ..
 make -j 8
 ```
 
-The complexities of modern computer hardware and software systems are
-such that you should check that the auto-configuration system has made
-good choices and picked optimized libraries and compiler settings
-before doing significant production. i.e. Check the details below.
+ The complexities of modern computer hardware and software systems are
+ such that you should check that the auto-configuration system has made
+ good choices and picked optimized libraries and compiler settings
+ before doing significant production. i.e. Check the details below.
 
 ## Set the environment
 
@@ -168,49 +152,40 @@ before doing significant production. i.e. Check the details below.
                                         CMAKE_CXX_FLAGS_RELWITHDEBINFO
 ```
 
- * Key QMCPACK build options
+ * Key QMC build options
 
 ```
-    QMC_COMPLEX           ON/OFF(default). Build the complex (general twist/k-point) version.
-    QMC_MIXED_PRECISION   ON/OFF(default). Build the mixed precision (mixing double/float) version
-                          Mixed precision calculations can be signifiantly faster but should be
-                          carefully checked validated against full double precision runs,
-                          particularly for large electron counts.
-    QMC_GPU               Semicolon-separated list of GPU features to build (openmp,cuda,hip,sycl).
-                          "openmp", "cuda", "hip" and "sycl" for GPU acceleration via OpenMP offload, CUDA, HIP and SYCL.
-                          Recommended values: "openmp;cuda" for NVIDIA, "openmp;hip" for AMD, "openmp;sycl" for Intel.
-                          Its default value is set to the recommended value if QMC_GPU_ARCHS indicates a specific vendor
-                          or left empty otherwise.
-    QMC_GPU_ARCHS         Specify GPU architectures. For example, "gfx90a" targets AMD MI200 series GPUs.
-                          "intel_gpu_pvc" targets Intel Data Center GPU Max 1xxx.
-                          "sm_80;sm_70" creates a single executable running on both NVIDIA A100 and V100 GPUs.
-                          Mixing vendor "gfx90a;sm_70" is not supported. If not set, atempt to derive it
-                          from CMAKE_CUDA_ARCHITECTURES or CMAKE_HIP_ARCHITECTURES if available and then
-                          atempt to auto-detect existing GPUs.
+     QMC_CUDA            Enable legacy CUDA code path for NVIDIA GPU acceleration (1:yes, 0:no)
+     QMC_COMPLEX         Build the complex (general twist/k-point) version (1:yes, 0:no)
+     QMC_MIXED_PRECISION Build the mixed precision (mixing double/float) version
+                         (1:yes (GPU default), 0:no (CPU default)).
+                         The CPU support is experimental.
+                         Use float and double for base and full precision.
+                         The GPU support is quite mature.
+                         Use always double for host side base and full precision
+                         and use float and double for CUDA base and full precision.
+     ENABLE_CUDA         ON/OFF(default). Enable CUDA code path for NVIDIA GPU acceleration.
+                         Production quality for AFQMC. Pre-production quality for real-space.
+                         Use CMAKE_CUDA_ARCHITECTURES, default 70, to set the actual GPU architecture.
+     ENABLE_OFFLOAD      ON/OFF(default). Experimental feature. Enable OpenMP target offload for GPU acceleration.
+     ENABLE_TIMERS       ON(default)/OFF. Enable fine-grained timers. Timers are on by default but at level coarse
+                         to avoid potential slowdown in tiny systems.
+                         For systems beyond tiny sizes (100+ electrons) there is no risk.
 ```
 
- * Additional QMCPACK options
+ * Additional QMC options
 
 ```
-     BUILD_AFQMC            ON/OFF(default). Build the Auxiliary-Field Quantum Monte Carlo (AFQMC) feature
-     BUILD_AFQMC_WITH_NCCL  ON/OFF(default). Enable the optimized code path using NVIDIA Collective Communications Library (NCCL) in AFQMC.
-                            AFQMC and CUDA features required to enable this feature.
-     BUILD_AFQMC_HIP        ON/OFF(default). Enable HIP accelerated code paths in AFQMC. AFQMC feature required to enable this feature.
-     QE_BIN                 Location of Quantum Espresso binaries including pw2qmcpack.x
-     RMG_BIN                Location of RMG binary
-     QMC_DATA               Specify data directory for QMCPACK performance and integration tests
-     QMC_INCLUDE            Add extra include paths
-     QMC_EXTRA_LIBS         Add extra link libraries
-     QMC_BUILD_STATIC       ON/OFF(default). Add -static flags to build
+     QE_BIN              Location of Quantum Espresso binaries including pw2qmcpack.x
+     RMG_BIN             Location of RMG binary
+     QMC_DATA            Specify data directory for QMCPACK performance and integration tests
+     QMC_INCLUDE         Add extra include paths
+     QMC_EXTRA_LIBS      Add extra link libraries
+     QMC_BUILD_STATIC    ON/OFF(default). Add -static flags to build
      QMC_SYMLINK_TEST_FILES Set to zero to require test files to be copied. Avoids space
                             saving default use of symbolic links for test files. Useful
                             if the build is on a separate filesystem from the source, as
                             required on some HPC systems.
-     ENABLE_TIMERS          ON(default)/OFF. Enable fine-grained timers. Timers are on by default but at level coarse
-                            to avoid potential slowdown in tiny systems.
-                            For systems beyond tiny sizes (100+ electrons) there is no risk.
-     USE_OBJECT_TARGET      ON/OFF(default). Use CMake object library targets to workaround linker not being able to handle hybrid
-                            binary archives which contain both host and device codes.
 ```
 
   * libxml2 related
@@ -321,34 +296,33 @@ performance tests are provided to aid in monitoring performance.
 
 From the build directory, invoke ctest specifying only the unit tests
 ```
-ctest -j 16 -R unit --output-on-failure
+ctest -R unit
 ```
-All of these tests should pass within a few minutes. Modify the parallization setting (-j 16) to suit the core count of your system.
+All of these tests should pass.
 
 ## Run the deterministic tests
 
 From the build directory, invoke ctest specifying only tests
 that are deterministic and known to be reliable.
 ```
-ctest -j 16 -R deterministic -LE unstable --output-on-failure
+ctest -R deterministic -LE unstable
 ```
 
-These tests currently take a few minutes to run, and include all the unit tests. All tests should pass. Failing tests likely
+These tests currently take a few seconds to run, and include all the unit tests. All tests should pass. Failing tests likely
 indicate a significant problem that should be solved before using QMCPACK further. This ctest invocation can be used as part of an
-automated installation verification process. Many of the tests use a multiple of 16 processes, so on large core count machines
-a significant speedup can be obtained with -j 64 etc.
+automated installation verification process.
  
 ## Run the short (quick) tests
 
-From the build directory, invoke ctest specifying only tests
-including "short" to run that are known to be stable.
+ From the build directory, invoke ctest specifying only tests
+ including "short" to run that are known to be stable.
 ```
-ctest -j 16 -R short -LE unstable --output-on-failure
+ctest -R short -LE unstable
 ```
 
-These tests currently take up to around one hour. On average, all
-tests should pass at a three sigma level of reliability. Any
-initially failing test should pass when rerun.
+ These tests currently take up to around one hour. On average, all
+ tests should pass at a three sigma level of reliability. Any
+ initially failing test should pass when rerun.
 
 ## Run individual tests
 
@@ -357,9 +331,18 @@ Individual tests can be run by specifying their name
 ctest -R name-of-test-to-run
 ```
 
+# Documentation and support
+
+For more information, consult QMCPACK pages at http://www.qmcpack.org, the manual at
+https://qmcpack.readthedocs.io/en/develop/index.html, or its sources in the docs directory.
+
+If you have trouble using or building QMCPACK, or have questions about its use, please post to the [Google QMCPACK
+group](https://groups.google.com/forum/#!forum/qmcpack), create a GitHub issue at https://github.com/QMCPACK/qmcpack/issues or
+contact a developer.
+
 # Contributing
 
-Contributions of any size are very welcome. Guidance for contributing to QMCPACK is included in the manual
+Contributions of any size are very welcome. Guidance for contributing to QMCPACK is included in Chapter 1 of the manual
 https://qmcpack.readthedocs.io/en/develop/introduction.html#contributing-to-qmcpack. We use a git flow model including pull
 request reviews. A continuous integration system runs on pull requests. See https://github.com/QMCPACK/qmcpack/wiki for details.
 For an extensive contribution, it can be helpful to discuss on the [Google QMCPACK
@@ -367,5 +350,3 @@ group](https://groups.google.com/forum/#!forum/qmcpack), to create a GitHub issu
 advance.
 
 Contributions are made under the same UIUC/NCSA open source license that covers QMCPACK. Please contact us if this is problematic.
-
-

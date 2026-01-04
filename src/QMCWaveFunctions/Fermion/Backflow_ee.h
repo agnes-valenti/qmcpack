@@ -38,10 +38,16 @@ public:
   Matrix<int> PairID;
   bool first;
 
+
+  //AV added, anisotropic masses
+  std::vector<int> Tauvalues;
+  std::vector<std::vector<double> > Masses;
+  std::vector<std::vector<double> > OneOverSqrtM;  //AV added, anisotropic masses - what about tau?? -> mass has to depend on group!!
+  int N;
+  bool separate;
+
   Backflow_ee(ParticleSet& ions, ParticleSet& els)
-      : BackflowFunctionBase(ions, els),
-        myTableIndex_(els.addTable(els, DTModes::NEED_TEMP_DATA_ON_HOST | DTModes::NEED_VP_FULL_TABLE_ON_HOST)),
-        first(true)
+      : BackflowFunctionBase(ions, els), myTableIndex_(els.addTable(els, DTModes::NEED_TEMP_DATA_ON_HOST)), first(true)
   {
     resize(NumTargets, NumTargets);
     NumGroups = els.groups();
@@ -51,6 +57,68 @@ public:
         PairID(i, j) = els.GroupID[i] * NumGroups + els.GroupID[j];
     RadFun.resize(NumGroups * NumGroups, 0);
     offsetPrms.resize(NumGroups * NumGroups, 0);
+    N         = els.getTotalNum();
+
+    //AV added
+    double Eta=0; //5.79; //1.0; //5.79; //1.0 ;//5.76;
+    std::string filename="EtaEtaVarmax.txt";
+    std::ifstream fin(filename.c_str());
+    if(!fin.good()){
+      std::cerr<<"# Error : Cannot load from file "<<filename<<" : file not found."<<std::endl;
+      std::abort();
+    }
+  
+    fin>>Eta;
+    int sephelper=0;
+    separate=true;
+    fin>>sephelper;
+    if (sephelper<0.5){
+      separate=false;
+    }
+    
+    SpeciesSet tspecies(els.getSpeciesSet());
+
+    int species_set_size=tspecies.size();
+    Tauvalues.resize(species_set_size);
+    Masses.resize(species_set_size,std::vector<double>(2));
+    OneOverSqrtM.resize(species_set_size,std::vector<double>(2));
+
+    int species_index_u=tspecies.findSpecies("u");
+    int species_index_d=tspecies.findSpecies("d");
+    int species_index_ut=tspecies.findSpecies("ut");
+    int species_index_dt=tspecies.findSpecies("dt");
+    if (species_index_u<species_set_size){
+      int Tau=-1;
+      Tauvalues[species_index_u]=Tau;
+      Masses[species_index_u][0]=std::pow(Eta,-0.5*(Tau));
+      Masses[species_index_u][1]=std::pow(Eta,0.5*Tau);
+      OneOverSqrtM[species_index_u][0]=1.0/std::sqrt(Masses[species_index_u][0]);
+      OneOverSqrtM[species_index_u][1]=1.0/std::sqrt(Masses[species_index_u][1]);
+    }
+    if (species_index_d<species_set_size){
+      int Tau=-1;
+      Tauvalues[species_index_d]=Tau;
+      Masses[species_index_d][0]=std::pow(Eta,-0.5*(Tau));
+      Masses[species_index_d][1]=std::pow(Eta,0.5*Tau);
+      OneOverSqrtM[species_index_d][0]=1.0/std::sqrt(Masses[species_index_d][0]);
+      OneOverSqrtM[species_index_d][1]=1.0/std::sqrt(Masses[species_index_d][1]);
+    }
+    if (species_index_ut<species_set_size){
+      int Tau=1;
+      Tauvalues[species_index_ut]=Tau;
+      Masses[species_index_ut][0]=std::pow(Eta,-0.5*(Tau));
+      Masses[species_index_ut][1]=std::pow(Eta,0.5*Tau);
+      OneOverSqrtM[species_index_ut][0]=1.0/std::sqrt(Masses[species_index_ut][0]);
+      OneOverSqrtM[species_index_ut][1]=1.0/std::sqrt(Masses[species_index_ut][1]);
+    }
+    if (species_index_dt<species_set_size){
+      int Tau=1;
+      Tauvalues[species_index_dt]=Tau;
+      Masses[species_index_dt][0]=std::pow(Eta,-0.5*(Tau));
+      Masses[species_index_dt][1]=std::pow(Eta,0.5*Tau);
+      OneOverSqrtM[species_index_dt][0]=1.0/std::sqrt(Masses[species_index_dt][0]);
+      OneOverSqrtM[species_index_dt][1]=1.0/std::sqrt(Masses[species_index_dt][1]);
+    }
   }
 
   std::unique_ptr<BackflowFunctionBase> makeClone(ParticleSet& tqp) const override
@@ -86,6 +154,7 @@ public:
 
   void addFunc(int ia, int ib, std::unique_ptr<FT> rf)
   {
+    /*
     if (first)
     {
       // initialize all with rf the first time
@@ -98,6 +167,63 @@ public:
       RadFun[ia * NumGroups + ib] = rf.get();
       RadFun[ib * NumGroups + ia] = rf.get();
     }
+    */
+
+
+    // AVFLAG
+    assert(ia < NumGroups);
+    assert(ib < NumGroups);
+    if (ia == ib)
+    {
+      if (first) //first time, assign everything
+      {
+        int ij = 0;
+        for (int ig = 0; ig < NumGroups; ++ig)
+          for (int jg = 0; jg < NumGroups; ++jg, ++ij)
+            if (RadFun[ij] == nullptr)
+              RadFun[ij] = rf.get();   //uu default set for everything?
+        first=false;
+      }
+      else{
+        if (separate){
+          RadFun[ia * NumGroups + ib] = rf.get();
+        }
+        else{
+          int ij = 0;
+          for (int ig = 0; ig < NumGroups; ++ig){
+            for (int jg = 0; jg < NumGroups; ++jg, ++ij){
+              if ((ig==jg))  // && (Tauvalues[ia]+Tauvalues[ib]==Tauvalues[ig]+Tauvalues[jg]))
+                 RadFun[ij] = rf.get();   
+            }
+          }
+        }
+      }
+    }
+    else
+    {
+      // a very special case, 1 particle of each type (e.g. 1 up + 1 down)
+      // uu/dd/etc. was prevented by the builder
+      if (N == NumGroups)
+        for (int ig = 0; ig < NumGroups; ++ig)
+          RadFun[ig * NumGroups + ig] = rf.get();
+      // generic case
+      if (separate){
+        RadFun[ia * NumGroups + ib] = rf.get();  //ud  (uut etc...)
+        RadFun[ib * NumGroups + ia] = rf.get();  //du  (utu etc...)
+      }
+      else{
+        int ij=0;
+        for (int ig = 0; ig < NumGroups; ++ig){
+          for (int jg = 0; jg < NumGroups; ++jg, ++ij){
+            if ((ig!=jg) &&  (Tauvalues[ia]*Tauvalues[ib]==Tauvalues[ig]*Tauvalues[jg]))  //(Tauvalues[ia]+Tauvalues[ib]==Tauvalues[ig]+Tauvalues[jg]))
+              RadFun[ij] = rf.get();   
+          }
+        }
+      }
+    }
+    //----------
+
+
     uniqueRadFun.push_back(std::move(rf));
   }
 
@@ -123,13 +249,13 @@ public:
   void resetParameters(const opt_variables_type& active) override
   {
     for (int i = 0; i < uniqueRadFun.size(); i++)
-      uniqueRadFun[i]->resetParametersExclusive(active);
+      uniqueRadFun[i]->resetParameters(active);
   }
 
   void checkInVariables(opt_variables_type& active) override
   {
     for (int i = 0; i < uniqueRadFun.size(); i++)
-      uniqueRadFun[i]->checkInVariablesExclusive(active);
+      uniqueRadFun[i]->checkInVariables(active);
   }
 
   void checkOutVariables(const opt_variables_type& active) override
@@ -250,7 +376,7 @@ public:
     //}
   }
 
-  inline void evaluate(const ParticleSet& P, ParticleSet& QP, GradVector& Bmat, HessMatrix& Amat)
+  inline void evaluate(const ParticleSet& P, ParticleSet& QP, GradVector_t& Bmat, HessMatrix_t& Amat)
   {
     APP_ABORT("This shouldn't be called: Backflow_ee::evaluate(Bmat)");
     PosType du, d2u, temp;
@@ -292,7 +418,7 @@ public:
 
   /** calculate quasi-particle coordinates, Bmat and Amat
    */
-  inline void evaluate(const ParticleSet& P, ParticleSet& QP, GradMatrix& Bmat_full, HessMatrix& Amat) override
+  inline void evaluate(const ParticleSet& P, ParticleSet& QP, GradMatrix_t& Bmat_full, HessMatrix_t& Amat) override
   {
     RealType du, d2u;
     const auto& myTable = P.getDistTableAA(myTableIndex_);
@@ -305,7 +431,7 @@ public:
         for (int jat = 0; jat < iat; ++jat)
         {
           if (dist[jat] > 0)
-          {
+          { //std::cout<<"displ: "<<displ[0]<<" "<<displ[1]<<std::endl;
             RealType uij = RadFun[PairID(iat, jat)]->evaluate(dist[jat], du, d2u);
             du /= dist[jat];
             PosType u     = uij * displ[jat];
@@ -324,17 +450,72 @@ public:
             hess[3] += uij;
 #endif
             AIJ(jat, iat) = hess;
+            //std::cout<<"hess: "<<hess<<std::endl;
+            //std::cout<<"hess components: "<<hess[0]<<" "<<hess[1]<<" "<<hess[2]<<" "<<hess[3]<<std::endl;
             Amat(iat, iat) += hess;
             Amat(jat, jat) += hess;
             Amat(iat, jat) -= hess;
             Amat(jat, iat) -= hess;
             GradType& grad = BIJ(jat, iat); // dr = r_j - r_i
             grad           = (d2u + (OHMMS_DIM + 1) * du) * displ[jat];
+
+            //AV test ------------
+            //std::cout<<"Bmat_full: "<<Bmat_full(iat,iat)[0]<<" : "<<Bmat_full(iat,iat)<<std::endl;
+            const int ig_iat=P.GroupID[iat];
+            const int ig_jat=P.GroupID[jat];
+
+            double mx_iat=Masses[ig_iat][0]; //1.0;
+            double my_iat=Masses[ig_iat][1]; //1.0;
+
+            double mx_jat=Masses[ig_jat][0]; //1.0;
+            double my_jat=Masses[ig_jat][1]; //1.0;
+            
+            double r=dist[jat];
+            double rx=displ[jat][0];
+            double ry=displ[jat][1];
+            double gradtestx_iat=((1.0/mx_iat+1.0/my_iat)*du+(1.0/mx_iat*rx*rx+1.0/my_iat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/mx_iat)*rx;
+            double gradtesty_iat=((1.0/mx_iat+1.0/my_iat)*du+(1.0/mx_iat*rx*rx+1.0/my_iat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/my_iat)*ry;
+
+
+            double gradtestx_jat=((1.0/mx_jat+1.0/my_jat)*du+(1.0/mx_jat*rx*rx+1.0/my_jat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/mx_jat)*rx;
+            double gradtesty_jat=((1.0/mx_jat+1.0/my_jat)*du+(1.0/mx_jat*rx*rx+1.0/my_jat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/my_jat)*ry;
+
+            //std::cout<<"r: "<<r<<" rx: "<<rx<<" ry: "<<ry<<std::endl;
+
+            //std::cout<<"u: "<<uij<<" du: "<<du<<" d2u: "<<d2u<<std::endl;
+
+            //std::cout<<"grad: "<<grad<<" gradtestx: "<<gradtestx_iat<<" gradtesty: "<<gradtesty_iat<<std::endl;
+            //--------------------------
             BIJ(iat, jat)  = -1.0 * grad;
+
+            //AVMASS comment
+            //-------------------------------
+            /*
             Bmat_full(iat, iat) -= grad;
             Bmat_full(jat, jat) += grad;
             Bmat_full(iat, jat) += grad;
             Bmat_full(jat, iat) -= grad;
+            */
+            //-------------------------------
+            
+            //AVMASS uncomment
+            //--------------------------------------
+            
+            Bmat_full(iat, iat)[0] -= gradtestx_iat;
+            Bmat_full(iat, iat)[1] -= gradtesty_iat;
+
+            Bmat_full(jat, jat)[0] += gradtestx_jat;
+            Bmat_full(jat, jat)[1] += gradtesty_jat;
+
+            Bmat_full(iat, jat)[0] += gradtestx_iat;
+            Bmat_full(iat, jat)[1] += gradtesty_iat;
+
+            Bmat_full(jat, iat)[0] -= gradtestx_jat;
+            Bmat_full(jat, iat)[1] -= gradtesty_jat;
+            
+            //--------------------------------------
+
+
           }
         }
       }
@@ -344,7 +525,7 @@ public:
   /** calculate quasi-particle coordinates after pbyp move
    */
   inline void evaluatePbyP(const ParticleSet& P,
-                           ParticleSet::ParticlePos& newQP,
+                           ParticleSet::ParticlePos_t& newQP,
                            const std::vector<int>& index) override
   {
     APP_ABORT("Backflow_ee.h::evaluatePbyP(P,QP,index_vec) not implemented for SoA\n");
@@ -364,7 +545,7 @@ public:
 
   /** calculate quasi-particle coordinates after pbyp move
    */
-  inline void evaluatePbyP(const ParticleSet& P, int iat, ParticleSet::ParticlePos& newQP) override
+  inline void evaluatePbyP(const ParticleSet& P, int iat, ParticleSet::ParticlePos_t& newQP) override
   {
     RealType du, d2u;
     const auto& myTable = P.getDistTableAA(myTableIndex_);
@@ -389,9 +570,9 @@ public:
   /** calculate quasi-particle coordinates and Amat after pbyp move
    */
   inline void evaluatePbyP(const ParticleSet& P,
-                           ParticleSet::ParticlePos& newQP,
+                           ParticleSet::ParticlePos_t& newQP,
                            const std::vector<int>& index,
-                           HessMatrix& Amat) override
+                           HessMatrix_t& Amat) override
   {
     APP_ABORT("Backflow_ee.h::evaluatePbyP(P,QP,index_vec,Amat) not implemented for SoA\n");
     //    RealType du, d2u;
@@ -425,7 +606,10 @@ public:
 
   /** calculate quasi-particle coordinates and Amat after pbyp move
    */
-  inline void evaluatePbyP(const ParticleSet& P, int iat, ParticleSet::ParticlePos& newQP, HessMatrix& Amat) override
+  inline void evaluatePbyP(const ParticleSet& P,
+                           int iat,
+                           ParticleSet::ParticlePos_t& newQP,
+                           HessMatrix_t& Amat) override
   {
     RealType du, d2u;
     const auto& myTable = P.getDistTableAA(myTableIndex_);
@@ -484,10 +668,10 @@ public:
   /** calculate quasi-particle coordinates and Amat after pbyp move
    */
   inline void evaluatePbyP(const ParticleSet& P,
-                           ParticleSet::ParticlePos& newQP,
+                           ParticleSet::ParticlePos_t& newQP,
                            const std::vector<int>& index,
-                           GradMatrix& Bmat,
-                           HessMatrix& Amat) override
+                           GradMatrix_t& Bmat,
+                           HessMatrix_t& Amat) override
   {
     APP_ABORT("Backflow_ee.h::evaluatePbyP(P,QP,index_vec,Bmat,Amat) not implemented for SoA\n");
     //    RealType du, d2u;
@@ -532,9 +716,9 @@ public:
    */
   inline void evaluatePbyP(const ParticleSet& P,
                            int iat,
-                           ParticleSet::ParticlePos& newQP,
-                           GradMatrix& Bmat,
-                           HessMatrix& Amat) override
+                           ParticleSet::ParticlePos_t& newQP,
+                           GradMatrix_t& Bmat,
+                           HessMatrix_t& Amat) override
   {
     APP_ABORT("Backflow_ee.h::evaluatePbyP(P,iat,QP,Bmat,Amat) not implemented for SoA\n");
     //    RealType du, d2u;
@@ -605,7 +789,7 @@ public:
   /** calculate only Bmat
    *  This is used in pbyp moves, in updateBuffer()
    */
-  inline void evaluateBmatOnly(const ParticleSet& P, GradMatrix& Bmat_full) override
+  inline void evaluateBmatOnly(const ParticleSet& P, GradMatrix_t& Bmat_full) override
   {
     APP_ABORT("Backflow_ee.h::evaluateBmatOnly(P,QP,Bmat_full) not implemented for SoA\n");
     //RealType du, d2u;
@@ -630,12 +814,16 @@ public:
    */
   inline void evaluateWithDerivatives(const ParticleSet& P,
                                       ParticleSet& QP,
-                                      GradMatrix& Bmat_full,
-                                      HessMatrix& Amat,
-                                      GradMatrix& Cmat,
-                                      GradMatrix& Ymat,
-                                      HessArray& Xmat) override
+                                      GradMatrix_t& Bmat_full,
+                                      HessMatrix_t& Amat,
+                                      GradMatrix_t& Cmat,
+                                      GradMatrix_t& Ymat,
+                                      HessArray_t& Xmat) override
   {
+    //std::cout<<"AV in Backflow_ee.h:evaluateWithDerivatives, implement for anisotropic masses!"<<std::endl;
+    //std::flush(std::cout);
+    //abort();
+
     RealType du, d2u;
     const auto& myTable = P.getDistTableAA(myTableIndex_);
     for (int ig = 0; ig < NumGroups; ++ig)
@@ -679,14 +867,74 @@ public:
             // d2u + (ndim+1)*du
             GradType& grad = BIJ(jat, iat); // dr = r_j - r_i
             grad           = (d2u + (OHMMS_DIM + 1) * du) * displ[jat];
+            //BIJ(iat, jat)  = -1.0 * grad;
+            //Bmat_full(iat, iat) -= grad;
+            //Bmat_full(jat, jat) += grad;
+            //Bmat_full(iat, jat) += grad;
+            //Bmat_full(jat, iat) -= grad;
+
+
+             //AV test ------------
+            //std::cout<<"Bmat_full: "<<Bmat_full(iat,iat)[0]<<" : "<<Bmat_full(iat,iat)<<std::endl;
+            const int ig_iat=P.GroupID[iat];
+            const int ig_jat=P.GroupID[jat];
+
+            double mx_iat=Masses[ig_iat][0]; //1.0;
+            double my_iat=Masses[ig_iat][1]; //1.0;
+
+            double mx_jat=Masses[ig_jat][0]; //1.0;
+            double my_jat=Masses[ig_jat][1]; //1.0;
+            
+            double r=dist[jat];
+            double rx=displ[jat][0];
+            double ry=displ[jat][1];
+            double gradtestx_iat=((1.0/mx_iat+1.0/my_iat)*du+(1.0/mx_iat*rx*rx+1.0/my_iat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/mx_iat)*rx;
+            double gradtesty_iat=((1.0/mx_iat+1.0/my_iat)*du+(1.0/mx_iat*rx*rx+1.0/my_iat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/my_iat)*ry;
+
+
+            double gradtestx_jat=((1.0/mx_jat+1.0/my_jat)*du+(1.0/mx_jat*rx*rx+1.0/my_jat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/mx_jat)*rx;
+            double gradtesty_jat=((1.0/mx_jat+1.0/my_jat)*du+(1.0/mx_jat*rx*rx+1.0/my_jat*ry*ry)/(r*r)*(d2u-du)+2*du*1.0/my_jat)*ry;
+
+            //std::cout<<"r: "<<r<<" rx: "<<rx<<" ry: "<<ry<<std::endl;
+
+            //std::cout<<"u: "<<uij<<" du: "<<du<<" d2u: "<<d2u<<std::endl;
+
+            //std::cout<<"grad: "<<grad<<" gradtestx: "<<gradtestx_iat<<" gradtesty: "<<gradtesty_iat<<std::endl;
+            //--------------------------
             BIJ(iat, jat)  = -1.0 * grad;
+            
+            //AVMASS comment
+            //----------------------------------------
+            /*
             Bmat_full(iat, iat) -= grad;
             Bmat_full(jat, jat) += grad;
             Bmat_full(iat, jat) += grad;
             Bmat_full(jat, iat) -= grad;
+            */
+            //----------------------------------------
+
+            //AVMASS uncomment
+            //----------------------------------------
+            
+            Bmat_full(iat, iat)[0] -= gradtestx_iat;
+            Bmat_full(iat, iat)[1] -= gradtesty_iat;
+
+            Bmat_full(jat, jat)[0] += gradtestx_jat;
+            Bmat_full(jat, jat)[1] += gradtesty_jat;
+
+            Bmat_full(iat, jat)[0] += gradtestx_iat;
+            Bmat_full(iat, jat)[1] += gradtesty_iat;
+
+            Bmat_full(jat, iat)[0] -= gradtestx_jat;
+            Bmat_full(jat, iat)[1] -= gradtesty_jat;
+            
+            //----------------------------------------
             for (int prm = 0, la = indexOfFirstParam + offsetPrms[PairID(iat, jat)]; prm < numParamJU; prm++, la++)
             {
               PosType uk = displ[jat] * derivsju[prm][0];
+              //std::cout<<"param: "<<prm<<" displ: "<<displ[jat]<<std::endl;
+              //std::cout<<"bderiv: "<<derivsju[prm][0]<<std::endl;
+              //std::cout<<std::endl;
               Cmat(la, iat) -= uk;
               Cmat(la, jat) += uk;
               Xmat(la, iat, jat) -= (derivsju[prm][1] / dist[jat]) * op;
@@ -702,8 +950,52 @@ public:
               Xmat(la, iat, iat) -= Xmat(la, iat, jat);
               Xmat(la, jat, jat) -= Xmat(la, iat, jat);
               uk = 2.0 * (derivsju[prm][2] + (OHMMS_DIM + 1) * derivsju[prm][1] / dist[jat]) * displ[jat];
+              
+              //AVMASS uncomment
+              //----------------------------------------
+              
+              double du_param=derivsju[prm][1] / dist[jat];
+              double d2u_param=derivsju[prm][2];
+              
+              double uktestx_iat=((1.0/mx_iat+1.0/my_iat)*du_param+(1.0/mx_iat*rx*rx+1.0/my_iat*ry*ry)/(r*r)*(d2u_param-du_param)+2*du_param*1.0/mx_iat)*rx;
+              double uktesty_iat=((1.0/mx_iat+1.0/my_iat)*du_param+(1.0/mx_iat*rx*rx+1.0/my_iat*ry*ry)/(r*r)*(d2u_param-du_param)+2*du_param*1.0/my_iat)*ry;
+
+              double uktestx_jat=((1.0/mx_jat+1.0/my_jat)*du_param+(1.0/mx_jat*rx*rx+1.0/my_jat*ry*ry)/(r*r)*(d2u_param-du_param)+2*du_param*1.0/mx_jat)*rx;
+              double uktesty_jat=((1.0/mx_jat+1.0/my_jat)*du_param+(1.0/mx_jat*rx*rx+1.0/my_jat*ry*ry)/(r*r)*(d2u_param-du_param)+2*du_param*1.0/my_jat)*ry;
+
+              //std::cout<<"uk: "<<uk<<" uktestx_iat: "<<uktestx_iat<<" uktesty_iat: "<<uktesty_iat<<std::endl;
+              //Ymat(la, iat) -= uk;
+              //Ymat(la, jat) += uk;
+
+              Ymat(la, iat)[0] = Ymat(la, iat)[0] - uktestx_iat - uktestx_jat;
+              Ymat(la, iat)[1] = Ymat(la, iat)[1] - uktesty_iat - uktesty_jat;
+
+              Ymat(la, jat)[0] = Ymat(la, jat)[0] + uktestx_jat + uktestx_iat;  //AV change i->j!!!
+              Ymat(la, jat)[1] = Ymat(la, jat)[1] + uktesty_jat + uktesty_iat;
+              
+              //-|-|-|-|-|-|-|-AV test
+              //Ymat_full(la,iat,iat)[0] -= uktestx_iat;
+              //Ymat_full(la,iat,iat)[1] -= uktesty_iat;
+
+              //Ymat_full(la,jat,jat)[0] += uktestx_jat;
+              //Ymat_full(la,jat,jat)[1] += uktesty_jat;
+
+              //Ymat_full(la,iat,jat)[0] += uktestx_iat;
+              //Ymat_full(la,iat,jat)[1] += uktesty_iat;
+
+              //Ymat_full(la,jat,iat)[0] -= uktestx_jat;
+              //Ymat_full(la,jat,iat)[1] -= uktesty_jat;
+              //-|-|-|-|-|-|-|-
+              
+              //-------------------------------------------
+              
+              //AVMASS comment
+              //-------------------------------
+              /*
               Ymat(la, iat) -= uk;
               Ymat(la, jat) += uk;
+              */
+              //-------------------------------
             }
           }
         }

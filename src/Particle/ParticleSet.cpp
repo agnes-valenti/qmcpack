@@ -26,12 +26,23 @@
 #include "LongRange/StructFact.h"
 #include "Utilities/IteratorUtility.h"
 #include "Utilities/RandomGenerator.h"
-#include "ParticleBase/RandomSeqGeneratorGlobal.h"
-#include "ResourceCollection.h"
+#include "ParticleBase/RandomSeqGenerator.h"
+
+//#define PACK_DISTANCETABLES
+//std::vector<std::vector<double> > AVdistancesPtcl0;
+//std::vector<std::vector<double> > AVdistancesPtcl1;
+
 
 namespace qmcplusplus
 {
 using WP = WalkerProperties::Indexes;
+
+//using namespace particle_info;
+
+#ifdef QMC_CUDA
+template<>
+int ParticleSet::Walker_t::cuda_DataSize = 0;
+#endif
 
 enum PSetTimers
 {
@@ -39,7 +50,9 @@ enum PSetTimers
   PS_donePbyP,
   PS_accept,
   PS_loadWalker,
-  PS_update
+  PS_update,
+  PS_dt_move,
+  PS_mw_copy
 };
 
 static const TimerNameList_t<PSetTimers> generatePSetTimerNames(std::string& obj_name)
@@ -48,50 +61,42 @@ static const TimerNameList_t<PSetTimers> generatePSetTimerNames(std::string& obj
           {PS_donePbyP, "ParticleSet:" + obj_name + "::donePbyP"},
           {PS_accept, "ParticleSet:" + obj_name + "::acceptMove"},
           {PS_loadWalker, "ParticleSet:" + obj_name + "::loadWalker"},
-          {PS_update, "ParticleSet:" + obj_name + "::update"}};
+          {PS_update, "ParticleSet:" + obj_name + "::update"},
+          {PS_dt_move, "ParticleSet:" + obj_name + "::dt_move"},
+          {PS_mw_copy, "ParticleSet:" + obj_name + "::mw_copy"}};
 }
 
-ParticleSet::ParticleSet(const SimulationCell& simulation_cell, const DynamicCoordinateKind kind)
+ParticleSet::ParticleSet(const DynamicCoordinateKind kind)
     : quantum_domain(classical),
-      Properties(0, 0, 1, WP::MAXPROPERTIES),
-      simulation_cell_(simulation_cell),
-      same_mass_(true),
+      IsGrouped(true),
+      SameMass(true),
+      ThreadID(0),
       is_spinor_(false),
-      active_ptcl_(-1),
-      active_spin_val_(0.0),
-      myTimers(getGlobalTimerManager(), generatePSetTimerNames(myName), timer_level_medium),
+      activePtcl(-1),
+      Properties(0, 0, 1, WP::MAXPROPERTIES),
       myTwist(0.0),
       ParentName("0"),
       TotalNum(0),
-      group_offsets_(std::make_shared<Vector<int, OMPallocator<int>>>()),
       coordinates_(createDynamicCoordinates(kind))
 {
   initPropertyList();
+  setup_timers(myTimers, generatePSetTimerNames(myName), timer_level_medium);
 }
 
 ParticleSet::ParticleSet(const ParticleSet& p)
-    : Properties(p.Properties),
-      simulation_cell_(p.simulation_cell_),
-      same_mass_(true),
+    : IsGrouped(p.IsGrouped),
+      SameMass(true),
+      ThreadID(0),
       is_spinor_(false),
-      active_ptcl_(-1),
-      active_spin_val_(0.0),
-      my_species_(p.getSpeciesSet()),
-      myTimers(getGlobalTimerManager(), generatePSetTimerNames(myName), timer_level_medium),
+      activePtcl(-1),
+      mySpecies(p.getSpeciesSet()),
+      Properties(p.Properties),
       myTwist(0.0),
       ParentName(p.parentName()),
-      group_offsets_(p.group_offsets_),
       coordinates_(p.coordinates_->makeClone())
 {
   setQuantumDomain(p.quantum_domain);
-
-  resize(p.getTotalNum());
-  R.InUnit   = p.R.InUnit;
-  R          = p.R;
-  spins      = p.spins;
-  GroupID    = p.GroupID;
-  is_spinor_ = p.is_spinor_;
-
+  assign(p); //only the base is copied, assumes that other properties are not assignable
   //need explicit copy:
   Mass = p.Mass;
   Z    = p.Z;
@@ -107,9 +112,15 @@ ParticleSet::ParticleSet(const ParticleSet& p)
   //construct the distance tables with the same order
   for (int i = 0; i < p.DistTables.size(); ++i)
     addTable(p.DistTables[i]->get_origin(), p.DistTables[i]->getModes());
-
-  if (p.structure_factor_)
-    structure_factor_ = std::make_unique<StructFact>(*p.structure_factor_);
+  if (p.SK)
+  {
+    LRBox = p.LRBox;                             //copy LRBox
+    SK    = std::make_unique<StructFact>(*p.SK); //safe to use the copy constructor
+    //R.InUnit=p.R.InUnit;
+    //createSK();
+    //SK->DoUpdate=p.SK->DoUpdate;
+  }
+  setup_timers(myTimers, generatePSetTimerNames(myName), timer_level_medium);
   myTwist = p.myTwist;
 
   G = p.G;
@@ -118,21 +129,29 @@ ParticleSet::ParticleSet(const ParticleSet& p)
 
 ParticleSet::~ParticleSet() = default;
 
+void ParticleSet::create(int numPtcl)
+{
+  resize(numPtcl);
+  SubPtcl.resize(2);
+  SubPtcl[0] = 0;
+  SubPtcl[1] = numPtcl;
+}
+
 void ParticleSet::create(const std::vector<int>& agroup)
 {
-  auto& group_offsets(*group_offsets_);
-  group_offsets.resize(agroup.size() + 1);
-  group_offsets[0] = 0;
+  SubPtcl.resize(agroup.size() + 1);
+  SubPtcl[0] = 0;
   for (int is = 0; is < agroup.size(); is++)
-    group_offsets[is + 1] = group_offsets[is] + agroup[is];
-  group_offsets.updateTo();
-  const size_t nsum = group_offsets[agroup.size()];
+    SubPtcl[is + 1] = SubPtcl[is] + agroup[is];
+  size_t nsum = SubPtcl[agroup.size()];
   resize(nsum);
   TotalNum = nsum;
   int loc  = 0;
   for (int i = 0; i < agroup.size(); i++)
+  {
     for (int j = 0; j < agroup[i]; j++, loc++)
       GroupID[loc] = i;
+  }
 }
 
 void ParticleSet::setQuantumDomain(quantum_domains qdomain)
@@ -140,62 +159,90 @@ void ParticleSet::setQuantumDomain(quantum_domains qdomain)
   if (quantumDomainValid(qdomain))
     quantum_domain = qdomain;
   else
-    throw std::runtime_error("ParticleSet::setQuantumDomain\n  input quantum domain is not valid for particles");
+    APP_ABORT("ParticleSet::setQuantumDomain\n  input quantum domain is not valid for particles");
 }
 
 void ParticleSet::resetGroups()
 {
-  const int nspecies = my_species_.getTotalNum();
+  int nspecies = mySpecies.getTotalNum();
   // Usually an empty ParticleSet indicates an error in the input file,
   // but in some cases it is useful.  Allow an empty ParticleSet if it
   // has the special name "empty".
   if (nspecies == 0 && getName() != "empty")
   {
-    throw std::runtime_error("ParticleSet::resetGroups() Failed. No species exisits");
+    APP_ABORT("ParticleSet::resetGroups() Failed. No species exisits");
   }
-  int natt = my_species_.numAttributes();
-  int qind = my_species_.addAttribute("charge");
+  int natt = mySpecies.numAttributes();
+  int qind = mySpecies.addAttribute("charge");
   if (natt == qind)
   {
     app_log() << " Missing charge attribute of the SpeciesSet " << myName << " particleset" << std::endl;
     app_log() << " Assume neutral particles Z=0.0 " << std::endl;
     for (int ig = 0; ig < nspecies; ig++)
-      my_species_(qind, ig) = 0.0;
+      mySpecies(qind, ig) = 0.0;
   }
   for (int iat = 0; iat < Z.size(); iat++)
-    Z[iat] = my_species_(qind, GroupID[iat]);
-  natt        = my_species_.numAttributes();
-  int massind = my_species_.addAttribute("mass");
+    Z[iat] = mySpecies(qind, GroupID[iat]);
+  natt        = mySpecies.numAttributes();
+  int massind = mySpecies.addAttribute("mass");
   if (massind == natt)
   {
     for (int ig = 0; ig < nspecies; ig++)
-      my_species_(massind, ig) = 1.0;
+      mySpecies(massind, ig) = 1.0;
   }
-  same_mass_ = true;
-  double m0  = my_species_(massind, 0);
+  SameMass  = true;
+  double m0 = mySpecies(massind, 0);
   for (int ig = 1; ig < nspecies; ig++)
-    same_mass_ &= (my_species_(massind, ig) == m0);
-  if (same_mass_)
+    SameMass &= (mySpecies(massind, ig) == m0);
+  if (SameMass)
     app_log() << "  All the species have the same mass " << m0 << std::endl;
   else
     app_log() << "  Distinctive masses for each species " << std::endl;
   for (int iat = 0; iat < Mass.size(); iat++)
-    Mass[iat] = my_species_(massind, GroupID[iat]);
-
-  int membersize = my_species_.addAttribute("membersize");
-  for (int ig = 0; ig < nspecies; ++ig)
-    my_species_(membersize, ig) = groupsize(ig);
-
+    Mass[iat] = mySpecies(massind, GroupID[iat]);
+  std::vector<int> ng(nspecies, 0);
   for (int iat = 0; iat < GroupID.size(); iat++)
-    assert(GroupID[iat] < nspecies);
+  {
+    if (GroupID[iat] < nspecies)
+      ng[GroupID[iat]]++;
+    else
+      APP_ABORT("ParticleSet::resetGroups() Failed. GroupID is out of bound.");
+  }
+  // safety check if any group of particles has size 0, instruct users to fix the input.
+  for (int group_id = 0; group_id < nspecies; group_id++)
+    if (ng[group_id] == 0 && getName() != "empty")
+    {
+      std::ostringstream err_msg;
+      err_msg << "ParticleSet::resetGroups() Failed. ParticleSet '" << myName << "' "
+              << "has group '" << mySpecies.speciesName[group_id] << "' containing 0 particles. "
+              << "Remove this group from input!" << std::endl;
+      APP_ABORT(err_msg.str());
+    }
+  SubPtcl.resize(nspecies + 1);
+  SubPtcl[0] = 0;
+  for (int i = 0; i < nspecies; ++i)
+    SubPtcl[i + 1] = SubPtcl[i] + ng[i];
+  int membersize = mySpecies.addAttribute("membersize");
+  for (int ig = 0; ig < nspecies; ++ig)
+    mySpecies(membersize, ig) = ng[ig];
+  //orgID=ID;
+  //orgGroupID=GroupID;
+  int new_id = 0;
+  for (int i = 0; i < nspecies; ++i)
+    for (int iat = 0; iat < GroupID.size(); ++iat)
+      if (GroupID[iat] == i)
+        IndirectID[new_id++] = ID[iat];
+  IsGrouped = true;
+  for (int iat = 0; iat < ID.size(); ++iat)
+    IsGrouped &= (IndirectID[iat] == ID[iat]);
 }
 
-void ParticleSet::randomizeFromSource(const ParticleSet& src)
+void ParticleSet::randomizeFromSource(ParticleSet& src)
 {
-  const SpeciesSet& srcSpSet(src.getSpeciesSet());
+  SpeciesSet& srcSpSet(src.getSpeciesSet());
   SpeciesSet& spSet(getSpeciesSet());
-  int srcChargeIndx = srcSpSet.getAttribute("charge");
-  int srcMemberIndx = srcSpSet.getAttribute("membersize");
+  int srcChargeIndx = srcSpSet.addAttribute("charge");
+  int srcMemberIndx = srcSpSet.addAttribute("membersize");
   int ChargeIndex   = spSet.addAttribute("charge");
   int MemberIndx    = spSet.addAttribute("membersize");
   int Nsrc          = src.getTotalNum();
@@ -268,19 +315,24 @@ void ParticleSet::randomizeFromSource(const ParticleSet& src)
   }
 }
 
-void ParticleSet::print(std::ostream& os, const size_t maxParticlesToPrint) const
+///write to a std::ostream
+bool ParticleSet::get(std::ostream& os) const
 {
   os << "  ParticleSet '" << getName() << "' contains " << TotalNum << " particles : ";
-  if (auto& group_offsets(*group_offsets_); group_offsets.size() > 0)
-    for (int i = 0; i < group_offsets.size() - 1; i++)
-      os << " " << my_species_.speciesName[i] << "(" << group_offsets[i + 1] - group_offsets[i] << ")";
-  os << std::endl << std::endl;
+  if (SubPtcl.size() > 0)
+    for (int i = 0; i < SubPtcl.size() - 1; i++)
+      os << " " << mySpecies.speciesName[i] << "(" << SubPtcl[i + 1] - SubPtcl[i] << ")";
+  os << std::endl;
+  if (!IsGrouped)
+    os << "    Particles are not grouped by species in the input file. Algorithms may not be optimal!" << std::endl;
+  os << std::endl;
 
-  const size_t numToPrint = maxParticlesToPrint == 0 ? TotalNum : std::min(TotalNum, maxParticlesToPrint);
+  const size_t maxParticlesToPrint = 10;
+  size_t numToPrint                = std::min(TotalNum, maxParticlesToPrint);
 
   for (int i = 0; i < numToPrint; i++)
   {
-    os << "    " << my_species_.speciesName[GroupID[i]] << R[i] << std::endl;
+    os << "    " << mySpecies.speciesName[GroupID[i]] << R[i] << std::endl;
   }
   if (numToPrint < TotalNum)
   {
@@ -291,10 +343,13 @@ void ParticleSet::print(std::ostream& os, const size_t maxParticlesToPrint) cons
   for (const std::string& description : distTableDescriptions)
     os << description;
   os << std::endl;
+  return true;
 }
 
-bool ParticleSet::get(std::ostream& is) const { return true; }
+///read from std::istream
 bool ParticleSet::put(std::istream& is) { return true; }
+
+///reset member data
 void ParticleSet::reset() { app_log() << "<<<< going to set properties >>>> " << std::endl; }
 
 ///read the particleset
@@ -303,7 +358,7 @@ bool ParticleSet::put(xmlNodePtr cur) { return true; }
 int ParticleSet::addTable(const ParticleSet& psrc, DTModes modes)
 {
   if (myName == "none" || psrc.getName() == "none")
-    throw std::runtime_error("ParticleSet::addTable needs proper names for both source and target particle sets.");
+    APP_ABORT("ParticleSet::addTable needs proper names for both source and target particle sets.");
 
   int tid;
   std::map<std::string, int>::iterator tit(myDistTableMap.find(psrc.getName()));
@@ -334,6 +389,8 @@ int ParticleSet::addTable(const ParticleSet& psrc, DTModes modes)
 
 const DistanceTableAA& ParticleSet::getDistTableAA(int table_ID) const
 {
+  //Distance tables computed (at different time) in ParticleBConds2DSoa.h!!
+  //std::cout<<"R[0]: "<<R[0]<<" R[1]: " <<R[1]<<std::endl;
   return dynamic_cast<DistanceTableAA&>(*DistTables[table_ID]);
 }
 
@@ -348,11 +405,11 @@ void ParticleSet::update(bool skipSK)
 
   coordinates_->setAllParticlePos(R);
   for (int i = 0; i < DistTables.size(); i++)
-    DistTables[i]->evaluate(*this);
-  if (!skipSK && structure_factor_)
-    structure_factor_->updateAllPart(*this);
+    DistTables[i]->evaluate(*this);   //SoaDistanceTableAA.h::evaluate -> ParticleBConds2DSoa.h::computeDistances (fill r distance table etc)
+  if (!skipSK && SK)
+    SK->updateAllPart(*this);
 
-  active_ptcl_ = -1;
+  activePtcl = -1;
 }
 
 void ParticleSet::mw_update(const RefVectorWithLeader<ParticleSet>& p_list, bool skipSK)
@@ -361,7 +418,7 @@ void ParticleSet::mw_update(const RefVectorWithLeader<ParticleSet>& p_list, bool
   ScopedTimer update_scope(p_leader.myTimers[PS_update]);
 
   for (ParticleSet& pset : p_list)
-    pset.coordinates_->setAllParticlePos(pset.R);
+    pset.setCoordinates(pset.R);
 
   auto& dts = p_leader.DistTables;
   for (int i = 0; i < dts.size(); ++i)
@@ -370,124 +427,115 @@ void ParticleSet::mw_update(const RefVectorWithLeader<ParticleSet>& p_list, bool
     dts[i]->mw_evaluate(dt_list, p_list);
   }
 
-  if (!skipSK && p_leader.structure_factor_)
+  if (!skipSK && p_leader.SK)
+  {
+#pragma omp parallel for
     for (int iw = 0; iw < p_list.size(); iw++)
-      p_list[iw].structure_factor_->updateAllPart(p_list[iw]);
+      p_list[iw].SK->updateAllPart(p_list[iw]);
+  }
 }
 
-void ParticleSet::makeMove(Index_t iat, const SingleParticlePos& displ, bool maybe_accept)
+void ParticleSet::makeMove(Index_t iat, const SingleParticlePos_t& displ, bool maybe_accept)
 {
-  active_ptcl_     = iat;
-  active_pos_      = R[iat] + displ;
-  active_spin_val_ = spins[iat];
-  computeNewPosDistTables(iat, active_pos_, maybe_accept);
+  //std::cout<<"Active particle: "<<iat<<" active position old: "<<R[iat]<<" active position new: "<<R[iat]+displ<<std::endl;
+  activePtcl    = iat;
+  activePos     = R[iat] + displ;
+  activeSpinVal = spins[iat];
+  computeNewPosDistTablesAndSK(iat, activePos, maybe_accept);
 }
 
-void ParticleSet::makeMoveWithSpin(Index_t iat, const SingleParticlePos& displ, const Scalar_t& sdispl)
+void ParticleSet::makeMoveWithSpin(Index_t iat, const SingleParticlePos_t& displ, const Scalar_t& sdispl)
 {
   makeMove(iat, displ);
-  active_spin_val_ += sdispl;
-}
-
-template<CoordsType CT>
-void ParticleSet::mw_makeMove(const RefVectorWithLeader<ParticleSet>& p_list,
-                              Index_t iat,
-                              const MCCoords<CT>& displs,
-                              OptionalRef<std::vector<bool>> are_valid)
-{
-  mw_makeMove(p_list, iat, displs.positions, are_valid);
-  if constexpr (CT == CoordsType::POS_SPIN)
-    mw_makeSpinMove(p_list, iat, displs.spins);
+  activeSpinVal += sdispl;
 }
 
 void ParticleSet::mw_makeMove(const RefVectorWithLeader<ParticleSet>& p_list,
                               Index_t iat,
-                              const std::vector<SingleParticlePos>& displs,
-                              OptionalRef<std::vector<bool>> are_valid)
+                              const std::vector<SingleParticlePos_t>& displs)
 {
-  const size_t nw = p_list.size();
-  assert(nw == displs.size());
-  const auto& lattice = p_list.getLeader().simulation_cell_.getLattice();
-  std::vector<SingleParticlePos> new_positions(nw);
+  std::vector<SingleParticlePos_t> new_positions;
+  new_positions.reserve(displs.size());
 
   for (int iw = 0; iw < p_list.size(); iw++)
   {
-    auto& p            = p_list[iw];
-    p.active_ptcl_     = iat;
-    p.active_spin_val_ = p.spins[iat];
-    new_positions[iw] = p.active_pos_ = p.R[iat] + displs[iw];
+    p_list[iw].activePtcl = iat;
+    p_list[iw].activePos  = p_list[iw].R[iat] + displs[iw];
+    new_positions.push_back(p_list[iw].activePos);
   }
 
-  if (are_valid)
-  {
-    std::vector<bool>& valid(are_valid.value());
-    assert(nw == valid.size());
-    for (int iw = 0; iw < nw; iw++)
-      if (lattice.explicitly_defined)
-        valid[iw] = lattice.isValid(lattice.toUnit(new_positions[iw]));
-      else
-        valid[iw] = true;
-  }
-
-  mw_computeNewPosDistTables(p_list, iat, new_positions);
+  mw_computeNewPosDistTablesAndSK(p_list, iat, new_positions);
 }
 
-void ParticleSet::mw_makeSpinMove(const RefVectorWithLeader<ParticleSet>& p_list,
-                                  Index_t iat,
-                                  const std::vector<Scalar_t>& sdispls)
+bool ParticleSet::makeMoveAndCheck(Index_t iat, const SingleParticlePos_t& displ)
 {
-  for (int iw = 0; iw < p_list.size(); iw++)
-    p_list[iw].active_spin_val_ = p_list[iw].spins[iat] + sdispls[iw];
-}
+  //AVFLAG
+  //std::cout<<" Positions before move: "<<std::endl;
+  //for (int i=0; i<4; i++){
+  //    std::cout<<" particle "<<i<<": "<<R[i]<<std::endl;
+  //}
 
-bool ParticleSet::makeMoveAndCheck(Index_t iat, const SingleParticlePos& displ)
-{
-  active_ptcl_     = iat;
-  active_pos_      = R[iat] + displ;
-  active_spin_val_ = spins[iat];
-  bool is_valid    = true;
-  auto& Lattice    = simulation_cell_.getLattice();
+  //std::cout<<" particle 0: "<<R[0]<<std::endl;
+  //std::cout<<" particle 1: "<<R[1]<<std::endl;
+  //std::cout<<" particle 2: "<<R[2]<<std::endl;
+  //std::cout<<" particle 3: "<<R[3]<<std::endl;
+  //std::cout<<std::endl;
+
+  activePtcl    = iat;
+  activePos     = R[iat] + displ;
+  //std::cout<<"iat: "<<iat<<" displ: "<<displ<<" position: "<<activePos<<std::endl;
+  activeSpinVal = spins[iat];
+  bool is_valid = true;
   if (Lattice.explicitly_defined)
   {
     if (Lattice.outOfBound(Lattice.toUnit(displ)))
       is_valid = false;
     else
     {
-      SingleParticlePos newRedPos = Lattice.toUnit(active_pos_);
+      newRedPos = Lattice.toUnit(activePos);
       if (!Lattice.isValid(newRedPos))
         is_valid = false;
     }
   }
-  computeNewPosDistTables(iat, active_pos_, true);
+  computeNewPosDistTablesAndSK(iat, activePos, true);
   return is_valid;
 }
 
-bool ParticleSet::makeMoveAndCheckWithSpin(Index_t iat, const SingleParticlePos& displ, const Scalar_t& sdispl)
+bool ParticleSet::makeMoveAndCheckWithSpin(Index_t iat, const SingleParticlePos_t& displ, const Scalar_t& sdispl)
 {
   bool is_valid = makeMoveAndCheck(iat, displ);
-  active_spin_val_ += sdispl;
+  activeSpinVal += sdispl;
   return is_valid;
 }
 
-void ParticleSet::computeNewPosDistTables(Index_t iat, const SingleParticlePos& newpos, bool maybe_accept)
+void ParticleSet::computeNewPosDistTablesAndSK(Index_t iat, const SingleParticlePos_t& newpos, bool maybe_accept)
 {
   ScopedTimer compute_newpos_scope(myTimers[PS_newpos]);
 
   for (int i = 0; i < DistTables.size(); ++i)
-    DistTables[i]->move(*this, newpos, iat, maybe_accept);
+    DistTables[i]->move(*this, newpos, iat, maybe_accept);   //SoaDistanceTableAA::move
+  //Do not change SK: 2007-05-18
+  //Change SK only if DoUpdate is true: 2008-09-12
+  if (SK && SK->DoUpdate)
+    SK->makeMove(iat, newpos);
 }
 
-void ParticleSet::mw_computeNewPosDistTables(const RefVectorWithLeader<ParticleSet>& p_list,
-                                             Index_t iat,
-                                             const std::vector<SingleParticlePos>& new_positions,
-                                             bool maybe_accept)
+void ParticleSet::mw_computeNewPosDistTablesAndSK(const RefVectorWithLeader<ParticleSet>& p_list,
+                                                  Index_t iat,
+                                                  const std::vector<SingleParticlePos_t>& new_positions,
+                                                  bool maybe_accept)
 {
   ParticleSet& p_leader = p_list.getLeader();
   ScopedTimer compute_newpos_scope(p_leader.myTimers[PS_newpos]);
 
-  p_leader.coordinates_->mw_copyActivePos(extractCoordsRefList(p_list), iat, new_positions);
+  {
+    ScopedTimer copy_scope(p_leader.myTimers[PS_mw_copy]);
+    const auto coords_list(extractCoordsRefList(p_list));
+    p_leader.coordinates_->mw_copyActivePos(coords_list, iat, new_positions);
+  }
 
   {
+    ScopedTimer dt_scope(p_leader.myTimers[PS_dt_move]);
     const int dist_tables_size = p_leader.DistTables.size();
     for (int i = 0; i < dist_tables_size; ++i)
     {
@@ -498,21 +546,27 @@ void ParticleSet::mw_computeNewPosDistTables(const RefVectorWithLeader<ParticleS
     // DistTables mw_move calls are asynchronous. Wait for them before return.
     PRAGMA_OFFLOAD("omp taskwait")
   }
+  auto& SK = p_leader.SK;
+  if (SK && SK->DoUpdate)
+  {
+#pragma omp parallel for
+    for (int iw = 0; iw < p_list.size(); iw++)
+      p_list[iw].SK->makeMove(iat, new_positions[iw]);
+  }
 }
 
 
-bool ParticleSet::makeMoveAllParticles(const Walker_t& awalker, const ParticlePos& deltaR, RealType dt)
+bool ParticleSet::makeMoveAllParticles(const Walker_t& awalker, const ParticlePos_t& deltaR, RealType dt)
 {
-  active_ptcl_  = -1;
-  auto& Lattice = simulation_cell_.getLattice();
+  activePtcl = -1;
   if (Lattice.explicitly_defined)
   {
     for (int iat = 0; iat < deltaR.size(); ++iat)
     {
-      SingleParticlePos displ(dt * deltaR[iat]);
+      SingleParticlePos_t displ(dt * deltaR[iat]);
       if (Lattice.outOfBound(Lattice.toUnit(displ)))
         return false;
-      SingleParticlePos newpos(awalker.R[iat] + displ);
+      SingleParticlePos_t newpos(awalker.R[iat] + displ);
       if (!Lattice.isValid(Lattice.toUnit(newpos)))
         return false;
       R[iat] = newpos;
@@ -526,26 +580,25 @@ bool ParticleSet::makeMoveAllParticles(const Walker_t& awalker, const ParticlePo
   coordinates_->setAllParticlePos(R);
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->evaluate(*this);
-  if (structure_factor_)
-    structure_factor_->updateAllPart(*this);
+  if (SK)
+    SK->updateAllPart(*this);
   //every move is valid
   return true;
 }
 
 bool ParticleSet::makeMoveAllParticles(const Walker_t& awalker,
-                                       const ParticlePos& deltaR,
+                                       const ParticlePos_t& deltaR,
                                        const std::vector<RealType>& dt)
 {
-  active_ptcl_  = -1;
-  auto& Lattice = simulation_cell_.getLattice();
+  activePtcl = -1;
   if (Lattice.explicitly_defined)
   {
     for (int iat = 0; iat < deltaR.size(); ++iat)
     {
-      SingleParticlePos displ(dt[iat] * deltaR[iat]);
+      SingleParticlePos_t displ(dt[iat] * deltaR[iat]);
       if (Lattice.outOfBound(Lattice.toUnit(displ)))
         return false;
-      SingleParticlePos newpos(awalker.R[iat] + displ);
+      SingleParticlePos_t newpos(awalker.R[iat] + displ);
       if (!Lattice.isValid(Lattice.toUnit(newpos)))
         return false;
       R[iat] = newpos;
@@ -559,8 +612,8 @@ bool ParticleSet::makeMoveAllParticles(const Walker_t& awalker,
   coordinates_->setAllParticlePos(R);
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->evaluate(*this);
-  if (structure_factor_)
-    structure_factor_->updateAllPart(*this);
+  if (SK)
+    SK->updateAllPart(*this);
   //every move is valid
   return true;
 }
@@ -573,20 +626,19 @@ bool ParticleSet::makeMoveAllParticles(const Walker_t& awalker,
  * @return true, if all the particle moves are legal under the boundary conditions
  */
 bool ParticleSet::makeMoveAllParticlesWithDrift(const Walker_t& awalker,
-                                                const ParticlePos& drift,
-                                                const ParticlePos& deltaR,
+                                                const ParticlePos_t& drift,
+                                                const ParticlePos_t& deltaR,
                                                 RealType dt)
 {
-  active_ptcl_  = -1;
-  auto& Lattice = simulation_cell_.getLattice();
+  activePtcl = -1;
   if (Lattice.explicitly_defined)
   {
     for (int iat = 0; iat < deltaR.size(); ++iat)
     {
-      SingleParticlePos displ(dt * deltaR[iat] + drift[iat]);
+      SingleParticlePos_t displ(dt * deltaR[iat] + drift[iat]);
       if (Lattice.outOfBound(Lattice.toUnit(displ)))
         return false;
-      SingleParticlePos newpos(awalker.R[iat] + displ);
+      SingleParticlePos_t newpos(awalker.R[iat] + displ);
       if (!Lattice.isValid(Lattice.toUnit(newpos)))
         return false;
       R[iat] = newpos;
@@ -600,27 +652,26 @@ bool ParticleSet::makeMoveAllParticlesWithDrift(const Walker_t& awalker,
   coordinates_->setAllParticlePos(R);
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->evaluate(*this);
-  if (structure_factor_)
-    structure_factor_->updateAllPart(*this);
+  if (SK)
+    SK->updateAllPart(*this);
   //every move is valid
   return true;
 }
 
 bool ParticleSet::makeMoveAllParticlesWithDrift(const Walker_t& awalker,
-                                                const ParticlePos& drift,
-                                                const ParticlePos& deltaR,
+                                                const ParticlePos_t& drift,
+                                                const ParticlePos_t& deltaR,
                                                 const std::vector<RealType>& dt)
 {
-  active_ptcl_  = -1;
-  auto& Lattice = simulation_cell_.getLattice();
+  activePtcl = -1;
   if (Lattice.explicitly_defined)
   {
     for (int iat = 0; iat < deltaR.size(); ++iat)
     {
-      SingleParticlePos displ(dt[iat] * deltaR[iat] + drift[iat]);
+      SingleParticlePos_t displ(dt[iat] * deltaR[iat] + drift[iat]);
       if (Lattice.outOfBound(Lattice.toUnit(displ)))
         return false;
-      SingleParticlePos newpos(awalker.R[iat] + displ);
+      SingleParticlePos_t newpos(awalker.R[iat] + displ);
       if (!Lattice.isValid(Lattice.toUnit(newpos)))
         return false;
       R[iat] = newpos;
@@ -635,50 +686,59 @@ bool ParticleSet::makeMoveAllParticlesWithDrift(const Walker_t& awalker,
 
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->evaluate(*this);
-  if (structure_factor_)
-    structure_factor_->updateAllPart(*this);
+  if (SK)
+    SK->updateAllPart(*this);
   //every move is valid
   return true;
 }
 
 /** update the particle attribute by the proposed move
  *
- * When the active_ptcl_ is equal to iat, overwrite the position and update the
+ * When the activePtcl is equal to iat, overwrite the position and update the
  * content of the distance tables.
  */
 void ParticleSet::acceptMove(Index_t iat)
 {
 #ifndef NDEBUG
-  if (iat != active_ptcl_)
+  if (iat != activePtcl)
     throw std::runtime_error("Bug detected by acceptMove! Request electron is not active!");
 #endif
   ScopedTimer update_scope(myTimers[PS_accept]);
   //Update position + distance-table
-  coordinates_->setOneParticlePos(active_pos_, iat);
+  coordinates_->setOneParticlePos(activePos, iat);
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->update(iat);
 
-  R[iat]       = active_pos_;
-  spins[iat]   = active_spin_val_;
-  active_ptcl_ = -1;
+  //Do not change SK: 2007-05-18
+  if (SK && SK->DoUpdate)
+    SK->acceptMove(iat, GroupID[iat], R[iat]);
+
+  R[iat]     = activePos;
+  spins[iat] = activeSpinVal;
+  activePtcl = -1;
 }
 
 void ParticleSet::acceptMoveForwardMode(Index_t iat)
 {
-  assert(iat == active_ptcl_);
+  assert(iat == activePtcl);
   ScopedTimer update_scope(myTimers[PS_accept]);
   //Update position + distance-table
-  coordinates_->setOneParticlePos(active_pos_, iat);
+  coordinates_->setOneParticlePos(activePos, iat);
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->updatePartial(iat, true);
 
-  R[iat]       = active_pos_;
-  spins[iat]   = active_spin_val_;
-  active_ptcl_ = -1;
+  //Do not change SK: 2007-05-18
+  if (SK && SK->DoUpdate)
+    SK->acceptMove(iat, GroupID[iat], R[iat]);
+
+  R[iat]     = activePos;
+  spins[iat] = activeSpinVal;
+  activePtcl = -1;
 }
 
 void ParticleSet::accept_rejectMove(Index_t iat, bool accepted, bool forward_mode)
 {
+  //std::cout<<"AV in ParticleSet::accept_rejectMove, iat: "<<iat<<" R[iat]: "<<R[iat]<<std::endl;
   if (forward_mode)
     if (accepted)
       acceptMoveForwardMode(iat);
@@ -688,37 +748,28 @@ void ParticleSet::accept_rejectMove(Index_t iat, bool accepted, bool forward_mod
     acceptMove(iat);
   else
     rejectMove(iat);
+  //std::cout<<"AV in ParticleSet::accept_rejectMove, iat: "<<iat<<" R[iat]: "<<R[iat]<<std::endl;
+
+
 }
 
 void ParticleSet::rejectMove(Index_t iat)
 {
 #ifndef NDEBUG
-  if (iat != active_ptcl_)
+  if (iat != activePtcl)
     throw std::runtime_error("Bug detected by rejectMove! Request electron is not active!");
 #endif
-  active_ptcl_ = -1;
+  activePtcl = -1;
 }
 
 void ParticleSet::rejectMoveForwardMode(Index_t iat)
 {
-  assert(iat == active_ptcl_);
+  assert(iat == activePtcl);
   //Update distance-table
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->updatePartial(iat, false);
-  active_ptcl_ = -1;
+  activePtcl = -1;
 }
-
-template<CoordsType CT>
-void ParticleSet::mw_accept_rejectMove(const RefVectorWithLeader<ParticleSet>& p_list,
-                                       Index_t iat,
-                                       const std::vector<bool>& isAccepted,
-                                       bool forward_mode)
-{
-  if constexpr (CT == CoordsType::POS_SPIN)
-    mw_accept_rejectSpinMove(p_list, iat, isAccepted);
-  mw_accept_rejectMove(p_list, iat, isAccepted, forward_mode);
-}
-
 
 void ParticleSet::mw_accept_rejectMove(const RefVectorWithLeader<ParticleSet>& p_list,
                                        Index_t iat,
@@ -731,10 +782,10 @@ void ParticleSet::mw_accept_rejectMove(const RefVectorWithLeader<ParticleSet>& p
     ScopedTimer update_scope(p_leader.myTimers[PS_accept]);
 
     const auto coords_list(extractCoordsRefList(p_list));
-    std::vector<SingleParticlePos> new_positions;
+    std::vector<SingleParticlePos_t> new_positions;
     new_positions.reserve(p_list.size());
     for (const ParticleSet& pset : p_list)
-      new_positions.push_back(pset.active_pos_);
+      new_positions.push_back(pset.activePos);
     p_leader.coordinates_->mw_acceptParticlePos(coords_list, iat, new_positions, isAccepted);
 
     auto& dts = p_leader.DistTables;
@@ -746,10 +797,17 @@ void ParticleSet::mw_accept_rejectMove(const RefVectorWithLeader<ParticleSet>& p
 
     for (int iw = 0; iw < p_list.size(); iw++)
     {
-      assert(iat == p_list[iw].active_ptcl_);
+      assert(iat == p_list[iw].activePtcl);
       if (isAccepted[iw])
-        p_list[iw].R[iat] = p_list[iw].active_pos_;
-      p_list[iw].active_ptcl_ = -1;
+      {
+        //Do not change SK: 2007-05-18
+        if (p_list[iw].SK && p_list[iw].SK->DoUpdate)
+          p_list[iw].SK->acceptMove(iat, p_list[iw].GroupID[iat], p_list[iw].R[iat]);
+
+        p_list[iw].R[iat]     = p_list[iw].activePos;
+        p_list[iw].spins[iat] = p_list[iw].activeSpinVal;
+      }
+      p_list[iw].activePtcl = -1;
       assert(p_list[iw].R[iat] == p_list[iw].coordinates_->getAllParticlePos()[iat]);
     }
   }
@@ -763,27 +821,32 @@ void ParticleSet::mw_accept_rejectMove(const RefVectorWithLeader<ParticleSet>& p
   }
 }
 
-void ParticleSet::mw_accept_rejectSpinMove(const RefVectorWithLeader<ParticleSet>& p_list,
-                                           Index_t iat,
-                                           const std::vector<bool>& isAccepted)
-{
-  for (int iw = 0; iw < p_list.size(); iw++)
-  {
-    assert(iat == p_list[iw].active_ptcl_);
-    if (isAccepted[iw])
-      p_list[iw].spins[iat] = p_list[iw].active_spin_val_;
-  }
-}
-
 void ParticleSet::donePbyP(bool skipSK)
 {
+  //std::cout<<"AV entering ParticleSet::donePbyP"<<std::endl;
   ScopedTimer donePbyP_scope(myTimers[PS_donePbyP]);
   coordinates_->donePbyP();
-  if (!skipSK && structure_factor_)
-    structure_factor_->updateAllPart(*this);
-  for (size_t i = 0; i < DistTables.size(); ++i)
-    DistTables[i]->finalizePbyP(*this);
-  active_ptcl_ = -1;
+  if (!skipSK && SK && !SK->DoUpdate){
+    //std::cout<<"AV in ParticleSet::donePbyP, updateAllPart"<<std::endl;
+    //Going to StructFact::updateAllPart. There, computeRhok(P).
+    SK->updateAllPart(*this);}
+  for (size_t i = 0; i < DistTables.size(); ++i){
+    DistTables[i]->finalizePbyP(*this);}
+  activePtcl = -1;
+
+  //AV for testing only, remove later!! --------------------------
+  std::vector<double> pos0;
+  pos0.push_back(R[0][0]);
+  pos0.push_back(R[0][1]);
+
+  std::vector<double> pos1;
+  pos1.push_back(R[1][0]);
+  pos1.push_back(R[1][1]);
+
+  //AVdistancesPtcl0.push_back(pos0);
+  //AVdistancesPtcl1.push_back(pos1);
+
+  //std::cout<<"AV exiting ParticleSet::donePbyP, R: "<<R<<" R.size(): "<<R.size()<<" R[0].size(): "<<R[0].size()<<std::endl<<std::endl;
 }
 
 void ParticleSet::mw_donePbyP(const RefVectorWithLeader<ParticleSet>& p_list, bool skipSK)
@@ -794,13 +857,13 @@ void ParticleSet::mw_donePbyP(const RefVectorWithLeader<ParticleSet>& p_list, bo
   for (ParticleSet& pset : p_list)
   {
     pset.coordinates_->donePbyP();
-    pset.active_ptcl_ = -1;
+    pset.activePtcl = -1;
   }
 
-  if (!skipSK && p_leader.structure_factor_)
+  if (!skipSK && p_leader.SK && !p_leader.SK->DoUpdate)
   {
     auto sk_list = extractSKRefList(p_list);
-    StructFact::mw_updateAllPart(sk_list, p_list, p_leader.mw_structure_factor_data_handle_);
+    StructFact::mw_updateAllPart(sk_list, p_list);
   }
 
   auto& dts = p_leader.DistTables;
@@ -811,23 +874,34 @@ void ParticleSet::mw_donePbyP(const RefVectorWithLeader<ParticleSet>& p_list, bo
   }
 }
 
-void ParticleSet::makeVirtualMoves(const SingleParticlePos& newpos)
+void ParticleSet::makeVirtualMoves(const SingleParticlePos_t& newpos)
 {
-  active_ptcl_ = -1;
-  active_pos_  = newpos;
+  //AV test begin #############
+//for (size_t i = 0; i < DistTables.size(); ++i){
+//    std::cout<<DistTables[i]<<std::endl;
+//}
+// AV test end #################
+  activePtcl = -1;
+  activePos  = newpos;
   for (size_t i = 0; i < DistTables.size(); ++i)
-    DistTables[i]->move(*this, newpos, active_ptcl_, false);
+    DistTables[i]->move(*this, newpos, activePtcl, false);
 }
 
 void ParticleSet::loadWalker(Walker_t& awalker, bool pbyp)
 {
+  //std::cout<<"AV entering ParticleSet::loadWalker"<<std::endl;
   ScopedTimer update_scope(myTimers[PS_loadWalker]);
   R     = awalker.R;
   spins = awalker.spins;
   coordinates_->setAllParticlePos(R);
 #if !defined(SOA_MEMORY_OPTIMIZED)
+  //std::cout<<"AV Set G,L"<<std::endl;
+  //Defined from last MC step (?)
   G = awalker.G;
   L = awalker.L;
+  //std::cout<<"AV Set G,L: "<<L[0]<<std::endl;
+#else
+  std::cout<<"AV don't set G,L"<<std::endl;
 #endif
   if (pbyp)
   {
@@ -835,9 +909,14 @@ void ParticleSet::loadWalker(Walker_t& awalker, bool pbyp)
     for (int i = 0; i < DistTables.size(); i++)
       if (DistTables[i]->getModes() & DTModes::NEED_FULL_TABLE_ANYTIME)
         DistTables[i]->evaluate(*this);
+    //computed so that other objects can use them, e.g., kSpaceJastrow
+    if (SK && SK->DoUpdate){
+      std::cout<<"AV SK"<<std::endl;
+      SK->updateAllPart(*this);}
   }
 
-  active_ptcl_ = -1;
+  activePtcl = -1;
+  //std::cout<<"AV exiting ParticleSet::loadWalker"<<std::endl<<std::endl;
 }
 
 void ParticleSet::mw_loadWalker(const RefVectorWithLeader<ParticleSet>& p_list,
@@ -853,6 +932,7 @@ void ParticleSet::mw_loadWalker(const RefVectorWithLeader<ParticleSet>& p_list,
     pset.spins = awalker.spins;
     pset.coordinates_->setAllParticlePos(pset.R);
   };
+#pragma omp parallel for
   for (int iw = 0; iw < p_list.size(); ++iw)
     if (recompute[iw])
       loadWalkerConfig(p_list[iw], walkers[iw]);
@@ -864,6 +944,13 @@ void ParticleSet::mw_loadWalker(const RefVectorWithLeader<ParticleSet>& p_list,
     {
       const auto dt_list(extractDTRefList(p_list, i));
       dts[i]->mw_recompute(dt_list, p_list, recompute);
+    }
+
+    if (p_leader.SK && p_leader.SK->DoUpdate)
+    {
+#pragma omp parallel for
+      for (int iw = 0; iw < p_list.size(); iw++)
+        p_list[iw].SK->updateAllPart(p_list[iw]);
     }
   }
 }
@@ -904,14 +991,15 @@ void ParticleSet::initPropertyList()
   // {
   //   app_error() << "The number of default properties for walkers  is not consistent." << std::endl;
   //   app_error() << "NUMPROPERTIES " << WP::NUMPROPERTIES << " size of PropertyList " << PropertyList.size() << std::endl;
-  //   throw std::runtime_error("ParticleSet::initPropertyList");
+  //   APP_ABORT("ParticleSet::initPropertyList");
   // }
 }
 
 int ParticleSet::addPropertyHistory(int leng)
 {
-  int newL = PropertyHistory.size();
-  PropertyHistory.push_back(std::vector<FullPrecRealType>(leng, 0.0));
+  int newL                                    = PropertyHistory.size();
+  std::vector<FullPrecRealType> newVecHistory = std::vector<FullPrecRealType>(leng, 0.0);
+  PropertyHistory.push_back(newVecHistory);
   PHindex.push_back(0);
   return newL;
 }
@@ -955,8 +1043,6 @@ void ParticleSet::createResource(ResourceCollection& collection) const
   coordinates_->createResource(collection);
   for (int i = 0; i < DistTables.size(); i++)
     DistTables[i]->createResource(collection);
-  if (structure_factor_)
-    collection.addResource(std::make_unique<SKMultiWalkerMem>());
 }
 
 void ParticleSet::acquireResource(ResourceCollection& collection, const RefVectorWithLeader<ParticleSet>& p_list)
@@ -965,9 +1051,6 @@ void ParticleSet::acquireResource(ResourceCollection& collection, const RefVecto
   ps_leader.coordinates_->acquireResource(collection, extractCoordsRefList(p_list));
   for (int i = 0; i < ps_leader.DistTables.size(); i++)
     ps_leader.DistTables[i]->acquireResource(collection, extractDTRefList(p_list, i));
-
-  if (ps_leader.structure_factor_)
-    p_list.getLeader().mw_structure_factor_data_handle_ = collection.lendResource<SKMultiWalkerMem>();
 }
 
 void ParticleSet::releaseResource(ResourceCollection& collection, const RefVectorWithLeader<ParticleSet>& p_list)
@@ -976,9 +1059,6 @@ void ParticleSet::releaseResource(ResourceCollection& collection, const RefVecto
   ps_leader.coordinates_->releaseResource(collection, extractCoordsRefList(p_list));
   for (int i = 0; i < ps_leader.DistTables.size(); i++)
     ps_leader.DistTables[i]->releaseResource(collection, extractDTRefList(p_list, i));
-
-  if (ps_leader.structure_factor_)
-    collection.takebackResource(p_list.getLeader().mw_structure_factor_data_handle_);
 }
 
 RefVectorWithLeader<DistanceTable> ParticleSet::extractDTRefList(const RefVectorWithLeader<ParticleSet>& p_list, int id)
@@ -1002,28 +1082,11 @@ RefVectorWithLeader<DynamicCoordinates> ParticleSet::extractCoordsRefList(
 
 RefVectorWithLeader<StructFact> ParticleSet::extractSKRefList(const RefVectorWithLeader<ParticleSet>& p_list)
 {
-  RefVectorWithLeader<StructFact> sk_list(*p_list.getLeader().structure_factor_);
+  RefVectorWithLeader<StructFact> sk_list(*p_list.getLeader().SK);
   sk_list.reserve(p_list.size());
   for (ParticleSet& p : p_list)
-    sk_list.push_back(*p.structure_factor_);
+    sk_list.push_back(*p.SK);
   return sk_list;
 }
 
-//explicit instantiations
-template void ParticleSet::mw_makeMove<CoordsType::POS>(const RefVectorWithLeader<ParticleSet>& p_list,
-                                                        Index_t iat,
-                                                        const MCCoords<CoordsType::POS>& displs,
-                                                        OptionalRef<std::vector<bool>> are_valid);
-template void ParticleSet::mw_makeMove<CoordsType::POS_SPIN>(const RefVectorWithLeader<ParticleSet>& p_list,
-                                                             Index_t iat,
-                                                             const MCCoords<CoordsType::POS_SPIN>& displs,
-                                                             OptionalRef<std::vector<bool>> are_valid);
-template void ParticleSet::mw_accept_rejectMove<CoordsType::POS>(const RefVectorWithLeader<ParticleSet>& p_list,
-                                                                 Index_t iat,
-                                                                 const std::vector<bool>& isAccepted,
-                                                                 bool forward_mode);
-template void ParticleSet::mw_accept_rejectMove<CoordsType::POS_SPIN>(const RefVectorWithLeader<ParticleSet>& p_list,
-                                                                      Index_t iat,
-                                                                      const std::vector<bool>& isAccepted,
-                                                                      bool forward_mode);
 } // namespace qmcplusplus

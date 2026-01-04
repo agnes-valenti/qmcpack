@@ -22,7 +22,7 @@
 
 namespace qmcplusplus
 {
-AGPDeterminantBuilder::AGPDeterminantBuilder(Communicate* comm, ParticleSet& els, const PSetMap& pset)
+AGPDeterminantBuilder::AGPDeterminantBuilder(Communicate* comm, ParticleSet& els, PtclPoolType& pset)
     : WaveFunctionComponentBuilder(comm, els), ptclPool(pset)
 {}
 
@@ -34,7 +34,7 @@ bool AGPDeterminantBuilder::createAGP(BasisBuilderT* abuilder, xmlNodePtr cur)
   cur                                            = cur->xmlChildrenNode;
   while (cur != NULL)
   {
-    std::string cname(castXMLCharToChar(cur->name));
+    std::string cname((const char*)(cur->name));
     if (cname == "coefficient" || cname == "coefficients")
     {
       if (agpDet == nullptr)
@@ -102,7 +102,7 @@ std::unique_ptr<WaveFunctionComponent> AGPDeterminantBuilder::buildComponent(xml
   app_log() << "  AGPDeterminantBuilder Creating AGPDeterminant." << std::endl;
   xmlNodePtr curRoot = cur;
   bool success       = true;
-  std::string tname;
+  std::string cname, tname;
   xmlNodePtr cPtr = NULL;
   xmlNodePtr uPtr = NULL;
   OhmmsAttributeSet oAttrib;
@@ -112,7 +112,7 @@ std::unique_ptr<WaveFunctionComponent> AGPDeterminantBuilder::buildComponent(xml
   cur = cur->children;
   while (cur != NULL)
   {
-    std::string cname(getNodeName(cur));
+    getNodeName(cname, cur);
     if (cname.find("coeff") < cname.size())
     {
       cPtr = cur;

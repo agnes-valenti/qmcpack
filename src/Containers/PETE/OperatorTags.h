@@ -260,7 +260,7 @@ struct OpNot
 template<class T>
 struct UnaryReturn<T, OpNot>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 template<class T1>
@@ -277,7 +277,7 @@ struct OpCast
 template<class T1, class T2>
 struct UnaryReturn<T2, OpCast<T1>>
 {
-  using Type_t = T1;
+  typedef T1 Type_t;
 };
 
 struct OpAdd
@@ -413,7 +413,7 @@ struct OpLT
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpLT>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpLE
@@ -429,7 +429,7 @@ struct OpLE
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpLE>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpGT
@@ -445,7 +445,7 @@ struct OpGT
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpGT>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpGE
@@ -461,7 +461,7 @@ struct OpGE
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpGE>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpEQ
@@ -477,7 +477,7 @@ struct OpEQ
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpEQ>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpNE
@@ -493,7 +493,7 @@ struct OpNE
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpNE>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpAnd
@@ -509,7 +509,7 @@ struct OpAnd
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpAnd>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpOr
@@ -525,7 +525,7 @@ struct OpOr
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpOr>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 struct OpLeftShift
@@ -541,7 +541,7 @@ struct OpLeftShift
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpLeftShift>
 {
-  using Type_t = T1;
+  typedef T1 Type_t;
 };
 
 struct OpRightShift
@@ -557,7 +557,7 @@ struct OpRightShift
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpRightShift>
 {
-  using Type_t = T1;
+  typedef T1 Type_t;
 };
 
 struct OpAddAssign
@@ -574,7 +574,7 @@ struct OpAddAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpAddAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpSubtractAssign
@@ -591,7 +591,7 @@ struct OpSubtractAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpSubtractAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpMultiplyAssign
@@ -608,7 +608,7 @@ struct OpMultiplyAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpMultiplyAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpDivideAssign
@@ -625,7 +625,7 @@ struct OpDivideAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpDivideAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpModAssign
@@ -642,7 +642,7 @@ struct OpModAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpModAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpBitwiseOrAssign
@@ -659,7 +659,7 @@ struct OpBitwiseOrAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpBitwiseOrAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpBitwiseAndAssign
@@ -676,7 +676,7 @@ struct OpBitwiseAndAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpBitwiseAndAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpBitwiseXorAssign
@@ -693,7 +693,7 @@ struct OpBitwiseXorAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpBitwiseXorAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpLeftShiftAssign
@@ -710,7 +710,7 @@ struct OpLeftShiftAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpLeftShiftAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpRightShiftAssign
@@ -727,7 +727,7 @@ struct OpRightShiftAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpRightShiftAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct OpAssign
@@ -743,7 +743,7 @@ struct OpAssign
 template<class T1, class T2>
 struct BinaryReturn<T1, T2, OpAssign>
 {
-  using Type_t = T1&;
+  typedef T1& Type_t;
 };
 
 struct FnWhere

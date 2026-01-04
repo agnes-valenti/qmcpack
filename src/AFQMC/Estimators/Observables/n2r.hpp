@@ -132,8 +132,11 @@ public:
         app_error() << " Error opening orbitals file for n2r estimator. \n";
         APP_ABORT("");
       }
-      dump.push("OrbsR", false);
-
+      if (!dump.push("OrbsR", false))
+      {
+        app_error() << " Error in n2r: Group OrbsR not found." << std::endl;
+        APP_ABORT("");
+      }
       if (!dump.readEntry(grid_dim, "grid_dim"))
       {
         app_error() << " Error in n2r: Problems reading grid_dim. " << std::endl;
@@ -210,11 +213,11 @@ public:
     using std::copy_n;
     using std::fill_n;
     // assumes G[nwalk][spin][M][M]
-    int nw(G.size());
-    assert(G.size() == wgt.size());
-    assert(wgt.size() == nw);
-    assert(Xw.size() == nw);
-    assert(ovlp.size() >= nw);
+    int nw(G.size(0));
+    assert(G.size(0) == wgt.size(0));
+    assert(wgt.size(0) == nw);
+    assert(Xw.size(0) == nw);
+    assert(ovlp.size(0) >= nw);
     assert(G.num_elements() == G_host.num_elements());
     assert(G.extensions() == G_host.extensions());
 
@@ -224,15 +227,14 @@ public:
     else
       nsp = 2;
 
-    using std::get;
     // check structure dimensions
     if (iref == 0)
     {
-      if (denom.size() != nw)
+      if (denom.size(0) != nw)
       {
         denom = mpi3CVector(iextensions<1u>{nw}, shared_allocator<ComplexType>{TG.TG_local()});
       }
-      if (get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != dm_size)
+      if (DMWork.size(0) != nw || DMWork.size(1) != dm_size)
       {
         DMWork = mpi3CMatrix({nw, dm_size}, shared_allocator<ComplexType>{TG.TG_local()});
       }
@@ -241,8 +243,8 @@ public:
     }
     else
     {
-      if (get<0>(denom.sizes()) != nw || get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != dm_size || get<0>(DMAverage.sizes()) != nave ||
-          get<1>(DMAverage.sizes()) != dm_size)
+      if (denom.size(0) != nw || DMWork.size(0) != nw || DMWork.size(1) != dm_size || DMAverage.size(0) != nave ||
+          DMAverage.size(1) != dm_size)
         APP_ABORT(" Error: Invalid state in accumulate_reference. \n\n\n");
     }
 
@@ -324,7 +326,7 @@ public:
   template<class HostCVec>
   void accumulate_block(int iav, HostCVec&& wgt, bool impsamp)
   {
-    int nw(denom.size());
+    int nw(denom.size(0));
     int i0, iN;
     std::tie(i0, iN) = FairDivideBoundary(TG.TG_local().rank(), dm_size, TG.TG_local().size());
     TG.TG_local().barrier();
@@ -406,14 +408,14 @@ private:
   void set_buffer(size_t N)
   {
     if (Buff.num_elements() < N)
-      Buff = auxCVector(iextensions<1u>(N), aux_alloc);
+      Buff = auxCVector(iextensions<1u>{N}, aux_alloc);
     using std::fill_n;
     fill_n(Buff.origin(), N, ComplexType(0.0));
   }
   void set_buffer2(size_t N)
   {
     if (Buff2.num_elements() < N)
-      Buff2 = stdCVector(iextensions<1u>(N));
+      Buff2 = stdCVector(iextensions<1u>{N});
     using std::fill_n;
     fill_n(Buff2.origin(), N, ComplexType(0.0));
   }

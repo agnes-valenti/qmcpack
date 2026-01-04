@@ -12,30 +12,9 @@
 
 #include "FakeRandom.h"
 
-namespace qmcplusplus
-{
-template<class T>
-FakeRandom<T>::FakeRandom() = default;
+FakeRandom::FakeRandom() : m_val(0.5) {}
 
-template<class T>
-void FakeRandom<T>::set_value(double val)
-{
-  m_val = val;
-}
+void FakeRandom::set_value(double val) { m_val = val; }
 
-template<class T>
-T FakeRandom<T>::operator()()
-{
-  return m_val;
-}
-
-template<typename T>
-RandomBase<T>& FakeRandom<T>::operator=(const RandomBase<T>& other)
-{
-  return *this = dynamic_cast<const FakeRandom<T>&>(other);
-}
-
-template class FakeRandom<float>;
-template class FakeRandom<double>;
-
-} // namespace qmcplusplus
+double FakeRandom::operator()() { return m_val; }
+double FakeRandom::rand() { return m_val; }

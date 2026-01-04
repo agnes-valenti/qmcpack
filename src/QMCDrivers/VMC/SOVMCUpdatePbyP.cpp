@@ -12,11 +12,11 @@
 
 #include "SOVMCUpdatePbyP.h"
 #include "QMCDrivers/DriftOperators.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-using TraceManager = int;
+typedef int TraceManager;
 #endif
 
 
@@ -26,18 +26,20 @@ namespace qmcplusplus
 SOVMCUpdatePbyP::SOVMCUpdatePbyP(MCWalkerConfiguration& w,
                                  TrialWaveFunction& psi,
                                  QMCHamiltonian& h,
-                                 RandomBase<FullPrecRealType>& rg)
+                                 RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg),
-      buffer_timer_(createGlobalTimer("SOVMCUpdatePbyP::Buffer", timer_level_medium)),
-      movepbyp_timer_(createGlobalTimer("SOVMCUpdatePbyP::MovePbyP", timer_level_medium)),
-      hamiltonian_timer_(createGlobalTimer("SOVMCUpdatePbyP::Hamiltonian", timer_level_medium)),
-      collectables_timer_(createGlobalTimer("SOVMCUpdatePbyP::Collectables", timer_level_medium))
+      buffer_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::Buffer", timer_level_medium)),
+      movepbyp_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::MovePbyP", timer_level_medium)),
+      hamiltonian_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::Hamiltonian", timer_level_medium)),
+      collectables_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::Collectables", timer_level_medium))
 {}
 
 SOVMCUpdatePbyP::~SOVMCUpdatePbyP() {}
 
 void SOVMCUpdatePbyP::advanceWalker(Walker_t& thisWalker, bool recompute)
 {
+  std::cout<<"AV SOVMCUpdatePbyP advanceWalker"<<std::endl;
+  std::flush(std::cout);
   buffer_timer_.start();
   W.loadWalker(thisWalker, true);
   Walker_t::WFBuffer_t& w_buffer(thisWalker.DataSet);
@@ -91,12 +93,12 @@ void SOVMCUpdatePbyP::advanceWalker(Walker_t& thisWalker, bool recompute)
           ComplexType spingrad_new;
           prob = std::norm(Psi.calcRatioGradWithSpin(W, iat, grad_new, spingrad_new));
           DriftModifier->getDrift(tauovermass, grad_new, dr);
-          dr             = W.R[iat] - W.getActivePos() - dr;
+          dr             = W.R[iat] - W.activePos - dr;
           RealType logGb = -oneover2tau * dot(dr, dr);
           RealType logGf = mhalf * dot(deltaR[iat], deltaR[iat]);
 
           DriftModifier->getDrift(tauovermass / spinMass, spingrad_new, ds);
-          ds = W.spins[iat] - W.getActiveSpinVal() - ds;
+          ds = W.spins[iat] - W.activeSpinVal - ds;
           logGb += -spinMass * oneover2tau * ds * ds;
           logGf += mhalf * deltaS[iat] * deltaS[iat];
 

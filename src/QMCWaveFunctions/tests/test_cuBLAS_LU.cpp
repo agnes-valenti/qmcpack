@@ -17,7 +17,7 @@
 #include "CUDA/CUDAruntime.hpp"
 #include "CUDA/cuBLAS.hpp"
 #include "CUDA/CUDAfill.hpp"
-#include "MemManageAlias.hpp"
+#include "CUDA/CUDAallocator.hpp"
 #include "Utilities/for_testing/MatrixAccessor.hpp"
 #include "Utilities/for_testing/checkMatrix.hpp"
 #include "detail/CUDA/cuBLAS_LU.hpp"
@@ -39,7 +39,7 @@ namespace qmcplusplus
 {
 namespace testing
 {
-/** Doesn't depend on the resource management scheme thats out of scope for unit tests */
+/** Doesn't depend on the resource managment scheme thats out of scope for unit tests */
 struct CUDAHandles
 {
   // CUDA specific variables
@@ -495,7 +495,7 @@ TEST_CASE("cuBLAS_LU::getri_batched", "[wavefunction][CUDA]")
                  "cudaMemcpyAsync failed copying invMs to device");
   cudaErrorCheck(cudaMemcpyAsync(dev_pivots.data(), pivots.data(), sizeof(int) * 4, cudaMemcpyHostToDevice, hstream),
                  "cudaMemcpyAsync failed copying pivots to device");
-  cuBLAS_LU::computeGetri_batched(cuda_handles->h_cublas, cuda_handles->hstream, n, lda, devMs.data(), invMs.data(), dev_pivots.data(), infos.data(), dev_infos.data(), batch_size);
+  cuBLAS_LU::computeGetri_batched(cuda_handles->h_cublas, n, lda, devMs.data(), invMs.data(), dev_pivots.data(), dev_infos.data(), batch_size);
 
   cudaErrorCheck(cudaMemcpyAsync(invM_vec.data(), dev_invM_vec.data(), sizeof(double) * 16, cudaMemcpyDeviceToHost, hstream),
                  "cudaMemcpyAsync failed copying invM from device");

@@ -64,7 +64,7 @@ public:
   bool put(xmlNodePtr cur);
   bool putH5(hdf_archive& hin);
 
-  SPOSet* createSPOSetFromXML(xmlNodePtr cur) { return 0; }
+  SPOSet* createSPOSetFromXML(xmlNodePtr cur, int particletype=0) { return 0; }
 
   std::unique_ptr<COT> createAOSet(xmlNodePtr cur);
   std::unique_ptr<COT> createAOSetH5(hdf_archive& hin);

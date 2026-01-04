@@ -43,20 +43,20 @@ namespace qmcplusplus
 {
 namespace afqmc
 {
-using IndexType   = OHMMS_INDEXTYPE;
-using OrbitalType = OHMMS_INDEXTYPE;
-using RealType    = OHMMS_PRECISION_FULL;
-using SPRealType  = OHMMS_PRECISION;
+typedef OHMMS_INDEXTYPE IndexType;
+typedef OHMMS_INDEXTYPE OrbitalType;
+typedef OHMMS_PRECISION_FULL RealType;
+typedef OHMMS_PRECISION SPRealType;
 
 #if defined(QMC_COMPLEX)
-using ValueType   = std::complex<RealType>;
-using SPValueType = std::complex<SPRealType>;
+typedef std::complex<RealType> ValueType;
+typedef std::complex<SPRealType> SPValueType;
 #else
-using ValueType   = RealType;
-using SPValueType = SPRealType;
+typedef RealType ValueType;
+typedef SPRealType SPValueType;
 #endif
-using ComplexType   = std::complex<RealType>;
-using SPComplexType = std::complex<SPRealType>;
+typedef std::complex<RealType> ComplexType;
+typedef std::complex<SPRealType> SPComplexType;
 
 } // namespace afqmc
 } // namespace qmcplusplus

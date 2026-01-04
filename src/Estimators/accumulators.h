@@ -31,8 +31,8 @@
 template<typename T, typename = typename std::enable_if<std::is_floating_point<T>::value>::type>
 struct accumulator_set
 {
-  using value_type  = T;
-  using return_type = T;
+  typedef T value_type;
+  typedef T return_type;
 
   enum
   {

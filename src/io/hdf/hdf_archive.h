@@ -10,45 +10,31 @@
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
+
 #ifndef QMCPLUSPLUS_HDF5_ARCHIVE_H
 #define QMCPLUSPLUS_HDF5_ARCHIVE_H
 
-#include <H5Ipublic.h>
 #include <config.h>
 #include "hdf_datatype.h"
 #include "hdf_dataspace.h"
 #include "hdf_dataproxy.h"
-#include "hdf_error_suppression.h"
-#include "hdf_path.h"
+#if defined(HAVE_LIBHDF5)
 #include "hdf_pete.h"
 #include "hdf_stl.h"
 #include "hdf_hyperslab.h"
-
-#include <bitset>
-#include <filesystem>
+//#include "hdf_double_hyperslab.h"
+#endif
 #include <stack>
-
+#include <bitset>
 #ifdef HAVE_MPI
-namespace boost
-{
-namespace mpi3
-{
-class communicator;
-}
-} // namespace boost
+namespace boost { namespace mpi3 { class communicator; } }
 #endif
 
 class Communicate;
 
 namespace qmcplusplus
 {
-
-/// Suppress HDF5 warning and error messages.
-extern hdf_error_suppression hide_hdf_errors;
-
 /** class to handle hdf file
- *
- *  Wrapper functions necessary because hdf5 c interface h5d_xxx semantics.
  */
 class hdf_archive
 {
@@ -66,34 +52,20 @@ private:
    * Mode[NOIO] : true, if I/O is not performed
    */
   std::bitset<4> Mode;
-  /// file creation property list
-  hid_t file_cpl_{H5I_INVALID_HID};
-  /// file access property list
-  hid_t file_apl_{H5I_INVALID_HID};
   ///file id
-  hid_t file_id{is_closed};
+  hid_t file_id;
   ///access id
-  hid_t access_id{H5I_INVALID_HID};
+  hid_t access_id;
   ///transfer property
-  hid_t xfer_plist{H5I_INVALID_HID};
-  /// Link creation property list identifier
-  hid_t lcpl_id{H5I_INVALID_HID};
+  hid_t xfer_plist;
+  ///error type
+  H5E_auto2_t err_func;
+  ///error handling
+  void* client_data;
   ///FILO to handle H5Group
   std::stack<hid_t> group_id;
-  ///Track group names corresponding to group_id
-  std::vector<std::string> group_names;
 
-  /** Name of file that hdf_archive thinks is open.
-   *  This may not correspond to the actual file because the open call failed,
-   *  or the file was closed. This information is useful for debugging.
-   */
-  std::string possible_filename_;
-
-  /** set the access property
-   *  these are exclusively called from the constructor.
-   *  this is a simplifying assumption for other code
-   */
-  void create_basic_plist();
+  ///set the access property
   void set_access_plist(Communicate* comm, bool request_pio);
 #ifdef HAVE_MPI
   void set_access_plist(boost::mpi3::communicator& comm, bool request_pio);
@@ -109,17 +81,17 @@ public:
    *        if false, hdf_archive is in independent IO mode
    */
   template<class Comm = Communicate*>
-  hdf_archive(Comm c, bool request_pio = false) : file_id(is_closed)
+  hdf_archive(Comm c, bool request_pio = false) : file_id(is_closed), access_id(H5P_DEFAULT), xfer_plist(H5P_DEFAULT)
   {
-    if (!hdf_error_suppression::enabled)
-      throw std::runtime_error("HDF5 library warnings and errors not suppressed from output.\n");
+    H5Eget_auto2(H5E_DEFAULT, &err_func, &client_data);
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
     set_access_plist(c, request_pio);
   }
 
-  hdf_archive() : file_id(is_closed)
+  hdf_archive() : file_id(is_closed), access_id(H5P_DEFAULT), xfer_plist(H5P_DEFAULT)
   {
-    if (!hdf_error_suppression::enabled)
-      throw std::runtime_error("HDF5 library warnings and errors not suppressed from output.\n");
+    H5Eget_auto2(H5E_DEFAULT, &err_func, &client_data);
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
     set_access_plist();
   }
   ///destructor
@@ -139,14 +111,14 @@ public:
    * @param flags i/o mode
    * @return true, if creation is successful
    */
-  bool create(const std::filesystem::path& fname, unsigned mode_flags = H5F_ACC_TRUNC);
+  bool create(const std::string& fname, unsigned flags = H5F_ACC_TRUNC);
 
   /** open a file
    * @param fname name of hdf5 file
    * @param flags i/o mode
    * @return file_id, if open is successful
    */
-  bool open(const std::filesystem::path& fname, unsigned mode_flags = H5F_ACC_RDWR);
+  bool open(const std::string& fname, unsigned flags = H5F_ACC_RDWR);
 
   ///close all the open groups and file
   void close();
@@ -167,38 +139,9 @@ public:
    */
   bool is_group(const std::string& aname);
 
-  /** check if aname is a dataset
-   * @param aname dataset's name
-   * @return true, if aname exists and it is a dataset
-   */
-  bool is_dataset(const std::string& aname)
-  {
-    if (Mode[NOIO])
-      return true;
-    hid_t p = group_id.empty() ? file_id : group_id.top();
-    int dummy_data;
-    h5data_proxy<int> e(dummy_data);
-    return e.check_existence(p, aname);
-  }
-
-  /** check if aname is a dataset of type T
-   * @param aname group's name
-   * @return true, if aname is a dataset of type T
-   */
-  template<typename T>
-  bool is_dataset_of_type(const std::string& aname)
-  {
-    if (Mode[NOIO])
-      return true;
-    hid_t p = group_id.empty() ? file_id : group_id.top();
-    T dummy_data;
-    h5data_proxy<T> e(dummy_data);
-    return e.check_type(p, aname);
-  }
-
   /** return the top of the group stack
    */
-  inline hid_t top() const { return group_id.empty() ? file_id : group_id.top(); }
+  inline hid_t top() const { return group_id.empty() ? is_closed : group_id.top(); }
 
   /** check if any groups are open
    *  group stack will have entries if so
@@ -210,9 +153,7 @@ public:
    * @param gname name of the group
    * @param createit if true, group is create when missing
    */
-  void push(const std::string& gname, bool createit = true);
-  void push(const hdf_path& gname, bool createit = true);
-
+  hid_t push(const std::string& gname, bool createit = true);
 
   inline void pop()
   {
@@ -220,15 +161,8 @@ public:
       return;
     hid_t g = group_id.top();
     group_id.pop();
-    group_names.pop_back();
-    herr_t err = H5Gclose(g);
-    if (err < 0)
-      throw std::runtime_error("H5Gclose failed with error.");
+    H5Gclose(g);
   }
-
-  /** Return a string representation of the current group stack
-   */
-  std::string group_path_as_string() const;
 
   /** read the shape of multidimensional filespace from the group aname
    * this function can be used to query dataset for preparing containers.
@@ -250,69 +184,27 @@ public:
    * @return true if successful
    */
   template<typename T>
-  bool writeEntry(const T& data, const std::string& aname)
+  bool writeEntry(T& data, const std::string& aname)
   {
     if (Mode[NOIO])
       return true;
     if (!(Mode[IS_PARALLEL] || Mode[IS_MASTER]))
       throw std::runtime_error("Only write data in parallel or by master but not every rank!");
     hid_t p = group_id.empty() ? file_id : group_id.top();
-    h5data_proxy<typename std::remove_const<T>::type> e(data);
-    return e.write(data, p, aname, xfer_plist);
+    h5data_proxy<T> e(data);
+    return e.write(p, aname, xfer_plist);
   }
 
   /** write the data to the group aname and check status
    * runtime error is issued on I/O error
    */
   template<typename T>
-  void write(const T& data, const std::string& aname)
+  void write(T& data, const std::string& aname)
   {
     if (!writeEntry(data, aname))
     {
       throw std::runtime_error("HDF5 write failure in hdf_archive::write " + aname);
     }
-  }
-
-  /** Append data to a dynamically sized dataspace.
-   *
-   *  @param[in]     data                    reference to actual data object, hdf5_proxy, hdf_stl, hdf_pete provide proxies for most.
-   *  @param[in]     aname                   hdf5 path from the current file group on.
-   *  @param[in]     append_index            In a dynamic dataseries which entry will this be
-   *  @return                                the next index after data
-   *                                         is appended
-   *
-   *  This has no legacy usage and exceptions are thrown in case of
-   *  error since there is a useful return value
-   *
-   *  I can't think of any good reason to discard the return value,
-   *  but it does seem like it will generally make a nice bug hence
-   *  [[nodiscard]]
-   */
-  template<typename T>
-  [[nodiscard]] hsize_t append(T& data, const std::string& aname, const hsize_t current_append_index)
-  {
-    auto local_append_index = current_append_index;
-    if (!appendEntry(data, aname, local_append_index))
-    {
-      throw std::runtime_error("HDF5 append failure in hdf_archive::appendEntry!" + aname);
-    }
-    return local_append_index;
-  }
-
-  /** append the data to aname at the current_append_index and return status
-   *  use write() for inbuilt error checking
-   *  @return true if successful
-   */
-  template<typename T>
-  bool appendEntry(T& data, const std::string& aname, hsize_t& current_append_index)
-  {
-    if (Mode[NOIO])
-      return true;
-    if (!(Mode[IS_PARALLEL] || Mode[IS_MASTER]))
-      throw std::runtime_error("Only write data in parallel or by master but not every rank!");
-    hid_t p = group_id.empty() ? file_id : group_id.top();
-    h5data_proxy<typename std::remove_const<T>::type> e(data);
-    return e.append(data, p, aname, current_append_index, xfer_plist);
   }
 
   /** write the container data with a specific shape and check status
@@ -325,10 +217,10 @@ public:
   void writeSlabReshaped(T& data, const std::array<IT, RANK>& shape, const std::string& aname)
   {
     std::array<hsize_t, RANK> globals, counts, offsets;
-    for (int dim = 0; dim < RANK; dim++)
+    for(int dim = 0; dim < RANK; dim++)
     {
       globals[dim] = static_cast<hsize_t>(shape[dim]);
-      counts[dim]  = static_cast<hsize_t>(shape[dim]);
+      counts[dim] = static_cast<hsize_t>(shape[dim]);
       offsets[dim] = 0;
     }
 
@@ -347,7 +239,7 @@ public:
       return true;
     hid_t p = group_id.empty() ? file_id : group_id.top();
     h5data_proxy<T> e(data);
-    return e.read(data, p, aname, xfer_plist);
+    return e.read(p, aname, xfer_plist);
   }
 
   /** read the data from the group aname and check status
@@ -372,10 +264,10 @@ public:
   void readSlabReshaped(T& data, const std::array<IT, RANK>& shape, const std::string& aname)
   {
     std::array<hsize_t, RANK> globals, counts, offsets;
-    for (int dim = 0; dim < RANK; dim++)
+    for(int dim = 0; dim < RANK; dim++)
     {
       globals[dim] = static_cast<hsize_t>(shape[dim]);
-      counts[dim]  = static_cast<hsize_t>(shape[dim]);
+      counts[dim] = static_cast<hsize_t>(shape[dim]);
       offsets[dim] = 0;
     }
 
@@ -396,17 +288,17 @@ public:
   void readSlabSelection(T& data, const std::array<IT, RANK>& readSpec, const std::string& aname)
   {
     std::array<hsize_t, RANK> globals, counts, offsets;
-    for (int dim = 0; dim < RANK; dim++)
+    for(int dim = 0; dim < RANK; dim++)
     {
       globals[dim] = 0;
       if (readSpec[dim] < 0)
       {
-        counts[dim]  = 0;
+        counts[dim] = 0;
         offsets[dim] = 0;
       }
       else
       {
-        counts[dim]  = 1;
+        counts[dim] = 1;
         offsets[dim] = static_cast<hsize_t>(readSpec[dim]);
       }
     }
@@ -420,7 +312,7 @@ public:
     if (Mode[NOIO])
       return;
     hid_t p       = group_id.empty() ? file_id : group_id.top();
-    herr_t status = H5Ldelete(p, aname.c_str(), H5P_DEFAULT);
+    herr_t status = H5Gunlink(p, aname.c_str());
   }
 };
 

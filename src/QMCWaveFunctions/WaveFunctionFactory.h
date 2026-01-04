@@ -23,7 +23,6 @@
 #include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
 #include "QMCWaveFunctions/SPOSetBuilderFactory.h"
 #include "Message/MPIObjectBase.h"
-#include "Utilities/RuntimeOptions.h"
 namespace qmcplusplus
 {
 /** Factory class to build a many-body wavefunction
@@ -31,7 +30,7 @@ namespace qmcplusplus
 class WaveFunctionFactory : public MPIObjectBase
 {
 public:
-  using PSetMap = std::map<std::string, const std::unique_ptr<ParticleSet>>;
+  typedef std::map<std::string, ParticleSet*> PtclPoolType;
 
   /** constructor
    * @param psiName name for both the factory and psi
@@ -40,30 +39,47 @@ public:
    * @param c  communicator
    * @param c  using tasking inside TWF
    */
-  WaveFunctionFactory(ParticleSet& qp, const PSetMap& pset, Communicate* c);
+  WaveFunctionFactory(const std::string& psiName, ParticleSet& qp, PtclPoolType& pset, Communicate* c, bool tasking = false);
 
   ///destructor
   ~WaveFunctionFactory();
 
   ///read from xmlNode
-  std::unique_ptr<TrialWaveFunction> buildTWF(xmlNodePtr cur, const RuntimeOptions& runtime_options);
-
-  /// create an empty TrialWaveFunction for testing use.
-  std::unique_ptr<TrialWaveFunction> static buildEmptyTWFForTesting(const RuntimeOptions& runtime_options,
-                                                                    const std::string_view name)
-  {
-    return std::make_unique<TrialWaveFunction>(runtime_options, name);
-  }
-
+  bool put(xmlNodePtr cur);
+  ///get xmlNode
+  xmlNodePtr getNode() const { return myNode; }
+  ///get targetPsi
+  TrialWaveFunction* getTWF() const { return targetPsi.get(); }
+  ///get SPOSet
+  SPOSet* getSPOSet(const std::string& name) const { return sposet_builder_factory_.getSPOSet(name); }
 private:
+  /** process xmlNode to populate targetPsi
+   */
+  bool build(xmlNodePtr cur, bool buildtree = true);
+
   /** add Fermion wavefunction term */
-  bool addFermionTerm(TrialWaveFunction& psi, SPOSetBuilderFactory& spo_factory, xmlNodePtr cur);
+  bool addFermionTerm(xmlNodePtr cur);
+
+  /** add an OrbitalBuilder and the matching xml node
+   * @param b WaveFunctionComponentBuilder*
+   * @oaram cur xmlNode for b
+   * @return true if successful
+   */
+  bool addNode(std::unique_ptr<WaveFunctionComponentBuilder> b, xmlNodePtr cur);
 
   ///many-body wavefunction object
+  std::unique_ptr<TrialWaveFunction> targetPsi;
   ///target ParticleSet
   ParticleSet& targetPtcl;
-  ///reference to the PSetMap
-  const PSetMap& ptclPool;
+  ///reference to the PtclPoolType
+  PtclPoolType& ptclPool;
+  ///input node for a many-body wavefunction
+  xmlNodePtr myNode;
+  ///builder tree
+  UPtrVector<WaveFunctionComponentBuilder> psiBuilder;
+
+  /// factory for all the sposet builders in this WF
+  SPOSetBuilderFactory sposet_builder_factory_;
 };
 
 } // namespace qmcplusplus

@@ -184,18 +184,8 @@ class Pwscf(Simulation):
         if result_name=='charge_density' or result_name=='restart':
             result.locdir   = self.locdir
             result.outdir   = os.path.join(self.locdir,outdir)
-            result_save_outdir = os.path.join(self.locdir,outdir,prefix+'.save')
-            if os.path.exists(os.path.join(result_save_outdir,'charge-density.hdf5')):
-                result.location = os.path.join(result_save_outdir,'charge-density.hdf5')
-                chg_dens_format = 'hdf5'
-            else:
-                result.location = os.path.join(result_save_outdir,'charge-density.dat')
-                chg_dens_format = 'dat'
-            
-            if chg_dens_format == 'dat':
-                result.spin_location = os.path.join(result_save_outdir,'spin-polarization.dat')
-            elif chg_dens_format == 'hdf5':
-                result.spin_location = None
+            result.location = os.path.join(self.locdir,outdir,prefix+'.save','charge-density.dat')
+            result.spin_location = os.path.join(self.locdir,outdir,prefix+'.save','spin-polarization.dat')
         elif result_name=='orbitals':
             result.location = os.path.join(self.locdir,outdir,prefix+'.wfc1')
         elif result_name=='structure':
@@ -241,9 +231,7 @@ class Pwscf(Simulation):
                 #end if
                 sync_record = os.path.join(outdir,'nexus_sync_record')
                 if not os.path.exists(sync_record):
-                    print('    Running rsync for the {} directory. This might take a while.'.format(outdir))
                     execute(command)
-                    print('    Completed rsync for the {} directory.'.format(outdir))
                     f = open(sync_record,'w')
                     f.write('\n')
                     f.close()
@@ -253,23 +241,15 @@ class Pwscf(Simulation):
                 cd_loc = result.location
                 cd_rel = os.path.relpath(cd_loc,link_loc)
                 sp_loc = result.spin_location
-
+                sp_rel = os.path.relpath(sp_loc,link_loc)
                 cwd = os.getcwd()
                 if not os.path.exists(link_loc):
                     os.makedirs(link_loc)
                 #end if
-
                 os.chdir(link_loc)
-                if cd_rel.endswith('charge-density.hdf5'):
-                    os.system('ln -s '+cd_rel+' charge-density.hdf5')
-                elif cd_rel.endswith('charge-density.dat'):
-                    sp_rel = os.path.relpath(sp_loc,link_loc)
-                    os.system('ln -s '+cd_rel+' charge-density.dat')
-                    os.system('ln -s '+sp_rel+' spin-polarization.dat')
-                else:
-                    raise FileNotFoundError('charge-density.dat or charge-density.hdf5 not found in {0}'.format(result_save_outdir))
+                os.system('ln -s '+cd_rel+' charge-density.dat')
+                os.system('ln -s '+sp_rel+' spin-polarization.dat')
                 os.chdir(cwd)
-
             #end if
         elif result_name=='structure':
             relstruct = result.structure.copy()
@@ -307,16 +287,12 @@ class Pwscf(Simulation):
                 #end if
                 sync_record = os.path.join(outdir,'nexus_sync_record')
                 if not os.path.exists(sync_record):
-                    print('    Running rsync for the {} directory. This might take a while.'.format(outdir))
                     execute(command)
-                    print('    Completed rsync for the {} directory.'.format(outdir))
                     f = open(sync_record,'w')
                     f.write('\n')
                     f.close()
                 #end if
             #end if
-        elif result_name == 'hubbard_parameters':
-            self.input.incorporate_hubbard(result)
         else:
             self.error('ability to incorporate result '+result_name+' has not been implemented')
         #end if        

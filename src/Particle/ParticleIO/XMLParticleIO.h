@@ -73,46 +73,71 @@ public:
   /** generic get function attribute function
    * @param tname attribute type name
    * @param oname attribute name
+   * @param pa pointer to ParticleAttrib<AT>*
    * @return pointer to the attribute
    */
   template<typename AT>
-  ParticleAttrib<AT>* getAttribute(const std::string& tname, const std::string& oname)
+  ParticleAttrib<AT>* getAttribute(const std::string& tname, const std::string& oname, ParticleAttrib<AT>* pa)
   {
-    using attrib_type = ParticleAttrib<AT>;
-    if (const auto it = AttribList.find(oname); it != AttribList.end())
-      return dynamic_cast<attrib_type*>(it->second);
-    throw std::runtime_error("AttribListType::getAttribute Unknown attribute " + oname + "\n");
+    typedef ParticleAttrib<AT> attrib_type;
+    std::map<std::string, OhmmsObject*>::iterator it = AttribList.find(oname);
+    if (it != AttribList.end())
+    {
+      OhmmsObject* o = (*it).second;
+      return dynamic_cast<attrib_type*>(o);
+    }
+    else
+    {
+      APP_ABORT("AttribListType::getAttribute Unknown attribute " + oname + "\n");
+      /*
+      if(pa == nullptr) //only
+      {
+        pa=new attrib_type(tname,oname);
+        pa->resize(LocalNum);
+        pa->setID(AttribList.size());
+
+        AllocatedList.push_back(pa);
+        AttribList[oname]=pa;
+      }
+      */
+    }
+    return pa;
   }
 };
 
 class XMLParticleParser : public ParticleTags
 {
-  using Particle_t     = ParticleSet;
-  using ParticleIndex  = Particle_t::ParticleIndex;
-  using ParticleScalar = Particle_t::ParticleScalar;
-  using ParticlePos    = Particle_t::ParticlePos;
-  using ParticleTensor = Particle_t::ParticleTensor;
+  typedef ParticleSet Particle_t;
+  typedef Particle_t::ParticleIndex_t ParticleIndex_t;
+  typedef Particle_t::ParticleScalar_t ParticleScalar_t;
+  typedef Particle_t::ParticlePos_t ParticlePos_t;
+  typedef Particle_t::ParticleTensor_t ParticleTensor_t;
 
+  bool AssignmentOnly;
   Particle_t& ref_;
   AttribListType ref_AttribList;
+  Tensor<int, OHMMS_DIM>& TileMatrix;
+
+  bool putSpecial(xmlNodePtr cur);
 
   /** read the data of a particle attribute
    *@param cur the xmlnode
-   *@param in_offset the location offset to read from XML element node body.
-   *@param copy_size the number of particle attributes to be read
-   *@param out_offset the current local count to which copy_size particle attributes are added.
+   *@param nat the number of particle attributes to be read
+   *@param nloc the current local count to which nat particle attributes are added.
    */
-  void getPtclAttrib(xmlNodePtr cur, int in_offset, int copy_size, int out_offset);
-
-  void checkGrouping(int nat, const std::vector<int>& nat_group) const;
+  void getPtclAttrib(xmlNodePtr cur, int nat, int nloc);
 
 public:
   /**constructor
    *@param aptcl the particleset to be initialized
+   *@param donotresize if true, only assignment is done
    */
-  XMLParticleParser(Particle_t& aptcl);
+  XMLParticleParser(Particle_t& aptcl, Tensor<int, OHMMS_DIM>& tmat, bool donotresize = false);
 
-  bool readXML(xmlNodePtr cur);
+  ///reading from a file
+  bool put(const std::string& fname_in, const std::string& fext_in);
+
+  bool put(xmlNodePtr cur);
 
   /** reset the properties of a particle set
    */
@@ -121,11 +146,11 @@ public:
 
 class XMLSaveParticle : public ParticleTags, public RecordProperty
 {
-  using Particle_t     = ParticleSet;
-  using ParticleIndex  = Particle_t::ParticleIndex;
-  using ParticleScalar = Particle_t::ParticleScalar;
-  using ParticlePos    = Particle_t::ParticlePos;
-  using ParticleTensor = Particle_t::ParticleTensor;
+  typedef ParticleSet Particle_t;
+  typedef Particle_t::ParticleIndex_t ParticleIndex_t;
+  typedef Particle_t::ParticleScalar_t ParticleScalar_t;
+  typedef Particle_t::ParticlePos_t ParticlePos_t;
+  typedef Particle_t::ParticleTensor_t ParticleTensor_t;
 
   Particle_t& ref_;
   AttribListType ref_AttribList;

@@ -24,36 +24,20 @@ namespace qmcplusplus
 class VMC : public QMCDriver, public CloneManager
 {
 public:
-  using FullPrecRealType = QMCTraits::FullPrecRealType;
   /// Constructor.
-  VMC(const ProjectData& project_data_,
-      MCWalkerConfiguration& w,
-      TrialWaveFunction& psi,
-      QMCHamiltonian& h,
-      const UPtrVector<RandomBase<QMCTraits::FullPrecRealType>>& rngs,
-      Communicate* comm,
-      bool enable_profiling);
+  VMC(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, Communicate* comm, bool enable_profiling);
   bool run() override;
   bool put(xmlNodePtr cur) override;
   QMCRunType getRunType() override { return QMCRunType::VMC; }
-
-  ///return the random generators
-  inline RefVector<RandomBase<FullPrecRealType>> getRngRefs() const
-  {
-    RefVector<RandomBase<FullPrecRealType>> RngRefs;
-    for (int i = 0; i < rngs_.size(); ++i)
-      RngRefs.push_back(*rngs_[i]);
-    return RngRefs;
-  }
-
+  //inline std::vector<RandomGenerator_t*>& getRng() { return Rng;}
 private:
   int prevSteps;
   int prevStepsBetweenSamples;
 
+  ///Ways to set rn constant
+  RealType logoffset, logepsilon;
   ///option to enable/disable drift equation or RN for VMC
   std::string UseDrift;
-  ///driver level reference of Random number generators
-  const UPtrVector<RandomBase<FullPrecRealType>>& rngs_;
   ///check the run-time environments
   void resetRun();
   ///copy constructor

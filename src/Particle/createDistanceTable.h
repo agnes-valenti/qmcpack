@@ -37,38 +37,40 @@ namespace qmcplusplus
  */
 
 ///free function to create a distable table of s-s
-std::unique_ptr<DistanceTable> createDistanceTableAA(const ParticleSet& s, std::ostream& description);
-std::unique_ptr<DistanceTable> createDistanceTableAAOMPTarget(const ParticleSet& s, std::ostream& description);
+std::unique_ptr<DistanceTable> createDistanceTableAA(ParticleSet& s, std::ostream& description);
+std::unique_ptr<DistanceTable> createDistanceTableAAOMPTarget(ParticleSet& s, std::ostream& description);
 
-inline std::unique_ptr<DistanceTable> createDistanceTable(const ParticleSet& s, std::ostream& description)
+inline std::unique_ptr<DistanceTable> createDistanceTable(ParticleSet& s, std::ostream& description)
 {
   // during P-by-P move, the cost of single particle evaluation of distance tables
   // is determined by the number of source particles.
   // Thus the implementation selection is determined by the source particle set.
+#if defined(ENABLE_OFFLOAD)
   if (s.getCoordinates().getKind() == DynamicCoordinateKind::DC_POS_OFFLOAD)
     return createDistanceTableAAOMPTarget(s, description);
   else
+#endif
     return createDistanceTableAA(s, description);
 }
 
 ///free function create a distable table of s-t
-std::unique_ptr<DistanceTable> createDistanceTableAB(const ParticleSet& s,
-                                                     const ParticleSet& t,
-                                                     std::ostream& description);
+std::unique_ptr<DistanceTable> createDistanceTableAB(const ParticleSet& s, ParticleSet& t, std::ostream& description);
 std::unique_ptr<DistanceTable> createDistanceTableABOMPTarget(const ParticleSet& s,
-                                                              const ParticleSet& t,
+                                                              ParticleSet& t,
                                                               std::ostream& description);
 
 inline std::unique_ptr<DistanceTable> createDistanceTable(const ParticleSet& s,
-                                                          const ParticleSet& t,
+                                                          ParticleSet& t,
                                                           std::ostream& description)
 {
   // during P-by-P move, the cost of single particle evaluation of distance tables
   // is determined by the number of source particles.
   // Thus the implementation selection is determined by the source particle set.
+#if defined(ENABLE_OFFLOAD)
   if (s.getCoordinates().getKind() == DynamicCoordinateKind::DC_POS_OFFLOAD)
     return createDistanceTableABOMPTarget(s, t, description);
   else
+#endif
     return createDistanceTableAB(s, t, description);
 }
 

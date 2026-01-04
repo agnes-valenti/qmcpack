@@ -30,32 +30,29 @@ class SpinDensityNewTests;
 /** Class that collects density per species of particle
  *
  *  commonly used for spin up and down electrons
- *
+ *  
  */
 class SpinDensityNew : public OperatorEstBase
 {
 public:
-  using QMCT             = QMCTraits;
-  using FullPrecRealType = QMCT::FullPrecRealType;
+  using POLT    = PtclOnLatticeTraits;
+  using Lattice = POLT::ParticleLayout_t;
+  using QMCT    = QMCTraits;
 
-  /** Constructor for SpinDensityNew that contains an explicitly defined cell
-   *  part of legacy input handling, Deprecated
+  /** Constructor for SpinDensityInput that contains an explicitly defined cell
    */
   SpinDensityNew(SpinDensityInput&& sdi, const SpeciesSet& species, DataLocality dl = DataLocality::crowd);
-
-  /** Constructor
+  /** Constructor for SpinDensityInput without explicitly defined cell
    *
-   *  If the sdi contains a cell definition the Lattice passed will be ignored.
-   *
-   *  Other wise the crystal lattice should come from the same particle set as the species set.
+   *  the crystal lattice should come from the same particle set as the species set.
    *  in case you are tempted to just pass the ParticleSet don't. It clouds the data dependence of
    *  constructing the estimator and creates a strong coupling between the classes.
    *
    *  Ideally when validating input is built up enough there would be only one constructor with
    *  signature
    *
-   *  SpinDensityNew(SpinDensityInput&& sdi,
-   *                 SpinDensityInput::DerivedParameters&& dev_par,
+   *  SpinDensityNew(SpinDensityInput&& sdi, 
+   *                 SpinDensityInput::DerivedParameters&& dev_par, 
    *                 SpeciesSet species,
    *                 DataLocality dl);
    */
@@ -70,7 +67,7 @@ public:
    */
   SpinDensityNew(const SpinDensityNew& sdn, DataLocality dl);
 
-  /** This allows us to allocate the necessary data for the DataLocality::queue
+  /** This allows us to allocate the necessary data for the DataLocality::queue 
    */
   void startBlock(int steps) override;
 
@@ -83,8 +80,7 @@ public:
   void accumulate(const RefVector<MCPWalker>& walkers,
                   const RefVector<ParticleSet>& psets,
                   const RefVector<TrialWaveFunction>& wfns,
-                  const RefVector<QMCHamiltonian>& hams,
-                  RandomBase<FullPrecRealType>& rng) override;
+                  RandomGenerator_t& rng) override;
 
   /** this allows the EstimatorManagerNew to reduce without needing to know the details
    *  of SpinDensityNew's data.
@@ -104,10 +100,10 @@ public:
   /** this gets us into the hdf5 file
    *
    *  Just parroting for now don't fully understand.
-   *, needs to be unraveled and simplified the hdf5 output is another
+   *, needs to be unraveled and simplified the hdf5 output is another 
    *  big state big coupling design.
    */
-  void registerOperatorEstimator(hdf_archive& file) override;
+  void registerOperatorEstimator(hid_t gid) override;
 
 private:
   SpinDensityNew(const SpinDensityNew& sdn) = default;
@@ -115,7 +111,7 @@ private:
   static std::vector<int> getSpeciesSize(const SpeciesSet& species);
   /** derived_parameters_ must be valid i.e. initialized with call to input_.calculateDerivedParameters
    */
-  size_t getFullDataSize() const override;
+  size_t getFullDataSize();
   void accumulateToData(size_t point, QMCT::RealType weight);
   void reset();
   void report(const std::string& pad);

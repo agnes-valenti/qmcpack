@@ -22,38 +22,23 @@
 
 namespace qmcplusplus
 {
-
-template<typename T>
-class CompositeSPOSet : public SPOSetT<T>
+class CompositeSPOSet : public SPOSet
 {
 public:
-  using SPOSet = SPOSetT<T>;
-
-  using ValueVector = typename SPOSet::ValueVector;
-  using ValueMatrix = typename SPOSet::ValueMatrix;
-  using GradVector  = typename SPOSet::GradVector;
-  using GradMatrix  = typename SPOSet::GradMatrix;
-  using HessMatrix  = typename SPOSet::HessMatrix;
-  using GGGMatrix   = typename SPOSet::GGGMatrix;
-
   ///component SPOSets
   std::vector<std::unique_ptr<SPOSet>> components;
   ///temporary storage for values
-  std::vector<ValueVector> component_values;
+  std::vector<ValueVector_t> component_values;
   ///temporary storage for gradients
-  std::vector<GradVector> component_gradients;
+  std::vector<GradVector_t> component_gradients;
   ///temporary storage for laplacians
-  std::vector<ValueVector> component_laplacians;
-  ///temporary storage for spin gradients
-  std::vector<ValueVector> component_spin_gradients;
+  std::vector<ValueVector_t> component_laplacians;
   ///store the precomputed offsets
   std::vector<int> component_offsets;
 
-  CompositeSPOSet(const std::string& my_name);
+  CompositeSPOSet();
   CompositeSPOSet(const CompositeSPOSet& other);
   ~CompositeSPOSet() override;
-
-  std::string getClassName() const override { return "CompositeSPOSet"; }
 
   ///add a sposet component to this composite sposet
   void add(std::unique_ptr<SPOSet> component);
@@ -67,16 +52,13 @@ public:
 
   std::unique_ptr<SPOSet> makeClone() const override;
 
-  void evaluateValue(const ParticleSet& P, int iat, ValueVector& psi) override;
+  void evaluateValue(const ParticleSet& P, int iat, ValueVector_t& psi) override;
 
-  void evaluateVGL(const ParticleSet& P, int iat, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi) override;
-
-  void evaluateVGL_spin(const ParticleSet& P,
-                        int iat,
-                        ValueVector& psi,
-                        GradVector& dpsi,
-                        ValueVector& d2psi,
-                        ValueVector& dspin_psi) override;
+  void evaluateVGL(const ParticleSet& P,
+                   int iat,
+                   ValueVector_t& psi,
+                   GradVector_t& dpsi,
+                   ValueVector_t& d2psi) override;
 
   ///unimplemented functions call this to abort
   inline void not_implemented(const std::string& method)
@@ -84,36 +66,39 @@ public:
     APP_ABORT("CompositeSPOSet::" + method + " has not been implemented");
   }
 
+
   //methods to be implemented in the future (possibly)
+  void resetParameters(const opt_variables_type& optVariables) override;
+#ifdef QMC_CUDA
+  void evaluate(const ParticleSet& P, PosType& r, ValueVector_t& psi) override;
+#endif
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            ValueMatrix& d2logdet) override;
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            ValueMatrix_t& d2logdet) override;
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            HessMatrix& ddlogdet) override;
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            HessMatrix_t& ddlogdet) override;
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
-                            ValueMatrix& logdet,
-                            GradMatrix& dlogdet,
-                            HessMatrix& ddlogdet,
-                            GGGMatrix& dddlogdet) override;
+                            ValueMatrix_t& logdet,
+                            GradMatrix_t& dlogdet,
+                            HessMatrix_t& ddlogdet,
+                            GGGMatrix_t& dddlogdet) override;
 };
 
 struct CompositeSPOSetBuilder : public SPOSetBuilder
 {
-  CompositeSPOSetBuilder(Communicate* comm, const SPOSetBuilderFactory& factory)
-      : SPOSetBuilder("Composite", comm), sposet_builder_factory_(factory)
-  {}
+  CompositeSPOSetBuilder(Communicate* comm, const SPOSetBuilderFactory& factory) : SPOSetBuilder("Composite", comm), sposet_builder_factory_(factory) {}
 
   //SPOSetBuilder interface
-  std::unique_ptr<SPOSet> createSPOSetFromXML(xmlNodePtr cur) override;
+  std::unique_ptr<SPOSet> createSPOSetFromXML(xmlNodePtr cur, int particletype=0) override;
 
   std::unique_ptr<SPOSet> createSPOSet(xmlNodePtr cur, SPOSetInputInfo& input) override;
 

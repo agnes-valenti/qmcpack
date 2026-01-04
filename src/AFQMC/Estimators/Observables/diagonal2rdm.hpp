@@ -125,23 +125,22 @@ public:
     using std::copy_n;
     using std::fill_n;
     // assumes G[nwalk][spin][M][M]
-    int nw(G.size());
-    assert(G.size() == wgt.size());
-    assert(wgt.size() == nw);
-    assert(Xw.size() == nw);
-    assert(ovlp.size() >= nw);
+    int nw(G.size(0));
+    assert(G.size(0) == wgt.size(0));
+    assert(wgt.size(0) == nw);
+    assert(Xw.size(0) == nw);
+    assert(ovlp.size(0) >= nw);
     assert(G.num_elements() == G_host.num_elements());
     assert(G.extensions() == G_host.extensions());
 
-    using std::get;
     // check structure dimensions
     if (iref == 0)
     {
-      if (denom.size() != nw)
+      if (denom.size(0) != nw)
       {
         denom = mpi3CVector(iextensions<1u>{nw}, shared_allocator<ComplexType>{TG.TG_local()});
       }
-      if (get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != dm_size)
+      if (DMWork.size(0) != nw || DMWork.size(1) != dm_size)
       {
         DMWork = mpi3CMatrix({nw, dm_size}, shared_allocator<ComplexType>{TG.TG_local()});
       }
@@ -150,8 +149,8 @@ public:
     }
     else
     {
-      if (get<0>(denom.sizes()) != nw || get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != dm_size || get<0>(DMAverage.sizes()) != nave ||
-          get<1>(DMAverage.sizes()) != dm_size)
+      if (denom.size(0) != nw || DMWork.size(0) != nw || DMWork.size(1) != dm_size || DMAverage.size(0) != nave ||
+          DMAverage.size(1) != dm_size)
         APP_ABORT(" Error: Invalid state in accumulate_reference. \n\n\n");
     }
 
@@ -212,7 +211,7 @@ public:
   template<class HostCVec>
   void accumulate_block(int iav, HostCVec&& wgt, bool impsamp)
   {
-    int nw(denom.size());
+    int nw(denom.size(0));
     int i0, iN;
     std::tie(i0, iN) = FairDivideBoundary(TG.TG_local().rank(), dm_size, TG.TG_local().size());
 

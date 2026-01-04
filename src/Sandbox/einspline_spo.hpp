@@ -17,7 +17,6 @@
 #include <Configuration.h>
 #include "Particle/ParticleSet.h"
 #include "spline2/MultiBspline.hpp"
-#include "spline2/SingleBsplineAllocator.hpp"
 #include "spline2/MultiBsplineEval.hpp"
 #include "CPU/SIMD/aligned_allocator.hpp"
 #include <iostream>
@@ -150,9 +149,10 @@ struct einspline_spo
       pos_type start(0);
       pos_type end(1);
       einsplines.resize(nBlocks);
-      RandomGenerator myrandom(11);
+      RandomGenerator<T> myrandom(11);
       Array<double, 3> data(nx, ny, nz);
-      std::generate(data.begin(), data.end(), myrandom);
+      std::fill(data.begin(), data.end(), T());
+      myrandom.generate_uniform(data.data(), data.size());
 
       // prepare spline grid specs
       Ugrid grid[3];
@@ -166,7 +166,7 @@ struct einspline_spo
       BC[1].lCode = BC[1].rCode = PERIODIC;
       BC[2].lCode = BC[2].rCode = PERIODIC;
 
-      SingleBsplineAllocator<double> mAllocator;
+      BsplineAllocator<double> mAllocator;
       UBspline_3d_d* aspline = mAllocator.allocateUBspline(grid[0], grid[1], grid[2], BC[0], BC[1], BC[2], data.data());
       for (int i = 0; i < nBlocks; ++i)
       {
@@ -174,7 +174,7 @@ struct einspline_spo
         einsplines[i]->create(grid, BC, nSplinesPerBlock);
         if (init_random)
           for (int j = 0; j < nSplinesPerBlock; ++j)
-            copy_spline<double, T>(*aspline, *einsplines[i]->getSplinePtr(), j);
+            einsplines[i]->copy_spline(aspline, j);
       }
       mAllocator.destroy(aspline);
     }

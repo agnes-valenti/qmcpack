@@ -17,7 +17,7 @@
 #ifndef QMCPLUSPLUS_BAREKINETICHELPER_H
 #define QMCPLUSPLUS_BAREKINETICHELPER_H
 
-#include "CPU/VectorOps.h"
+#include "ParticleBase/ParticleAttribOps.h"
 
 namespace qmcplusplus
 {

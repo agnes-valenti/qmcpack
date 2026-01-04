@@ -1,8 +1,6 @@
 <?xml version="1.0"?>
 <simulation>
-<project id="vmc_short" series="0">
-  <parameter name="driver_version">legacy</parameter>
-</project>
+  <project id="vmc_short" series="0"/>
   <include href="C_diamond-tiled-cplx.structure.xml"/>
   <include href="C_diamond-tiled-cplx.wfj.xml"/>
   <hamiltonian name="h0" type="generic" target="e">

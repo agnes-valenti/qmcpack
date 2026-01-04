@@ -16,20 +16,11 @@
 
 namespace qmcplusplus
 {
-RMCLocalEnergyEstimator::RMCLocalEnergyEstimator(QMCHamiltonian& ham, int nobs) : refH(ham), NObs(nobs)
+RMCLocalEnergyEstimator::RMCLocalEnergyEstimator(QMCHamiltonian& h, int nobs) : refH(h), NObs(nobs)
 {
-  resizeBasedOnHamiltonian(ham);
-}
-
-RMCLocalEnergyEstimator::RMCLocalEnergyEstimator(RMCLocalEnergyInput&& input, const QMCHamiltonian& ham) : refH(ham), NObs(input.get_n_obs()), input_(input)
-{
-  resizeBasedOnHamiltonian(ham);
-}
-
-void RMCLocalEnergyEstimator::resizeBasedOnHamiltonian(const QMCHamiltonian& ham)
-{
-  SizeOfHamiltonians = ham.sizeOfObservables();
-  FirstHamiltonian   = ham.startIndex();
+  SizeOfHamiltonians = h.sizeOfObservables();
+  FirstHamiltonian   = h.startIndex();
+  RMCSpecificTerms   = 8;
   scalars.resize(2 * SizeOfHamiltonians + RMCSpecificTerms);
   scalars_saved.resize(2 * SizeOfHamiltonians + RMCSpecificTerms);
 }

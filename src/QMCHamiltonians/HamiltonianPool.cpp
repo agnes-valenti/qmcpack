@@ -21,7 +21,7 @@
 #include "QMCWaveFunctions/WaveFunctionPool.h"
 #include "Particle/ParticleSetPool.h"
 #include "OhmmsData/AttributeSet.h"
-#include "Concurrency/OpenMP.h"
+#include "Message/OpenMP.h"
 #include "Utilities/ProgressReportEngine.h"
 
 namespace qmcplusplus
@@ -85,10 +85,13 @@ bool HamiltonianPool::put(xmlNodePtr cur)
 
 bool HamiltonianPool::get(std::ostream& os) const
 {
-  for(auto& [name, factory] : myPool)
+  PoolType::const_iterator it(myPool.begin()), it_end(myPool.end());
+  while (it != it_end)
   {
-    os << "  Hamiltonian " << name << std::endl;
-    factory->getH()->get(os);
+    os << "  Hamiltonian " << (*it).first << std::endl;
+    ;
+    (*it).second->getH()->get(os);
+    ++it;
   }
   os << std::endl;
   return true;

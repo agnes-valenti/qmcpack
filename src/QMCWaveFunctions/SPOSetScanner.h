@@ -25,13 +25,12 @@ namespace qmcplusplus
 class SPOSetScanner
 {
 public:
-  using PtclPool    = std::map<std::string, const std::unique_ptr<ParticleSet>>;
-  using SPOSetMap   = SPOSet::SPOMap;
-  using RealType    = QMCTraits::RealType;
-  using ValueType   = QMCTraits::ValueType;
-  using ValueVector = OrbitalSetTraits<ValueType>::ValueVector;
-  using GradVector  = OrbitalSetTraits<ValueType>::GradVector;
-  using HessVector  = OrbitalSetTraits<ValueType>::HessVector;
+  using PtclPoolType  = std::map<std::string, ParticleSet*>;
+  using RealType      = QMCTraits::RealType;
+  using ValueType     = QMCTraits::ValueType;
+  using ValueVector_t = OrbitalSetTraits<ValueType>::ValueVector_t;
+  using GradVector_t  = OrbitalSetTraits<ValueType>::GradVector_t;
+  using HessVector_t  = OrbitalSetTraits<ValueType>::HessVector_t;
 
   RealType myfabs(RealType s) { return std::fabs(s); }
   template<typename T>
@@ -45,14 +44,14 @@ public:
     return TinyVector<T, OHMMS_DIM>(myfabs(s[0]), myfabs(s[1]), myfabs(s[2]));
   }
 
-  const SPOSetMap& sposets;
+  std::vector<std::unique_ptr<SPOSet>>& sposets;
   ParticleSet& target;
-  const PtclPool& ptcl_pool_;
+  const PtclPoolType& PtclPool;
   ParticleSet* ions;
 
   // construction/destruction
-  SPOSetScanner(const SPOSetMap& sposets_in, ParticleSet& targetPtcl, const PtclPool& psets)
-      : sposets(sposets_in), target(targetPtcl), ptcl_pool_(psets), ions(0){};
+  SPOSetScanner(std::vector<std::unique_ptr<SPOSet>>& sposets_in, ParticleSet& targetPtcl, const PtclPoolType& psets)
+      : sposets(sposets_in), target(targetPtcl), PtclPool(psets), ions(0){};
   //~SPOSetScanner(){};
 
   // processing scanning
@@ -64,15 +63,15 @@ public:
     OhmmsAttributeSet aAttrib;
     aAttrib.add(sourcePtcl, "source");
     aAttrib.put(cur);
-    auto pit(ptcl_pool_.find(sourcePtcl));
-    if (pit == ptcl_pool_.end())
+    auto pit(PtclPool.find(sourcePtcl));
+    if (pit == PtclPool.end())
       app_log() << "Source particle set not found. Can not be used as reference point." << std::endl;
     else
-      ions = pit->second.get();
+      ions = (*pit).second;
 
     // scanning the SPO sets
     xmlNodePtr cur_save = cur;
-    for (const auto& [name, sposet] : sposets)
+    for (auto& sposet : sposets)
     {
       app_log() << "  Processing SPO " << sposet->getName() << std::endl;
       // scanning the paths
@@ -83,14 +82,14 @@ public:
         OhmmsAttributeSet aAttrib;
         aAttrib.add(trace_name, "name");
         aAttrib.put(cur);
-        std::string cname(getNodeName(cur));
+        std::string cname;
+        getNodeName(cname, cur);
         std::string prefix(sposet->getName() + "_" + cname + "_" + trace_name);
         if (cname == "path")
         {
           app_log() << "    Scanning a " << cname << " called " << trace_name << " and writing to "
                     << prefix + "_v/g/l/report.dat" << std::endl;
-          auto spo = sposet->makeClone();
-          scan_path(cur, *spo, prefix);
+          scan_path(cur, *sposet, prefix);
         }
         else
         {
@@ -143,8 +142,8 @@ public:
     }
 
     // prepare a fake particle set
-    ValueVector SPO_v, SPO_l, SPO_v_avg, SPO_l_avg;
-    GradVector SPO_g, SPO_g_avg;
+    ValueVector_t SPO_v, SPO_l, SPO_v_avg, SPO_l_avg;
+    GradVector_t SPO_g, SPO_g_avg;
     int OrbitalSize(sposet.size());
     SPO_v.resize(OrbitalSize);
     SPO_g.resize(OrbitalSize);
@@ -158,7 +157,7 @@ public:
     double Delta   = 1.0 / (nknots - 1);
     int elec_count = target.R.size();
     auto R_saved   = target.R;
-    ParticleSet::SingleParticlePos zero_pos(0.0, 0.0, 0.0);
+    ParticleSet::SingleParticlePos_t zero_pos(0.0, 0.0, 0.0);
     for (int icount = 0, ind = 0; icount < nknots; icount++, ind++)
     {
       if (ind == elec_count)

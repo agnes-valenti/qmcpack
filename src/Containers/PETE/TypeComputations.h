@@ -55,7 +55,7 @@ namespace qmcplusplus
 //    argument is a std::complex<double>. The appropriate specialization here
 //    would be:
 //      template<> struct PETEUnaryReturn<std::complex<double>, FnAbs> {
-//        using Type_t = double;
+//        typedef double Type_t;
 //      };
 //
 //-----------------------------------------------------------------------------
@@ -63,7 +63,7 @@ namespace qmcplusplus
 template<class T, class Op>
 struct UnaryReturn
 {
-  using Type_t = T;
+  typedef T Type_t;
 };
 
 //-----------------------------------------------------------------------------
@@ -82,7 +82,7 @@ struct UnaryReturn
 template<class T1, class T2>
 struct Promote
 {
-  using Type_t = T1;
+  typedef T1 Type_t;
 };
 
 // bool
@@ -90,43 +90,43 @@ struct Promote
 template<>
 struct Promote<bool, bool>
 {
-  using Type_t = bool;
+  typedef bool Type_t;
 };
 
 template<>
 struct Promote<bool, char>
 {
-  using Type_t = char;
+  typedef char Type_t;
 };
 
 template<>
 struct Promote<bool, short>
 {
-  using Type_t = short;
+  typedef short Type_t;
 };
 
 template<>
 struct Promote<bool, int>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<bool, long>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<bool, float>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<bool, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 // char
@@ -134,43 +134,43 @@ struct Promote<bool, double>
 template<>
 struct Promote<char, bool>
 {
-  using Type_t = char;
+  typedef char Type_t;
 };
 
 template<>
 struct Promote<char, char>
 {
-  using Type_t = char;
+  typedef char Type_t;
 };
 
 template<>
 struct Promote<char, short>
 {
-  using Type_t = short;
+  typedef short Type_t;
 };
 
 template<>
 struct Promote<char, int>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<char, long>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<char, float>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<char, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 // short
@@ -178,43 +178,43 @@ struct Promote<char, double>
 template<>
 struct Promote<short, bool>
 {
-  using Type_t = short;
+  typedef short Type_t;
 };
 
 template<>
 struct Promote<short, char>
 {
-  using Type_t = short;
+  typedef short Type_t;
 };
 
 template<>
 struct Promote<short, short>
 {
-  using Type_t = short;
+  typedef short Type_t;
 };
 
 template<>
 struct Promote<short, int>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<short, long>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<short, float>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<short, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 // int
@@ -222,43 +222,43 @@ struct Promote<short, double>
 template<>
 struct Promote<int, bool>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<int, char>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<int, short>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<int, int>
 {
-  using Type_t = int;
+  typedef int Type_t;
 };
 
 template<>
 struct Promote<int, long>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<int, float>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<int, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 // long
@@ -266,43 +266,43 @@ struct Promote<int, double>
 template<>
 struct Promote<long, bool>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<long, char>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<long, short>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<long, int>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<long, long>
 {
-  using Type_t = long;
+  typedef long Type_t;
 };
 
 template<>
 struct Promote<long, float>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<long, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 // float
@@ -310,43 +310,43 @@ struct Promote<long, double>
 template<>
 struct Promote<float, bool>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<float, char>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<float, short>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<float, int>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<float, long>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<float, float>
 {
-  using Type_t = float;
+  typedef float Type_t;
 };
 
 template<>
 struct Promote<float, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 // double
@@ -354,43 +354,43 @@ struct Promote<float, double>
 template<>
 struct Promote<double, bool>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 template<>
 struct Promote<double, char>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 template<>
 struct Promote<double, short>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 template<>
 struct Promote<double, int>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 template<>
 struct Promote<double, long>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 template<>
 struct Promote<double, float>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 template<>
 struct Promote<double, double>
 {
-  using Type_t = double;
+  typedef double Type_t;
 };
 
 //-----------------------------------------------------------------------------
@@ -420,7 +420,7 @@ struct Promote<double, double>
 //    matrix/vector product, thereby returning a vector. The appropriate
 //    specialization here would be:
 //      struct BinaryReturn<Mat<double,3>, Vec<float,3>, OpMultiply> {
-//        using Type_t = Vec<double,3>;
+//        typedef Vec<double,3> Type_t;
 //      };
 //    Notice how the element type is promoted.
 //
@@ -429,7 +429,7 @@ struct Promote<double, double>
 template<class T1, class T2, class Op>
 struct BinaryReturn
 {
-  using Type_t = typename Promote<T1, T2>::Type_t;
+  typedef typename Promote<T1, T2>::Type_t Type_t;
 };
 
 
@@ -453,7 +453,7 @@ struct BinaryReturn
 template<class T1, class T2, class T3, class Op>
 struct TrinaryReturn
 {
-  using Type_t = typename BinaryReturn<T2, T3, Op>::Type_t;
+  typedef typename BinaryReturn<T2, T3, Op>::Type_t Type_t;
 };
 
 } // namespace qmcplusplus

@@ -2,19 +2,18 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2022 QMCPACK developers.
+// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
 //
 // File developed by: Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jaron T. Krogel, krogeljt@ornl.gov, Oak Ridge National Laboratory
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
-//                    Peter W. Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/**@file
+/**@file OperatorBase.cpp
  *@brief Definition of OperatorBase
  */
 #include "Message/Communicate.h"
@@ -55,20 +54,22 @@ TraceRequest& OperatorBase::getRequest() noexcept { return request_; }
 ////////  FUNCTIONS ////////////////
 void OperatorBase::addObservables(PropertySetType& plist, BufferType& collectables) { addValue(plist); }
 
-void OperatorBase::registerObservables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const
-{
+void OperatorBase::registerObservables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
+{ std::cout<<"AV entering OperatorBase::registerObservables"<<std::endl;
   const bool collect = update_mode_.test(COLLECTABLE);
   //exclude collectables
   if (!collect)
   {
-    h5desc.emplace_back(hdf_path{name_});
+    h5desc.emplace_back(name_);
     auto& oh = h5desc.back();
     std::vector<int> onedim(1, 1);
     oh.set_dimensions(onedim, my_index_);
+    oh.open(gid);
   }
+ std::cout<<"AV exiting OperatorBase::registerObservables"<<std::endl;
 }
 
-void OperatorBase::registerCollectables(std::vector<ObservableHelper>& h5desc, hdf_archive& file) const {}
+void OperatorBase::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const {}
 
 void OperatorBase::setObservables(PropertySetType& plist) { plist[my_index_] = value_; }
 
@@ -112,29 +113,28 @@ void OperatorBase::mw_evaluate(const RefVectorWithLeader<OperatorBase>& o_list,
     o_list[iw].evaluate(p_list[iw]);
 }
 
-void OperatorBase::mw_evaluatePerParticle(const RefVectorWithLeader<OperatorBase>& o_list,
-                                          const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-                                          const RefVectorWithLeader<ParticleSet>& p_list,
-                                          const std::vector<ListenerVector<RealType>>& listeners,
-                                          const std::vector<ListenerVector<RealType>>& listeners_ions) const
-{
-  mw_evaluate(o_list, wf_list, p_list);
-}
-
-
 void OperatorBase::mw_evaluateWithParameterDerivatives(const RefVectorWithLeader<OperatorBase>& o_list,
                                                        const RefVectorWithLeader<ParticleSet>& p_list,
                                                        const opt_variables_type& optvars,
-                                                       const RecordArray<ValueType>& dlogpsi,
+                                                       RecordArray<ValueType>& dlogpsi,
                                                        RecordArray<ValueType>& dhpsioverpsi) const
 {
-  const int nparam = dlogpsi.getNumOfParams();
+  const int nparam = dlogpsi.nparam();
+  std::vector<ValueType> tmp_dlogpsi(nparam);
+  std::vector<ValueType> tmp_dhpsioverpsi(nparam);
   for (int iw = 0; iw < o_list.size(); iw++)
   {
-    const Vector<ValueType> dlogpsi_record_view(const_cast<ValueType*>(dlogpsi[iw]), nparam);
-    Vector<ValueType> dhpsioverpsi_record_view(dhpsioverpsi[iw], nparam);
+    for (int j = 0; j < nparam; j++)
+    {
+      tmp_dlogpsi[j] = dlogpsi.getValue(j, iw);
+    }
 
-    o_list[iw].evaluateValueAndDerivatives(p_list[iw], optvars, dlogpsi_record_view, dhpsioverpsi_record_view);
+    o_list[iw].evaluateValueAndDerivatives(p_list[iw], optvars, tmp_dlogpsi, tmp_dhpsioverpsi);
+
+    for (int j = 0; j < nparam; j++)
+    {
+      dhpsioverpsi.setValue(j, iw, dhpsioverpsi.getValue(j, iw) + tmp_dhpsioverpsi[j]);
+    }
   }
 }
 
@@ -146,44 +146,34 @@ void OperatorBase::mw_evaluateWithToperator(const RefVectorWithLeader<OperatorBa
                                             const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                                             const RefVectorWithLeader<ParticleSet>& p_list) const
 {
-  // Only in NLPP evaluateWithToperator doesn't decay to evaluate. All other derived classes don't
-  // provide evaluateWithToperator specialization but may provide mw_evaluate optimization.
-  // Thus decaying to mw_evaluate is better than decalying to a loop over evaluateWithToperator
   mw_evaluate(o_list, wf_list, p_list);
-}
-
-void OperatorBase::mw_evaluatePerParticleWithToperator(
-    const RefVectorWithLeader<OperatorBase>& o_list,
-    const RefVectorWithLeader<TrialWaveFunction>& wf_list,
-    const RefVectorWithLeader<ParticleSet>& p_list,
-    const std::vector<ListenerVector<RealType>>& listeners,
-    const std::vector<ListenerVector<RealType>>& listeners_ions) const
-{
-  // This may or may not be what is expected.
-  // It the responsibility of the derived type to override this if the
-  // desired behavior is instead to call mw_evaluatePerParticle
-  mw_evaluateWithToperator(o_list, wf_list, p_list);
 }
 
 OperatorBase::Return_t OperatorBase::evaluateValueAndDerivatives(ParticleSet& P,
                                                                  const opt_variables_type& optvars,
-                                                                 const Vector<ValueType>& dlogpsi,
-                                                                 Vector<ValueType>& dhpsioverpsi)
+                                                                 const std::vector<ValueType>& dlogpsi,
+                                                                 std::vector<ValueType>& dhpsioverpsi)
 {
-  if (dependsOnWaveFunction())
-    throw std::logic_error("Bug!! " + getClassName() +
-                           "::evaluateValueAndDerivatives"
-                           "must be overloaded when the OperatorBase depends on a wavefunction.");
-
   return evaluate(P);
 }
 
-void OperatorBase::evaluateIonDerivs(ParticleSet& P,
-                                     ParticleSet& ions,
-                                     TrialWaveFunction& psi,
-                                     ParticleSet::ParticlePos& hf_term,
-                                     ParticleSet::ParticlePos& pulay_term)
-{}
+OperatorBase::Return_t OperatorBase::evaluateWithIonDerivs(ParticleSet& P,
+                                                           ParticleSet& ions,
+                                                           TrialWaveFunction& psi,
+                                                           ParticleSet::ParticlePos_t& hf_term,
+                                                           ParticleSet::ParticlePos_t& pulay_term)
+{
+  return evaluate(P);
+}
+
+OperatorBase::Return_t OperatorBase::evaluateWithIonDerivsDeterministic(ParticleSet& P,
+                                                                        ParticleSet& ions,
+                                                                        TrialWaveFunction& psi,
+                                                                        ParticleSet::ParticlePos_t& hf_term,
+                                                                        ParticleSet::ParticlePos_t& pulay_term)
+{
+  return evaluateWithIonDerivs(P, ions, psi, hf_term, pulay_term);
+}
 
 void OperatorBase::updateSource(ParticleSet& s) {}
 
@@ -199,7 +189,7 @@ void OperatorBase::releaseResource(ResourceCollection& collection,
                                    const RefVectorWithLeader<OperatorBase>& o_list) const
 {}
 
-void OperatorBase::setRandomGenerator(RandomBase<FullPrecRealType>* rng) {}
+void OperatorBase::setRandomGenerator(RandomGenerator_t* rng) {}
 
 void OperatorBase::add2Hamiltonian(ParticleSet& qp, TrialWaveFunction& psi, QMCHamiltonian& targetH)
 {
@@ -211,8 +201,21 @@ void OperatorBase::add2Hamiltonian(ParticleSet& qp, TrialWaveFunction& psi, QMCH
 }
 
 #if !defined(REMOVE_TRACEMANAGER)
-void OperatorBase::getRequiredTraces(TraceManager& tm) {};
+void OperatorBase::getRequiredTraces(TraceManager& tm){};
 #endif
+
+void OperatorBase::addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy)
+{
+  APP_ABORT("Need specialization for " + name_ +
+            "::addEnergy(MCWalkerConfiguration &W).\n Required functionality not implemented\n");
+}
+
+void OperatorBase::addEnergy(MCWalkerConfiguration& W,
+                             std::vector<RealType>& LocalEnergy,
+                             std::vector<std::vector<NonLocalData>>& Txy)
+{
+  addEnergy(W, LocalEnergy);
+}
 
 // END  FUNCTIONS //
 
@@ -230,7 +233,6 @@ bool OperatorBase::getMode(const int i) const noexcept { return update_mode_[i];
 
 bool OperatorBase::isNonLocal() const noexcept { return update_mode_[NONLOCAL]; }
 
-bool OperatorBase::hasListener() const noexcept { return has_listener_; }
 
 #if !defined(REMOVE_TRACEMANAGER)
 
@@ -257,6 +259,7 @@ void OperatorBase::deleteTraceQuantities()
   have_required_traces_ = false;
   request_.reset();
 }
+
 #endif
 
 ////// PROTECTED FUNCTIONS
@@ -282,10 +285,12 @@ void OperatorBase::deleteScalarQuantities()
     delete value_sample_;
 }
 
-void OperatorBase::contributeParticleQuantities() {};
-void OperatorBase::checkoutParticleQuantities(TraceManager& tm) {};
-void OperatorBase::deleteParticleQuantities() {};
+void OperatorBase::contributeParticleQuantities(){};
+void OperatorBase::checkoutParticleQuantities(TraceManager& tm){};
+void OperatorBase::deleteParticleQuantities(){};
 #endif
+
+void OperatorBase::setComputeForces(bool compute) {}
 
 void OperatorBase::setEnergyDomain(EnergyDomains edomain)
 {

@@ -56,7 +56,7 @@ struct sign2<float>
 template<class T>
 struct NRCOptimization
 {
-  using Return_t = T;
+  typedef T Return_t;
 
   /** number of line iteration for Brent method */
   int ITMAX;
@@ -190,10 +190,10 @@ struct NRCOptimization
       qmcplusplus::invert_matrix(S, false);
       qmcplusplus::MatrixOperators::product(S, &(y[0]), &(coefs[0]));
       Lambda = QuarticMinimum(coefs);
-      if (std::abs(Lambda) > largeQuarticStep || qmcplusplus::isnan(Lambda))
+      if (std::abs(Lambda) > largeQuarticStep || std::isnan(Lambda))
         return lineoptimization2();
       cost = Func(Lambda);
-      if (qmcplusplus::isnan(cost) || cost > start_cost)
+      if (std::isnan(cost) || cost > start_cost)
         return lineoptimization2();
     }
     else
@@ -304,11 +304,11 @@ struct NRCOptimization
     {
       qmcplusplus::LinearFit(y, S, coefs);
       Lambda = QuarticMinimum(coefs);
-      if (std::abs(Lambda) > largeQuarticStep || qmcplusplus::isnan(Lambda) || (Lambda == 0.0))
+      if (std::abs(Lambda) > largeQuarticStep || std::isnan(Lambda) || (Lambda == 0.0))
         return lineoptimization2(largeQuarticStep);
       zeroCost = Func(Lambda);
       //       std::cout <<"Start Cost:"<< start_cost<<" Lambda:"<<Lambda<<" FinalCost:"<<cost<< std::endl;
-      if (qmcplusplus::isnan(zeroCost) || zeroCost > start_cost)
+      if (std::isnan(zeroCost) || zeroCost > start_cost)
         return lineoptimization2(largeQuarticStep);
     }
     else

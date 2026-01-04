@@ -37,7 +37,7 @@ StressPBC::StressPBC(ParticleSet& ions, ParticleSet& elns, TrialWaveFunction& Ps
 {
   ReportEngine PRE("StressPBC", "StressPBC");
   name_  = "StressPBC";
-  prefix_ = "StressPBC";
+  prefix = "StressPBC";
   //This sets up the long range breakups.
   initBreakup(PtclTarg);
   stress_eI_const = 0.0;
@@ -47,8 +47,8 @@ StressPBC::StressPBC(ParticleSet& ions, ParticleSet& elns, TrialWaveFunction& Ps
     CalculateIonIonStress();
     firstTimeStress = false;
   }
-  RealType vinv = -1. / PtclTarg.getLattice().Volume;
-  app_log() << "\n====ion-ion stress ====\n" << stress_ion_ion_ * vinv << std::endl;
+  RealType vinv = -1. / PtclTarg.Lattice.Volume;
+  app_log() << "\n====ion-ion stress ====\n" << stress_IonIon * vinv << std::endl;
   app_log() << "\n e-e const = " << stress_ee_const * vinv << std::endl;
   app_log() << "\n e-I const = " << stress_eI_const * vinv << std::endl;
 }
@@ -58,7 +58,9 @@ void StressPBC::initBreakup(ParticleSet& P)
   SpeciesSet& tspeciesA(PtclA.getSpeciesSet());
   SpeciesSet& tspeciesB(P.getSpeciesSet());
   int ChargeAttribIndxA = tspeciesA.addAttribute("charge");
+  int MemberAttribIndxA = tspeciesA.addAttribute("membersize");
   int ChargeAttribIndxB = tspeciesB.addAttribute("charge");
+  int MemberAttribIndxB = tspeciesB.addAttribute("membersize");
   NptclA                = PtclA.getTotalNum();
   NptclB                = P.getTotalNum();
   NumSpeciesA           = tspeciesA.TotalNum;
@@ -73,12 +75,12 @@ void StressPBC::initBreakup(ParticleSet& P)
   for (int spec = 0; spec < NumSpeciesA; spec++)
   {
     Zspec[spec]       = tspeciesA(ChargeAttribIndxA, spec);
-    NofSpeciesA[spec] = PtclA.groupsize(spec);
+    NofSpeciesA[spec] = static_cast<int>(tspeciesA(MemberAttribIndxA, spec));
   }
   for (int spec = 0; spec < NumSpeciesB; spec++)
   {
     Qspec[spec]       = tspeciesB(ChargeAttribIndxB, spec);
-    NofSpeciesB[spec] = P.groupsize(spec);
+    NofSpeciesB[spec] = static_cast<int>(tspeciesB(MemberAttribIndxB, spec));
   }
 
   for (int spec = 0; spec < NumSpeciesA; spec++) {}
@@ -93,17 +95,24 @@ void StressPBC::initBreakup(ParticleSet& P)
 SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evaluateLR_AB(ParticleSet& P)
 {
   SymTensor<RealType, OHMMS_DIM> res = 0.0;
-  const StructFact& RhoKA(PtclA.getSK());
-  const StructFact& RhoKB(P.getSK());
+  const StructFact& RhoKA(*(PtclA.SK));
+  const StructFact& RhoKB(*(P.SK));
 
   for (int i = 0; i < NumSpeciesA; i++)
   {
     SymTensor<RealType, OHMMS_DIM> esum;
     esum = 0.0;
     for (int j = 0; j < NumSpeciesB; j++)
+    {
+#if defined(USE_REAL_STRUCT_FACTOR)
       esum += Qspec[j] *
-          AA->evaluateStress(P.getSimulationCell().getKLists().getKShell(), RhoKA.rhok_r[i], RhoKA.rhok_i[i],
-                             RhoKB.rhok_r[j], RhoKB.rhok_i[j]);
+          AA->evaluateStress(RhoKA.getKLists().kshell, RhoKA.rhok_r[i], RhoKA.rhok_i[i], RhoKB.rhok_r[j],
+                             RhoKB.rhok_i[j]);
+#else
+      esum += Qspec[j] * AA->evaluateStress(RhoKA.getKLists().kshell, RhoKA.rhok[i], RhoKB.rhok[j]);
+
+#endif
+    }
     res += Zspec[i] * esum;
   }
 
@@ -152,8 +161,9 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evaluateLR_AA(ParticleSet& 
 {
   int NumSpecies = P.getSpeciesSet().TotalNum;
   SymTensor<RealType, OHMMS_DIM> stress_aa;
-  const StructFact& PtclRhoK(P.getSK());
+  const StructFact& PtclRhoK(*(P.SK));
   int ChargeAttribIndx = P.getSpeciesSet().getAttribute("charge");
+  int MemberAttribIndx = P.getSpeciesSet().getAttribute("membersize");
 
   std::vector<int> NofSpecies;
   std::vector<int> Zmyspec;
@@ -163,7 +173,7 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evaluateLR_AA(ParticleSet& 
   for (int spec = 0; spec < NumSpecies; spec++)
   {
     Zmyspec[spec]    = P.getSpeciesSet()(ChargeAttribIndx, spec);
-    NofSpecies[spec] = P.groupsize(spec);
+    NofSpecies[spec] = static_cast<int>(P.getSpeciesSet()(MemberAttribIndx, spec));
   }
 
   SymTensor<RealType, OHMMS_DIM> temp;
@@ -172,9 +182,14 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evaluateLR_AA(ParticleSet& 
     RealType Z1 = Zmyspec[spec1];
     for (int spec2 = spec1; spec2 < NumSpecies; spec2++)
     {
+#if !defined(USE_REAL_STRUCT_FACTOR)
       SymTensor<RealType, OHMMS_DIM> temp =
-          AA->evaluateStress(P.getSimulationCell().getKLists().getKShell(), PtclRhoK.rhok_r[spec1], PtclRhoK.rhok_i[spec1],
+          AA->evaluateStress(PtclRhoK.getKLists().kshell, PtclRhoK.rhok[spec1], PtclRhoK.rhok[spec2]);
+#else
+      SymTensor<RealType, OHMMS_DIM> temp =
+          AA->evaluateStress(PtclRhoK.getKLists().kshell, PtclRhoK.rhok_r[spec1], PtclRhoK.rhok_i[spec1],
                              PtclRhoK.rhok_r[spec2], PtclRhoK.rhok_i[spec2]);
+#endif
       if (spec2 == spec1)
         temp *= 0.5;
       stress_aa += Z1 * Zmyspec[spec2] * temp;
@@ -189,7 +204,7 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evalConsts_AB()
   int nelns = PtclTarg.getTotalNum();
   int nions = PtclA.getTotalNum();
 
-  using mRealType = LRHandlerType::mRealType;
+  typedef LRHandlerType::mRealType mRealType;
 
   SymTensor<mRealType, OHMMS_DIM> Consts = 0.0;
   SymTensor<mRealType, OHMMS_DIM> vs_k0  = AA->evaluateSR_k0_dstrain();
@@ -221,6 +236,7 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evalConsts_AA(ParticleSet& 
   RealType v1; //single particle energy
 
   int ChargeAttribIndx = P.getSpeciesSet().getAttribute("charge");
+  int MemberAttribIndx = P.getSpeciesSet().getAttribute("membersize");
 
   std::vector<int> NofSpecies;
   std::vector<int> Zmyspec;
@@ -230,7 +246,7 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evalConsts_AA(ParticleSet& 
   for (int spec = 0; spec < NumSpecies; spec++)
   {
     Zmyspec[spec]    = P.getSpeciesSet()(ChargeAttribIndx, spec);
-    NofSpecies[spec] = P.groupsize(spec);
+    NofSpecies[spec] = static_cast<int>(P.getSpeciesSet()(MemberAttribIndx, spec));
   }
 
   SymTensor<RealType, OHMMS_DIM> vl_r0 = AA->evaluateLR_r0_dstrain();
@@ -261,33 +277,33 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evalConsts_AA(ParticleSet& 
 
 StressPBC::Return_t StressPBC::evaluate(ParticleSet& P)
 {
-  const RealType vinv(-1.0 / P.getLattice().Volume);
-  stress_     = 0.0;
-  stress_ee_  = 0.0;
-  stress_ei_  = 0.0;
-  stress_kin_ = 0.0;
+  const RealType vinv(-1.0 / P.Lattice.Volume);
+  stress     = 0.0;
+  stress_ee  = 0.0;
+  stress_ei  = 0.0;
+  stress_kin = 0.0;
 
-  stress_ei_ += vinv * evaluateLR_AB(PtclTarg);
-  stress_ei_ += vinv * evaluateSR_AB(PtclTarg);
-  stress_ei_ += vinv * stress_eI_const;
+  stress_ei += vinv * evaluateLR_AB(PtclTarg);
+  stress_ei += vinv * evaluateSR_AB(PtclTarg);
+  stress_ei += vinv * stress_eI_const;
 
-  stress_ee_ += vinv * evaluateLR_AA(PtclTarg);
-  stress_ee_ += vinv * evaluateSR_AA(PtclTarg, ee_table_index);
-  stress_ee_ += vinv * stress_ee_const;
+  stress_ee += vinv * evaluateLR_AA(PtclTarg);
+  stress_ee += vinv * evaluateSR_AA(PtclTarg, ee_table_index);
+  stress_ee += vinv * stress_ee_const;
 
 
-  stress_kin_ += vinv * evaluateKineticSymTensor(P);
+  stress_kin += vinv * evaluateKineticSymTensor(P);
 
-  stress_ = stress_ee_ + stress_ei_ + stress_kin_;
-  if (add_ion_ion_)
-    stress_ += vinv * stress_ion_ion_;
+  stress = stress_ee + stress_ei + stress_kin;
+  if (addionion)
+    stress += vinv * stress_IonIon;
 
   return 0.0;
 }
 
 SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evaluateKineticSymTensor(ParticleSet& P)
 {
-  WaveFunctionComponent::HessVector grad_grad_psi;
+  WaveFunctionComponent::HessVector_t grad_grad_psi;
   Psi.evaluateHessian(P, grad_grad_psi);
   SymTensor<RealType, OHMMS_DIM> kinetic_tensor;
   Tensor<ComplexType, OHMMS_DIM> complex_ktensor;
@@ -295,7 +311,7 @@ SymTensor<StressPBC::RealType, OHMMS_DIM> StressPBC::evaluateKineticSymTensor(Pa
   for (int iat = 0; iat < P.getTotalNum(); iat++)
   {
     const RealType minv(1.0 / P.Mass[iat]);
-    complex_ktensor += outerProduct(P.G[iat], P.G[iat]) * static_cast<ParticleSet::SingleParticleValue>(minv);
+    complex_ktensor += outerProduct(P.G[iat], P.G[iat]) * static_cast<ParticleSet::SingleParticleValue_t>(minv);
     complex_ktensor += grad_grad_psi[iat] * minv;
   }
 
@@ -311,11 +327,11 @@ bool StressPBC::put(xmlNodePtr cur)
 {
   std::string ionionforce("yes");
   OhmmsAttributeSet attr;
-  attr.add(prefix_, "name");
-  attr.add(ionionforce, "add_ion_ion_");
+  attr.add(prefix, "name");
+  attr.add(ionionforce, "addionion");
   attr.put(cur);
-  add_ion_ion_ = (ionionforce == "yes") || (ionionforce == "true");
-  app_log() << "add ion-ion stress = " << add_ion_ion_ << std::endl;
+  addionion = (ionionforce == "yes") || (ionionforce == "true");
+  app_log() << "add ion-ion stress = " << addionion << std::endl;
   return true;
 }
 
@@ -323,10 +339,10 @@ std::unique_ptr<OperatorBase> StressPBC::makeClone(ParticleSet& qp, TrialWaveFun
 {
   std::unique_ptr<StressPBC> tmp = std::make_unique<StressPBC>(PtclA, qp, psi);
   tmp->firstTimeStress           = firstTimeStress;
-  tmp->stress_ion_ion_           = stress_ion_ion_;
+  tmp->stress_IonIon             = stress_IonIon;
   tmp->stress_ee_const           = stress_ee_const;
   tmp->stress_eI_const           = stress_eI_const;
-  tmp->add_ion_ion_              = add_ion_ion_;
+  tmp->addionion                 = addionion;
   return tmp;
 }
 } // namespace qmcplusplus

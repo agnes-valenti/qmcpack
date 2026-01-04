@@ -45,10 +45,10 @@ public:
 
   // types for evaluation results
   using ComplexT = typename BsplineSet::ValueType;
-  using BsplineSet::GGGVector;
-  using BsplineSet::GradVector;
-  using BsplineSet::HessVector;
-  using BsplineSet::ValueVector;
+  using BsplineSet::GGGVector_t;
+  using BsplineSet::GradVector_t;
+  using BsplineSet::HessVector_t;
+  using BsplineSet::ValueVector_t;
 
   using vContainer_type  = Vector<ST, aligned_allocator<ST>>;
   using gContainer_type  = VectorSoaContainer<ST, 3>;
@@ -62,9 +62,6 @@ private:
   Tensor<ST, 3> GGt;
   ///multi bspline set
   std::shared_ptr<MultiBspline<ST>> SplineInst;
-
-  ///Copy of original splines for orbital rotation
-  std::shared_ptr<std::vector<ST>> coef_copy_;
 
   vContainer_type mKK;
   VectorSoaContainer<ST, 3> myKcart;
@@ -81,34 +78,16 @@ protected:
   ghContainer_type mygH;
 
 public:
-  SplineC2C(const std::string& my_name, bool use_offload = false) : BsplineSet(my_name) {}
-
-  SplineC2C(const SplineC2C& in);
-  virtual std::string getClassName() const override { return "SplineC2C"; }
-  virtual std::string getKeyword() const override { return "SplineC2C"; }
-  bool isComplex() const override { return true; };
-
+  SplineC2C()
+  {
+    is_complex = true;
+    className  = "SplineC2C";
+    KeyWord    = "SplineC2C";
+  }
 
   std::unique_ptr<SPOSet> makeClone() const override { return std::make_unique<SplineC2C>(*this); }
 
-  bool isRotationSupported() const override { return true; }
-
-  /// Store an original copy of the spline coefficients for orbital rotation
-  void storeParamsBeforeRotation() override;
-
-  /*
-    Implements orbital rotations via [1,2].
-    Should be called by RotatedSPOs::apply_rotation()
-    This implementation requires that NSPOs > Nelec. In other words,
-    if you want to run a orbopt wfn, you must include some virtual orbitals!
-    Some results (using older Berkeley branch) were published in [3].
-    [1] Filippi & Fahy, JCP 112, (2000)
-    [2] Toulouse & Umrigar, JCP 126, (2007)
-    [3] Townsend et al., PRB 102, (2020)
-  */
-  void applyRotation(const ValueMatrix& rot_mat, bool use_stored_copy) override;
-
-  inline void resizeStorage(size_t n) override
+  inline void resizeStorage(size_t n, size_t nvals)
   {
     init_base(n);
     size_t npad = getAlignedSize<ST>(2 * n);
@@ -134,8 +113,8 @@ public:
     gatherv(comm, SplineInst->getSplinePtr(), SplineInst->getSplinePtr()->z_stride, offset);
   }
 
-  template<typename BCT>
-  void create_spline(const Ugrid xyz_g[3], const BCT& xyz_bc)
+  template<typename GT, typename BCT>
+  void create_spline(GT& xyz_g, BCT& xyz_bc)
   {
     resize_kpoints();
     SplineInst = std::make_shared<MultiBspline<ST>>();
@@ -165,61 +144,61 @@ public:
 
   bool write_splines(hdf_archive& h5f);
 
-  void assign_v(const PointType& r, const vContainer_type& myV, ValueVector& psi, int first, int last) const;
+  void assign_v(const PointType& r, const vContainer_type& myV, ValueVector_t& psi, int first, int last) const;
 
-  void evaluateValue(const ParticleSet& P, const int iat, ValueVector& psi) override;
+  void evaluateValue(const ParticleSet& P, const int iat, ValueVector_t& psi) override;
 
   void evaluateDetRatios(const VirtualParticleSet& VP,
-                         ValueVector& psi,
-                         const ValueVector& psiinv,
+                         ValueVector_t& psi,
+                         const ValueVector_t& psiinv,
                          std::vector<ValueType>& ratios) override;
 
   /** assign_vgl
    */
-  void assign_vgl(const PointType& r, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi, int first, int last)
+  void assign_vgl(const PointType& r, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi, int first, int last)
       const;
 
   /** assign_vgl_from_l can be used when myL is precomputed and myV,myG,myL in cartesian
    */
-  void assign_vgl_from_l(const PointType& r, ValueVector& psi, GradVector& dpsi, ValueVector& d2psi);
+  void assign_vgl_from_l(const PointType& r, ValueVector_t& psi, GradVector_t& dpsi, ValueVector_t& d2psi);
 
   void evaluateVGL(const ParticleSet& P,
                    const int iat,
-                   ValueVector& psi,
-                   GradVector& dpsi,
-                   ValueVector& d2psi) override;
+                   ValueVector_t& psi,
+                   GradVector_t& dpsi,
+                   ValueVector_t& d2psi) override;
 
   void assign_vgh(const PointType& r,
-                  ValueVector& psi,
-                  GradVector& dpsi,
-                  HessVector& grad_grad_psi,
+                  ValueVector_t& psi,
+                  GradVector_t& dpsi,
+                  HessVector_t& grad_grad_psi,
                   int first,
                   int last) const;
 
   void evaluateVGH(const ParticleSet& P,
                    const int iat,
-                   ValueVector& psi,
-                   GradVector& dpsi,
-                   HessVector& grad_grad_psi) override;
+                   ValueVector_t& psi,
+                   GradVector_t& dpsi,
+                   HessVector_t& grad_grad_psi) override;
 
   void assign_vghgh(const PointType& r,
-                    ValueVector& psi,
-                    GradVector& dpsi,
-                    HessVector& grad_grad_psi,
-                    GGGVector& grad_grad_grad_psi,
+                    ValueVector_t& psi,
+                    GradVector_t& dpsi,
+                    HessVector_t& grad_grad_psi,
+                    GGGVector_t& grad_grad_grad_psi,
                     int first = 0,
                     int last  = -1) const;
 
   void evaluateVGHGH(const ParticleSet& P,
                      const int iat,
-                     ValueVector& psi,
-                     GradVector& dpsi,
-                     HessVector& grad_grad_psi,
-                     GGGVector& grad_grad_grad_psi) override;
+                     ValueVector_t& psi,
+                     GradVector_t& dpsi,
+                     HessVector_t& grad_grad_psi,
+                     GGGVector_t& grad_grad_grad_psi) override;
 
   template<class BSPLINESPO>
-  friend class SplineSetReader;
-  friend struct BsplineReader;
+  friend struct SplineSetReader;
+  friend struct BsplineReaderBase;
 };
 
 extern template class SplineC2C<float>;

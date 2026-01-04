@@ -1,0 +1,13 @@
+Eta=5.79, n0=1*10^(-11) cm^(-2), Nk=3 -> Nu=5, Nd=5 (valley-polarized)
+
+4.8431170791e+02
+
+EtaVar=1:
+  4.5914287477e+02
+
+EtaVar=2:
+  4.5395e+02, 60 it: 4.5367861179e+02
+  with 2 params etavar=1 (30 it): 4.5376073547e+02, 60 it: 4.5379116155e+02
+EtaVar=3:
+  4.5486120256e+02
+  with 2 params etavar=1 (30 it): 4.5432596976e+02

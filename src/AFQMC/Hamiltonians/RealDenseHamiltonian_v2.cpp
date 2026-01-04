@@ -14,6 +14,7 @@
 #endif
 
 #include "Configuration.h"
+#include "type_traits/container_traits_multi.h"
 #include "hdf/hdf_multi.h"
 #include "hdf/hdf_archive.h"
 
@@ -70,7 +71,7 @@ HamiltonianOperations RealDenseHamiltonian_v2::getHamiltonianOperations(bool pur
 
   // distribute work over equivalent nodes in TGprop.TG() across TG.Global()
   auto Qcomm(TG.Global().split(TGprop.getLocalGroupNumber(), TG.Global().rank()));
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
   auto distNode(TG.Node().split(TGprop.getLocalGroupNumber(), TG.Node().rank()));
 #else
   auto distNode(TG.Node().split(0, TG.Node().rank()));
@@ -87,7 +88,12 @@ HamiltonianOperations RealDenseHamiltonian_v2::getHamiltonianOperations(bool pur
       app_error() << " Error opening integral file in THCHamiltonian. \n";
       APP_ABORT("");
     }
-    dump.push("Hamiltonian", false);
+    if (!dump.push("Hamiltonian", false))
+    {
+      app_error() << " Error in THCHamiltonian::getHamiltonianOperations():"
+                  << " Group not Hamiltonian found. \n";
+      APP_ABORT("");
+    }
   }
 
   std::vector<int> Idata(8);
@@ -150,7 +156,12 @@ HamiltonianOperations RealDenseHamiltonian_v2::getHamiltonianOperations(bool pur
   if (distNode.root())
   {
     // read L
-    dump.push("DenseFactorized", false);
+    if (!dump.push("DenseFactorized", false))
+    {
+      app_error() << " Error in RealDenseHamiltonian_v2::getHamiltonianOperations():"
+                  << " Group DenseFactorized not found. \n";
+      APP_ABORT("");
+    }
     SpRMatrix_ref L(to_address(Likn.origin()), Likn.extensions());
     hyperslab_proxy<SpRMatrix_ref, 2> hslab(L,
                                             std::array<size_t, 2>{static_cast<size_t>(NMO * NMO),
@@ -174,12 +185,11 @@ HamiltonianOperations RealDenseHamiltonian_v2::getHamiltonianOperations(bool pur
                   << " Problems reading /Hamiltonian/DenseFactorized/L. \n";
       APP_ABORT("");
     }
-    using std::get;
-    if (get<0>(Likn.sizes()) != NMO * NMO || get<1>(Likn.sizes()) != local_ncv)
+    if (Likn.size(0) != NMO * NMO || Likn.size(1) != local_ncv)
     {
       app_error() << " Error in RealDenseHamiltonian_v2::getHamiltonianOperations():"
                   << " Problems reading /Hamiltonian/DenseFactorized/L. \n"
-                  << " Unexpected dimensins: " << get<0>(Likn.sizes()) << " " << get<1>(Likn.sizes()) << std::endl;
+                  << " Unexpected dimensins: " << Likn.size(0) << " " << Likn.size(1) << std::endl;
       APP_ABORT("");
     }
     dump.pop();
@@ -191,7 +201,10 @@ HamiltonianOperations RealDenseHamiltonian_v2::getHamiltonianOperations(bool pur
   std::vector<shmSp3Tensor> Lnak;
   Lnak.reserve(PsiT.size());
   for (int nd = 0; nd < PsiT.size(); nd++)
-    Lnak.emplace_back(shmSp3Tensor({local_ncv, static_cast<boost::multi::size_t>(PsiT[nd].size(0)), NMO}, shared_allocator<SPComplexType>{distNode}));
+    Lnak.emplace_back(shmSp3Tensor({local_ncv, PsiT[nd].size(0), NMO}, shared_allocator<SPComplexType>{distNode}));
+  int nrow = NEL;
+  if (ndet > 1)
+    nrow = 0; // not used if ndet>1
   TG.Node().barrier();
 
   // for simplicity

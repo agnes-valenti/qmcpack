@@ -74,10 +74,8 @@ public:
                        bool compact = false,
                        bool herm    = true)
   {
-    using std::get;
-
-    int NMO  = (herm ? get<1>(hermA.sizes()) : get<0>(hermA.sizes()));
-    int NAEA = (herm ? get<0>(hermA.sizes()) : get<1>(hermA.sizes()));
+    int NMO  = (herm ? hermA.size(1) : hermA.size(0));
+    int NAEA = (herm ? hermA.size(0) : hermA.size(1));
     set_shm_buffer(comm, NAEA * (NAEA + NMO));
     assert(SM_TMats->num_elements() >= NAEA * (NAEA + NMO));
     boost::multi::array_ref<T, 2> TNN(to_address(SM_TMats->origin()), {NAEA, NAEA});
@@ -98,14 +96,12 @@ public:
                                   communicator& comm,
                                   bool compact = false)
   {
-    using std::get;
-
-    int Nact = get<0>(hermA.sizes());
-    int NEL  = get<1>(B.sizes());
-    int NMO  = get<0>(B.sizes());
-    assert(get<1>(hermA.sizes()) == get<0>(B.sizes()));
-    assert(get<0>(QQ0.sizes()) == Nact);
-    assert(get<1>(QQ0.sizes()) == NEL);
+    int Nact = hermA.size(0);
+    int NEL  = B.size(1);
+    int NMO  = B.size(0);
+    assert(hermA.size(1) == B.size(0));
+    assert(QQ0.size(0) == Nact);
+    assert(QQ0.size(1) == NEL);
 
     set_shm_buffer(comm, NEL * (NEL + Nact + NMO));
     assert(SM_TMats->num_elements() >= NEL * (NEL + Nact + NMO));
@@ -126,8 +122,7 @@ public:
   template<class MatA, class MatB>
   T Overlap(const MatA& hermA, const MatB& B, T LogOverlapFactor, communicator& comm, bool herm = true)
   {
-    using std::get;
-    int NAEA = (herm ? get<0>(hermA.sizes()) : get<1>(hermA.sizes()));
+    int NAEA = (herm ? hermA.size(0) : hermA.size(1));
     set_shm_buffer(comm, 2 * NAEA * NAEA);
     assert(SM_TMats->num_elements() >= 2 * NAEA * NAEA);
     boost::multi::array_ref<T, 2> TNN(to_address(SM_TMats->origin()), {NAEA, NAEA});
@@ -144,13 +139,11 @@ public:
                        MatC&& QQ0,
                        communicator& comm)
   {
-    using std::get;
-
-    int Nact = get<0>(hermA.sizes());
-    int NEL  = get<1>(B.sizes());
-    assert(get<1>(hermA.sizes()) == get<0>(B.sizes()));
-    assert(get<0>(QQ0.sizes()) == Nact);
-    assert(get<1>(QQ0.sizes()) == NEL);
+    int Nact = hermA.size(0);
+    int NEL  = B.size(1);
+    assert(hermA.size(1) == B.size(0));
+    assert(QQ0.size(0) == Nact);
+    assert(QQ0.size(1) == NEL);
     set_shm_buffer(comm, NEL * (Nact + NEL));
     assert(SM_TMats->num_elements() >= NEL * (Nact + NEL));
     boost::multi::array_ref<T, 2> TNN(to_address(SM_TMats->origin()), {NEL, NEL});
@@ -171,16 +164,14 @@ public:
                  bool noncollinear = false)
   {
     int npol = noncollinear ? 2 : 1;
-
-    using std::get;
-    int NMO  = get<0>(A.sizes());
-    int NAEA = get<1>(A.sizes());
+    int NMO  = A.size(0);
+    int NAEA = A.size(1);
     int M    = NMO / npol;
     assert(NMO % npol == 0);
-    assert(get<0>(P1.sizes()) == NMO);
-    assert(get<1>(P1.sizes()) == NMO);
-    assert(get<0>(V.sizes()) == M);
-    assert(get<1>(V.sizes()) == M);
+    assert(P1.size(0) == NMO);
+    assert(P1.size(1) == NMO);
+    assert(V.size(0) == M);
+    assert(V.size(1) == M);
     set_shm_buffer(comm, NAEA * (NMO + 2 * M));
     assert(SM_TMats->num_elements() >= NAEA * (NMO + 2 * M));
     boost::multi::array_ref<T, 2> T0(to_address(SM_TMats->origin()), {NMO, NAEA});
@@ -222,18 +213,6 @@ public:
                                  TVec&& ovlp,
                                  bool compact = false,
                                  bool herm    = true)
-  {
-    APP_ABORT(" Error: Batched routines not compatible with SlaterDetOperations_shared::BatchedMixedDensityMatrix \n");
-  }
-
-  template<class MatAPtr, class MatBPtr, class MatC, class TVec>
-  void BatchedMixedDensityMatrix(
-								const std::vector<MatAPtr>&,
-								std::vector<MatBPtr>&,
-								MatC&& C,
-								T,
-								TVec&&,
-								bool = false, bool = true)
   {
     APP_ABORT(" Error: Batched routines not compatible with SlaterDetOperations_shared::BatchedMixedDensityMatrix \n");
   }
@@ -294,10 +273,10 @@ protected:
   {
     if (SM_TMats == nullptr || SM_TMats->get_allocator() != shared_allocator<T>{comm})
     {
-      SM_TMats = std::move(std::make_unique<shmTVector>(iextensions<1u>(N), shared_allocator<T>{comm}));
+      SM_TMats = std::move(std::make_unique<shmTVector>(iextensions<1u>{N}, shared_allocator<T>{comm}));
     }
     else if (SM_TMats->num_elements() < N)
-      SM_TMats = std::move(std::make_unique<shmTVector>(iextensions<1u>(N), shared_allocator<T>{comm}));
+      SM_TMats = std::move(std::make_unique<shmTVector>(iextensions<1u>{N}, shared_allocator<T>{comm}));
   }
 };
 

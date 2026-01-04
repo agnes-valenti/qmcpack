@@ -114,21 +114,19 @@ public:
       apply_rotation = true;
       int dim[2];
 
-      using std::get;
-
       hdf_archive dump;
       if (TG.Node().root())
       {
         if (!dump.open(rot_file, H5F_ACC_RDONLY))
           APP_ABORT("Error opening orbitals file for n2r estimator.\n");
-        dump.push(path, false);
-
+        if (!dump.push(path, false))
+          APP_ABORT("Error in full2rdm: path not found.");
         stdCMatrix R;
         if (!dump.readEntry(R, "RotationMatrix"))
           APP_ABORT("Error reading RotationMatrix.\n");
-        if (get<1>(R.sizes()) != NMO)
+        if (R.size(1) != NMO)
           APP_ABORT("Error Wrong dimensions in RotationMatrix.\n");
-        dim[0] = R.size();
+        dim[0] = R.size(0);
         dim[1] = 0;
         // conjugate rotation matrix
         std::transform(R.origin(), R.origin() + R.num_elements(), R.origin(),
@@ -151,7 +149,7 @@ public:
       }
       TG.Node().barrier();
 
-      dm_size = XRot.size() * XRot.size() * XRot.size() * XRot.size();
+      dm_size = XRot.size(0) * XRot.size(0) * XRot.size(0) * XRot.size(0);
     }
     else
     {
@@ -190,23 +188,22 @@ public:
     static_assert(std::decay<MatG_host>::type::dimensionality == 4, "Wrong dimensionality");
     using std::fill_n;
     // assumes G[nwalk][spin][M][M]
-    int nw(G.size());
-    assert(G.size() == wgt.size());
-    assert(wgt.size() == nw);
-    assert(Xw.size() == nw);
-    assert(ovlp.size() >= nw);
+    int nw(G.size(0));
+    assert(G.size(0) == wgt.size(0));
+    assert(wgt.size(0) == nw);
+    assert(Xw.size(0) == nw);
+    assert(ovlp.size(0) >= nw);
     assert(G.num_elements() == G_host.num_elements());
     assert(G.extensions() == G_host.extensions());
 
-    using std::get;
     // check structure dimensions
     if (iref == 0)
     {
-      if (denom.size() != nw)
+      if (denom.size(0) != nw)
       {
         denom = mpi3CVector(iextensions<1u>{nw}, shared_allocator<ComplexType>{TG.TG_local()});
       }
-      if (get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != dm_size)
+      if (DMWork.size(0) != nw || DMWork.size(1) != dm_size)
       {
         DMWork = mpi3CMatrix({nw, dm_size}, shared_allocator<ComplexType>{TG.TG_local()});
       }
@@ -215,8 +212,8 @@ public:
     }
     else
     {
-      if (get<0>(denom.sizes()) != nw || get<0>(DMWork.sizes()) != nw || get<1>(DMWork.sizes()) != dm_size || get<0>(DMAverage.sizes()) != nave ||
-          get<1>(DMAverage.sizes()) != dm_size)
+      if (denom.size(0) != nw || DMWork.size(0) != nw || DMWork.size(1) != dm_size || DMAverage.size(0) != nave ||
+          DMAverage.size(1) != dm_size)
         APP_ABORT(" Error: Invalid state in accumulate_reference. \n\n\n");
     }
 
@@ -230,7 +227,7 @@ public:
   template<class HostCVec>
   void accumulate_block(int iav, HostCVec&& wgt, bool impsamp)
   {
-    int nw(denom.size());
+    int nw(denom.size(0));
     int i0, iN;
     std::tie(i0, iN) = FairDivideBoundary(TG.TG_local().rank(), dm_size, TG.TG_local().size());
 
@@ -309,7 +306,7 @@ private:
   void acc_no_rotation(MatG&& G, CVec&& Xw)
   {
     // doing this 1 walker at a time and not worrying about speed
-    int nw(G.size());
+    int nw(G.size(0));
 
     int i0, iN;
     std::tie(i0, iN) = FairDivideBoundary(TG.TG_local().rank(), NMO * NMO, TG.TG_local().size());
@@ -327,7 +324,7 @@ private:
     // put this in shared memory!!!
     StaticMatrix Gt({NMO, NMO}, buffer_manager.get_generator().template get_allocator<ComplexType>());
     CMatrix_ref GtC(Gt.origin(), {NMO * NMO, 1});
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
     if (Grot.size() < R.num_elements())
       Grot = stdCVector(iextensions<1u>(R.num_elements()));
 #endif
@@ -349,7 +346,7 @@ private:
 
         //  (a,a,a,a)
         ma::product(Gup.sliced(i0, iN), ma::T(Gup), R);
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
         using std::copy_n;
         copy_n(R.origin(), R.num_elements(), Grot.origin());
         ma::axpy(Xw[iw], Grot, DMWork[iw].sliced(size_t(i0) * M2, size_t(iN) * M2));
@@ -363,7 +360,7 @@ private:
         for (int i = 0; i < NMO; ++i)
         {
           ma::product(ComplexType(-1.0), GtC, G[iw][0].sliced(i, i + 1), ComplexType(0.0), Q);
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
           using std::copy_n;
           copy_n(Q.origin(), Q.num_elements(), Grot.origin());
           ma::axpy(Xw[iw], Grot.sliced(0, Q.num_elements()),
@@ -375,7 +372,7 @@ private:
 
         //  (a,a,b,b)
         ma::product(Gup.sliced(i0, iN), ma::T(Gdn), R);
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
         using std::copy_n;
         copy_n(R.origin(), R.num_elements(), Grot.origin());
         ma::axpy(Xw[iw], Grot, DMWork[iw].sliced(M4 + size_t(i0) * M2, M4 + size_t(iN) * M2));
@@ -385,7 +382,7 @@ private:
 
         //  (b,b,b,b)
         ma::product(Gdn.sliced(i0, iN), ma::T(Gdn), R);
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
         using std::copy_n;
         copy_n(R.origin(), R.num_elements(), Grot.origin());
         ma::axpy(Xw[iw], Grot, DMWork[iw].sliced(2 * M4 + size_t(i0) * M2, 2 * M4 + size_t(iN) * M2));
@@ -399,7 +396,7 @@ private:
         for (int i = 0; i < NMO; ++i)
         {
           ma::product(ComplexType(-1.0), GtC, G[iw][1].sliced(i, i + 1), ComplexType(0.0), Q);
-#if defined(ENABLE_CUDA) || defined(BUILD_AFQMC_HIP)
+#if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
           using std::copy_n;
           copy_n(Q.origin(), Q.num_elements(), Grot.origin());
           ma::axpy(Xw[iw], Grot.sliced(0, Q.num_elements()),

@@ -15,14 +15,16 @@
 #include <complex>
 #include <type_traits>
 #include "config.h"
-#include <CUDA/CUDAruntime.hpp>
 #ifndef QMC_CUDA2HIP
+#include <cuda.h>
 #include <cublas_v2.h>
 #include <cuComplex.h>
 #else
-#include <hipblas/hipblas.h>
+#include <hip/hip_runtime.h>
+#include <hipblas.h>
 #include <hip/hip_complex.h>
-#include <ROCm/hipBLAS.hpp>
+#include "ROCm/cuda2hip.h"
+#include "ROCm/hipBLAS.hpp"
 #endif
 
 /** \file
@@ -81,43 +83,40 @@ void computeLogDet_batched(cudaStream_t& hstream,
                            std::complex<double>* logdets,
                            const int batch_size);
 
-template<typename T>
 void computeGetri_batched(cublasHandle_t& h_cublas,
-                          cudaStream_t& hstream,
                           const int n,
                           const int lda,
-                          T* Ms[],
-                          T* Cs[],
+                          double* Ms[],
+                          double* Cs[],
                           int* pivots,
-                          int* host_infos,
                           int* infos,
                           const int batch_size);
 
 extern template void computeInverseAndDetLog_batched<double>(cublasHandle_t& h_cublas,
-                                                             cudaStream_t& hstream,
-                                                             const int n,
-                                                             const int lda,
-                                                             double* Ms[],
-                                                             double* Cs[],
-                                                             double* LU_diags,
-                                                             int* pivots,
-                                                             int* host_infos,
-                                                             int* infos,
-                                                             std::complex<double>* log_dets,
-                                                             const int batch_size);
+                                     cudaStream_t& hstream,
+                                     const int n,
+                                     const int lda,
+                                     double* Ms[],
+                                     double* Cs[],
+                                     double* LU_diags,
+                                     int* pivots,
+                                     int* host_infos,
+                                     int* infos,
+                                     std::complex<double>* log_dets,
+                                     const int batch_size);
 
 extern template void computeInverseAndDetLog_batched<std::complex<double>>(cublasHandle_t& h_cublas,
-                                                                           cudaStream_t& hstream,
-                                                                           const int n,
-                                                                           const int lda,
-                                                                           std::complex<double>* Ms[],
-                                                                           std::complex<double>* Cs[],
-                                                                           std::complex<double>* LU_diags,
-                                                                           int* pivots,
-                                                                           int* host_infos,
-                                                                           int* infos,
-                                                                           std::complex<double>* log_dets,
-                                                                           const int batch_size);
+                                     cudaStream_t& hstream,
+                                     const int n,
+                                     const int lda,
+                                     std::complex<double>* Ms[],
+                                     std::complex<double>* Cs[],
+                                     std::complex<double>* LU_diags,
+                                     int* pivots,
+                                     int* host_infos,
+                                     int* infos,
+                                     std::complex<double>* log_dets,
+                                     const int batch_size);
 
 } // namespace cuBLAS_LU
 } // namespace qmcplusplus

@@ -20,7 +20,7 @@ namespace qmcplusplus
 {
 
 template<typename ST, typename TT>
-struct SplineOMPTargetMultiWalkerMem : public Resource
+struct SplineOMPTargetMultiWalkerMem: public Resource
 {
   ///team private ratios for reduction, numVP x numTeams
   Matrix<TT, OffloadPinnedAllocator<TT>> mw_ratios_private;
@@ -41,10 +41,7 @@ struct SplineOMPTargetMultiWalkerMem : public Resource
 
   SplineOMPTargetMultiWalkerMem(const SplineOMPTargetMultiWalkerMem&) : SplineOMPTargetMultiWalkerMem() {}
 
-  std::unique_ptr<Resource> makeClone() const override
-  {
-    return std::make_unique<SplineOMPTargetMultiWalkerMem>(*this);
-  }
+  Resource* makeClone() const override { return new SplineOMPTargetMultiWalkerMem(*this); }
 };
-} // namespace qmcplusplus
+}
 #endif

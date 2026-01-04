@@ -30,8 +30,7 @@ if __name__ == '__main__':
 
     # get particle-resolved latdev from stat.dat
     fp = h5py.File(fstat)
-    # The trailing [:] converts the Dataset to numpy array
-    latdev = fp['latdev/value'][:]
+    latdev = fp['latdev/value'].value
     latdir = latdev.reshape(nblock,natom,ndim).mean(axis=1)
     lat_cols = [col for col in df.columns if col.startswith('latdev')]
     slatdir  = df.loc[:,lat_cols].values

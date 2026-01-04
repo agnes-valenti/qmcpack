@@ -28,7 +28,7 @@ int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
   mpi3::environment env(argc, argv);
-  OHMMS::Controller = new Communicate(env.world());
+  OHMMS::Controller->initialize(env);
 #endif
   Communicate* myComm = OHMMS::Controller;
 
@@ -76,7 +76,7 @@ int main(int argc, char** argv)
     }
   }
 
-  Random.init(iseed);
+  Random.init(0, 1, iseed);
 
   //turn off output
   if (omp_get_max_threads() > 1)
@@ -100,7 +100,7 @@ int main(int argc, char** argv)
     const int teamID = ip / ncrews;
     const int crewID = ip % ncrews;
 
-    RandomGenerator random_th(myPrimes[ip]);
+    RandomGenerator<OHMMS_PRECISION> random_th(myPrimes[ip]);
 
     DiracDet<OHMMS_PRECISION> det(nels);
     det.initialize(random_th);

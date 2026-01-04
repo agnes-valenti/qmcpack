@@ -38,7 +38,7 @@ public:
   QMCAppBase();
 
   ///destructor
-  virtual ~QMCAppBase();
+  ~QMCAppBase();
 
   /** parse an input file
    * @param infile file to be parsed.
@@ -61,13 +61,13 @@ public:
 
 protected:
   ///stack of xml document
-  std::stack<Libxml2Document*> xml_doc_stack_;
+  std::stack<Libxml2Document*> XmlDocStack;
 
   ///project description
-  ProjectData my_project_;
+  ProjectData myProject;
 
   ///random number controller
-  RandomNumberControl my_random_control_;
+  RandomNumberControl myRandomControl;
 
   ///open a new document
   bool pushDocument(const std::string& infile);

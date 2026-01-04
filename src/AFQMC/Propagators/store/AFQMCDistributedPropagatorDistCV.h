@@ -59,7 +59,7 @@ public:
                                    Wavefunction& wfn_,
                                    CMatrix&& h1_,
                                    CVector&& vmf_,
-                                   RandomBase<RealType>& r)
+                                   RandomGenerator_t* r)
       : base(info, cur, tg_, wfn_, std::move(h1_), std::move(vmf_), r),
         req_Gsend(MPI_REQUEST_NULL),
         req_Grecv(MPI_REQUEST_NULL),

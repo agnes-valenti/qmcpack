@@ -42,7 +42,6 @@ struct HarmonicExternalPotential : public OperatorBase
 
   ~HarmonicExternalPotential() override {}
 
-  std::string getClassName() const override { return "HarmonicExternalPotential"; }
   //unneeded interface functions
   void resetTargetParticleSet(ParticleSet& P) override {}
 

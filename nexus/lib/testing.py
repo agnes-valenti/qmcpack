@@ -1,16 +1,6 @@
-# Workaround numpy2 changes
-def portable_numpy(np):
-    if np.lib.NumpyVersion(np.__version__) >= '2.0.0b1':
-        np.set_printoptions(legacy="1.25")
-        np.string_ = np.bytes_
-        np.float_  = np.float64
-    #end if
-#end def portable_numpy
-
 
 try:
     import numpy as np
-    portable_numpy(np)
     numpy_available = True
 except:
     numpy_available = False
@@ -19,7 +9,6 @@ except:
 
 def_atol =  0.0
 def_rtol = 1e-6
-
 
 # determine if two floats differ
 def float_diff(v1,v2,atol=def_atol,rtol=def_rtol):
@@ -228,10 +217,8 @@ def print_diff(o1,o2,atol=def_atol,rtol=def_rtol,int_as_float=False,text=False,b
     d1 = obj(diff1)
     d2 = obj(diff2)
     print(hline.format('left diff'))
-    print(list(sorted(d1.keys())))
     print(d1)
     print(hline.format('right diff'))
-    print(list(sorted(d2.keys())))
     print(d2)
 #end def print_diff
 

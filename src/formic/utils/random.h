@@ -20,7 +20,7 @@ namespace formic {
   /// \brief   The integer type used in random number generators.
   ///
   ///////////////////////////////////////////////////////////////////////////////////////////////////
-  using lcg_int_t = unsigned int;
+  typedef unsigned int lcg_int_t;
 
   void set_seed(unsigned int seed);
 

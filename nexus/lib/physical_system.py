@@ -735,15 +735,8 @@ def generate_physical_system(**kwargs):
         pre.remove_folded_structure()
         structure = pre.tile(tiling)
     #end if
-    if isinstance(tiling, tuple):
-        tiling_mat = np.diag(tiling)
-    elif tiling is None:
-        tiling_mat = np.eye(3)
-    else:
-        tiling_mat = tiling
 
-    if not np.array_equal(tiling_mat, np.eye(3)) and structure.has_folded():
-        # Has some supercell tiling
+    if tiling!=None and tiling!=(1,1,1) and structure.has_folded():
         fps = PhysicalSystem(
             structure  = structure.folded_structure,
             net_charge = net_charge,
@@ -771,7 +764,6 @@ def generate_physical_system(**kwargs):
         structure.set_folded(folded_structure)
         ps.folded_system = fps
     else:
-        # No supercell tiling
         ps = PhysicalSystem(
             structure  = structure,
             net_charge = net_charge,

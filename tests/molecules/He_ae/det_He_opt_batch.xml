@@ -38,22 +38,18 @@
       </correlation>
     </jastrow>
 
-    <sposet_collection type="MO" key="STO" transform="no" source="ion0">
+    <determinantset type="MO" key="STO" transform="no" source="ion0">
       <!-- Use a single Slater Type Orbital (STO) for the basis. Cusp condition is correct. -->
-       <sposet name="spo-up" spin="1" size="1"/>
-       <sposet name="spo-dn" spin="-1" size="1"/>
-       <basisset>
+      <basisset>
         <atomicBasisSet type="STO" elementType="He">
           <basisGroup rid="R0" n="1" l="0" m="0" type="Slater">
              <radfunc exponent="2.0"/>
           </basisGroup>
         </atomicBasisSet>
-       </basisset>
-     </sposet_collection>
-    <determinantset>
+      </basisset>
       <slaterdeterminant>
-        <determinant sposet="spo-up"/>
-        <determinant sposet="spo-dn"/>
+        <determinant id="updet" spin="1" size="1"/>
+        <determinant id="downdet" spin="-1" size="1"/>
       </slaterdeterminant>
     </determinantset>
   </wavefunction>
@@ -88,9 +84,9 @@
    <parameter name="MinMethod">OneShiftOnly</parameter>
  </qmc>
 </loop>
-   <qmc method="vmc_batch" move="pbyp">
+   <qmc method="vmc" move="pbyp">
       <estimator name="LocalEnergy" hdf5="no"/>
-      <parameter name="total_walkers"             >    1               </parameter>
+      <parameter name="walkers"             >    1               </parameter>
       <parameter name="blocks"              >    3               </parameter>
       <parameter name="steps"               >    3               </parameter>
       <parameter name="subSteps"            >    2               </parameter>
