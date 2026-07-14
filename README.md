@@ -1,3 +1,9 @@
+QMCPACK fork accompanying [Valenti, A., Calvera, V., Kivelson, S. A., Berg, E., & Huber, S. D. (2024). Nematic metal in a multivalley electron gas: Variational Monte Carlo analysis and application to AlAs. Physical Review Letters, 132(26), 266501](https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.132.266501)
+
+Implemented features: VMC for 2D anisotropic electron gases. Variational wave-function with anisotropic Jastrow Factor.
+
+# Forked from:
+
 ![QMCPACK Logo](docs/figs/QMCPACK_logo.png)
 
 [![License](https://img.shields.io/badge/License-UIUC/NCSA-blue.svg)](https://opensource.org/licenses/NCSA)
